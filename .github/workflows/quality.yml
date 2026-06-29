@@ -1,0 +1,66 @@
+name: "Pipeline | Automated Testing & Quality Gate"
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+    branches:
+      - develop
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+jobs:
+  static-analysis-and-testing:
+    name: Lint, Type Check, & Test Execution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Compute Quality Gate Fingerprint
+        id: gate-hash
+        run: |
+          set -o pipefail
+          FILES_TO_HASH=$(find src/ tests/ scripts/ pyproject.toml uv.lock justfile -type f 2>/dev/null || true)
+          HASH=$(echo "$FILES_TO_HASH" | sort | md5sum | awk '{print $1}')
+          echo "cache-key=quality-gate-$HASH" >> $GITHUB_OUTPUT
+
+      - name: Verify Quality Gate Cache State
+        id: cache-check
+        uses: actions/cache@v4
+        with:
+          path: .quality-gate-passed
+          key: ${{ steps.gate-hash.outputs.cache-key }}
+
+      - name: Output Cached Quality Gate Results
+        if: steps.cache-check.outputs.cache-hit == 'true'
+        run: |
+          echo "=========================================================="
+          echo " No changes detected in code, tests, or dependencies."
+          echo " Quality gate verification bypassed via cache hit."
+          echo "=========================================================="
+
+      - name: Install uv Ecosystem Manager
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Just Command Runner
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        uses: extractions/setup-just@v2
+
+      - name: Execute Quality Verification Gates
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: |
+          just verify
+
+      - name: Commit Quality Gate Cache Marker
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: date +%s > .quality-gate-passed

@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "charliermarsh.ruff",
+    "ms-python.mypy-type-checker",
+    "tamasfe.even-better-toml",
+    "humao.rest-client",
+    "ms-azuretools.vscode-docker",
+    "mongodb.mongodb-vscode",
+    "brapaya.redisclient",
+    "github.vscode-github-actions",
+    "nefrob.vscode-just-syntax"
+  ]
+}

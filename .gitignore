@@ -1,0 +1,30 @@
+# --- Environment & Secret Management ---
+.env
+.env.*
+!.env.example
+.infisical.json
+
+# --- Virtual Environments & Package Managers ---
+.venv/
+*.egg-info/
+
+# --- Python Runtime Caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Quality Assurance & Testing Caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Test Coverage Outputs ---
+.coverage
+htmlcov/
+coverage.json
+
+# --- Persistent Databases & Application Data ---
+# Generic catch-all for local container data directories and log files
+data/
+logs/
+*.log
