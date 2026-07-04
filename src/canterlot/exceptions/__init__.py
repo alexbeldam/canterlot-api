@@ -8,7 +8,7 @@ from .auth import (
     UsernameAlreadyExistsError,
 )
 from .base import BusinessError
-from .book import BookDetailsNotFoundError, BookDomainError, BookNotFoundError
+from .book import BookDetailsNotFoundError, BookDomainError, BookNotFoundError, BookSearchCriteriaMissingError
 from .club import ClubDomainError, ClubNotFoundError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
 from .gateway import GatewayConfigurationError
 from .invite import DirectInviteIdentityMismatchError, InvalidInviteTokenError, InviteLinkDeactivatedError
@@ -18,6 +18,7 @@ __all__ = [
     "BookDetailsNotFoundError",
     "BookDomainError",
     "BookNotFoundError",
+    "BookSearchCriteriaMissingError",
     "BusinessError",
     "ClubDomainError",
     "ClubNotFoundError",

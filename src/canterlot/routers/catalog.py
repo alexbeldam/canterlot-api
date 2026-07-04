@@ -1,13 +1,25 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
-from canterlot.models import BookSuggestionRequest, ErrorResponseModel, SuggestionResponse
-from canterlot.routers.dependencies import get_catalog_service, get_current_user_id
-from canterlot.services import CatalogService
+from canterlot.models import BookSuggestionRequest, ErrorResponseModel, PaginatedBooksResponse, SuggestionResponse
+from canterlot.models.book import TitleStr
+from canterlot.routers.dependencies import get_book_service, get_catalog_service, get_club_service, get_current_user_id
+from canterlot.services import BookService, CatalogService, ClubService
+from canterlot.utils.format import ISBNStr
 
 router = APIRouter(prefix="/clubs/{club_id}/catalog", tags=["Club Catalogs"])
+
+
+@dataclass
+class ExternalBookSearchFilters:
+    title: TitleStr | None = None
+    author: str | None = None
+    isbn: ISBNStr | None = None
+    page: int = Query(default=1, ge=1)
+    limit: int = Query(default=5, ge=1, le=40)
 
 
 @router.post(
@@ -54,4 +66,52 @@ async def suggest_book_to_club(
         club_id=club_id,
         user_id=current_user_id,
         suggestion=suggestion,
+    )
+
+
+@router.get(
+    "/search/external",
+    response_model=PaginatedBooksResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Successfully retrieved paginated list of external books matching criteria."
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "BookSearchCriteriaMissingError: None of title, author, or isbn were provided.",
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The requesting user is not a member of this club.",
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. The club_id path parameter or query parameters are invalid."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected backend error, cache layer failure, or upstream timeout.",
+        },
+    },
+)
+async def search_external_books_for_club(
+    club_id: PydanticObjectId,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+    search_service: Annotated[BookService, Depends(get_book_service)],
+    filters: Annotated[ExternalBookSearchFilters, Depends()],
+):
+    preferred_languages = await club_service.get_preferred_languages(club_id, current_user_id)
+    return await search_service.search_external_books(
+        title=filters.title,
+        author=filters.author,
+        isbn=filters.isbn,
+        preferred_languages=preferred_languages,
+        page=filters.page,
+        limit=filters.limit,
     )

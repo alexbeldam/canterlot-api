@@ -14,7 +14,7 @@ from canterlot.models import (
 from canterlot.models.book import UrlList
 from canterlot.models.enums import BookProviderName
 from canterlot.models.user import UsernameStr
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.utils.format import LanguageStr, NormalizedEmailStr
 
 
 class BookRepository(Protocol):
@@ -30,6 +30,7 @@ class BookRepository(Protocol):
 
 class ClubRepository(Protocol):
     async def find_by_id(self, club_id: PydanticObjectId) -> ClubModel | None: ...
+    async def get_preferred_languages_by_id(self, club_id: PydanticObjectId) -> list[LanguageStr]: ...
     async def find_member_role_by_club_id_and_user_id(
         self,
         club_id: PydanticObjectId,

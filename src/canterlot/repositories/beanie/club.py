@@ -2,9 +2,11 @@ from beanie import PydanticObjectId
 from beanie.operators import Pull, Push
 from pydantic import BaseModel
 
+from canterlot.exceptions import ClubNotFoundError
 from canterlot.models import ClubModel, MemberSchema, UserRole
 from canterlot.models.club import CatalogEntryModel
 from canterlot.repositories import ClubRepository
+from canterlot.utils.format import LanguageStr
 
 
 class MemberProjection(BaseModel):
@@ -15,9 +17,23 @@ class AllowSuggestionProjection(BaseModel):
     allow_suggestions: bool
 
 
+class PreferredLanguagesProjection(BaseModel):
+    preferred_languages: list[LanguageStr]
+
+
 class BeanieClubRepository(ClubRepository):
     async def find_by_id(self, club_id: PydanticObjectId) -> ClubModel | None:
         return await ClubModel.get(club_id)
+
+    async def get_preferred_languages_by_id(self, club_id: PydanticObjectId) -> list[LanguageStr]:
+        query = ClubModel.find_one(ClubModel.id == club_id)
+
+        projection = await query.project(PreferredLanguagesProjection)
+
+        if not projection:
+            raise ClubNotFoundError(f"Club with ID '{club_id}' not found")
+
+        return projection.preferred_languages
 
     async def find_member_role_by_club_id_and_user_id(
         self,

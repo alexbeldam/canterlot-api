@@ -1,51 +1,14 @@
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 
-from canterlot.models import BookDetails, BookModel, ErrorResponseModel, PaginatedBooksResponse
-from canterlot.models.book import TitleStr
+from canterlot.models import BookDetails, BookModel, ErrorResponseModel
 from canterlot.models.enums import BookProviderName
 from canterlot.routers.dependencies import get_book_service
 from canterlot.services import BookService
-from canterlot.utils.format import ISBNStr, LanguageStr
 
 router = APIRouter(prefix="/books", tags=["Books"])
-
-
-@router.get(
-    "/external",
-    response_model=PaginatedBooksResponse,
-    responses={
-        status.HTTP_200_OK: {
-            "description": "Successfully retrieved paginated list of external books matching criteria."
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": "Validation error. Provided query parameters (page/limit) violate constraints."
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected backend error, cache layer failure, or upstream timeout.",
-        },
-    },
-)
-async def search_books(
-    title: TitleStr,
-    search_service: Annotated[BookService, Depends(get_book_service)],
-    preferred_languages: Annotated[list[LanguageStr], Query(default_factory=list)],
-    author: str | None = None,
-    isbn: ISBNStr | None = None,
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=5, ge=1, le=40),
-):
-    return await search_service.search_external_books(
-        title=title,
-        author=author,
-        isbn=isbn,
-        preferred_languages=preferred_languages,
-        page=page,
-        limit=limit,
-    )
 
 
 @router.get(

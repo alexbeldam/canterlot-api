@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
+from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
 from canterlot.models import BookDetails, BookSearchResult
 from canterlot.models.enums import BookProviderName
 from canterlot.services.book import BookService
@@ -27,6 +27,48 @@ def _book_payload(**overrides) -> dict:
 def _service(cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock) -> BookService:
     book_provider.name = BookProviderName.GOOGLE
     return BookService(cache_repo, book_repo, [book_provider])
+
+
+def describe_search_external_books_validation():
+    async def it_raises_when_title_author_and_isbn_are_all_missing(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        service = _service(cache_repo, book_repo, book_provider)
+
+        with pytest.raises(BookSearchCriteriaMissingError):
+            await service.search_external_books(
+                title=None, author=None, isbn=None, preferred_languages=[], page=1, limit=10
+            )
+
+        book_provider.fetch_volumes.assert_not_called()
+
+    async def it_does_not_crash_building_the_cache_key_when_title_is_none(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        book_provider.fetch_volumes.return_value = {"books": [_book_payload()], "total_results": 1}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title=None, author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
+        )
+
+        assert len(result.books) == 1
+
+    async def it_ranks_by_author_alone_when_title_is_not_given(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        matching_author = _book_payload(id="matching", title="Anything", authors=["J.R.R. Tolkien"])
+        other_author = _book_payload(id="other", title="Anything", authors=["Someone Else"])
+        book_provider.fetch_volumes.return_value = {"books": [other_author, matching_author], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title=None, author="J.R.R. Tolkien", isbn=None, preferred_languages=[], page=1, limit=10
+        )
+
+        assert result.books[0].id == "matching"
 
 
 def describe_search_external_books_cache_behavior():

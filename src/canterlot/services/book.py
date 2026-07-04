@@ -4,7 +4,7 @@ import math
 
 from beanie import PydanticObjectId
 
-from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
+from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
 from canterlot.models import BookDetails, BookModel, BookSearchResult, PaginatedBooksResponse
 from canterlot.models.book import SearchParams, TitleStr
 from canterlot.models.enums import BookProviderName
@@ -59,13 +59,16 @@ class BookService:
 
     async def search_external_books(
         self,
-        title: TitleStr,
+        title: TitleStr | None,
         author: str | None,
         isbn: ISBNStr | None,
         preferred_languages: list[LanguageStr],
         page: int,
         limit: int,
     ) -> PaginatedBooksResponse:
+        if not title and not author and not isbn:
+            raise BookSearchCriteriaMissingError("At least one of title, author, or isbn must be provided.")
+
         provider_chunk_page = math.ceil((page * limit) / self.MAX_PROVIDER_CHUNK)
         start_index = (provider_chunk_page - 1) * self.MAX_PROVIDER_CHUNK
         cache_key = self.__build_cache_key(title, author, isbn, preferred_languages, provider_chunk_page)
@@ -113,7 +116,7 @@ class BookService:
 
     def __build_cache_key(
         self,
-        title: TitleStr,
+        title: TitleStr | None,
         author: str | None,
         isbn: ISBNStr | None,
         preferred_languages: list[LanguageStr],
@@ -121,7 +124,7 @@ class BookService:
     ) -> str:
         langs_key = "-".join(sorted(preferred_languages))
         return (
-            f"cache:search:{title.lower()}:auth:{author or ''}:"
+            f"cache:search:{(title or '').lower()}:auth:{author or ''}:"
             f"isbn:{isbn or ''}:langs:{langs_key}:chunk_p:{provider_chunk_page}"
         )
 
@@ -204,7 +207,7 @@ class BookService:
     def __score_and_sort_books(
         self,
         raw_books: list[BookSearchResult],
-        title: TitleStr,
+        title: TitleStr | None,
         author: str | None,
         isbn: ISBNStr | None,
         preferred_languages: list[LanguageStr],
@@ -217,7 +220,7 @@ class BookService:
     def __score_book(
         self,
         book: BookSearchResult,
-        title: TitleStr,
+        title: TitleStr | None,
         author: str | None,
         isbn: ISBNStr | None,
         preferred_languages: list[LanguageStr],
@@ -234,12 +237,15 @@ class BookService:
     def __relevance_score(
         self,
         book: BookSearchResult,
-        title: TitleStr,
+        title: TitleStr | None,
         author: str | None,
         preferred_languages: list[LanguageStr],
     ) -> float:
-        title_score = similarity_ratio(title, book.title)
-        weights = {"title": self.TITLE_WEIGHT}
+        title_score = 0.0
+        weights: dict[str, float] = {}
+        if title:
+            title_score = similarity_ratio(title, book.title)
+            weights["title"] = self.TITLE_WEIGHT
 
         author_score = 0.0
         if author:
@@ -255,7 +261,7 @@ class BookService:
         weights = redistribute_weights(weights)
 
         return (
-            title_score * weights["title"]
+            title_score * weights.get("title", 0)
             + author_score * weights.get("author", 0)
             + language_score * weights.get("language", 0)
         )
