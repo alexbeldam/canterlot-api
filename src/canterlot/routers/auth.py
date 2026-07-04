@@ -4,6 +4,17 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
+from canterlot.exceptions import (
+    ClubNotFoundError,
+    DirectInviteIdentityMismatchError,
+    EmailAlreadyExistsError,
+    InvalidCredentialsError,
+    InvalidInviteTokenError,
+    InviteLinkDeactivatedError,
+    TokenExpiredError,
+    TokenMalformedError,
+    UsernameAlreadyExistsError,
+)
 from canterlot.models import ErrorResponseModel, RegisterResponse, TokenResponse, UserRegisterRequest
 from canterlot.models.enums import ClubOnboardingStatus
 from canterlot.models.user import UsernameStr
@@ -13,6 +24,7 @@ from canterlot.routers.dependencies import (
     get_invite_service,
     get_user_id_from_valid_refresh_token,
 )
+from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService, ClubService, InviteService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -31,6 +43,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
             "description": (
                 "InvalidInviteTokenError: The provided invite_id does not correspond to an existing invitation."
             ),
+            "content": error_example(InvalidInviteTokenError),
         },
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
@@ -38,10 +51,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
                 "DirectInviteIdentityMismatchError: The provided invite_id is a direct invitation bound to a "
                 "different email address than the one being registered."
             ),
+            "content": error_example(DirectInviteIdentityMismatchError),
         },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponseModel,
             "description": "ClubNotFoundError: The club associated with the provided invite_id no longer exists.",
+            "content": error_example(ClubNotFoundError),
         },
         status.HTTP_409_CONFLICT: {
             "model": ErrorResponseModel,
@@ -49,12 +64,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
                 "UsernameAlreadyExistsError or EmailAlreadyExistsError: The username or email string "
                 "is already bound to a different profile."
             ),
+            "content": error_example(UsernameAlreadyExistsError, EmailAlreadyExistsError),
         },
         status.HTTP_410_GONE: {
             "model": ErrorResponseModel,
             "description": (
                 "InviteLinkDeactivatedError: The provided invite_id has been deactivated, rotated, or has expired."
             ),
+            "content": error_example(InviteLinkDeactivatedError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": (
@@ -64,6 +81,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected global backend execution failure or persistence error.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -121,6 +139,7 @@ async def register(
             "description": (
                 "InvalidCredentialsError: Incorrect username, profile identity, or plain text password combination."
             ),
+            "content": error_example(InvalidCredentialsError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. Form values missing or incorrectly structured during transmission."
@@ -128,6 +147,7 @@ async def register(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected runtime engine error during validation processing.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -153,6 +173,7 @@ async def login(
             "description": (
                 "TokenMalformedError: Token payload parsing validation failed (corrupt or modified parameters)."
             ),
+            "content": error_example(TokenMalformedError),
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
@@ -161,10 +182,12 @@ async def login(
                 "InvalidCredentialsError: The refresh payload is missing its subject, or the token has already "
                 "been revoked or invalidated."
             ),
+            "content": error_example(TokenExpiredError, InvalidCredentialsError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected database context mutation exception during token lifecycle rotation.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )

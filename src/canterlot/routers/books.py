@@ -3,9 +3,11 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
+from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
 from canterlot.models import BookDetails, BookModel, ErrorResponseModel
 from canterlot.models.enums import BookProviderName
 from canterlot.routers.dependencies import get_book_service
+from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import BookService
 
 router = APIRouter(prefix="/books", tags=["Books"])
@@ -22,6 +24,7 @@ router = APIRouter(prefix="/books", tags=["Books"])
                 "BookDetailsNotFoundError: The active provider engine "
                 "was not found, or the volume does not exist on that provider."
             ),
+            "content": error_example(BookDetailsNotFoundError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. The provider query parameter is not a recognized provider name."
@@ -29,6 +32,7 @@ router = APIRouter(prefix="/books", tags=["Books"])
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected global or integration breakdown.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -48,6 +52,7 @@ async def get_external_book_details(
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponseModel,
             "description": "BookNotFoundError: The specified book identifier does not exist in the system.",
+            "content": error_example(BookNotFoundError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. The book_id path parameter is not a valid object identifier."
@@ -55,6 +60,7 @@ async def get_external_book_details(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Internal server/database connection failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
