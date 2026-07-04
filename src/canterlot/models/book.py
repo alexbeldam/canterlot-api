@@ -43,12 +43,12 @@ class BookSearchResult(BaseModel):
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
     languages: list[LanguageStr] = Field(default_factory=list)
-    cover_url: HttpsUrl
+    cover_url: HttpsUrl | None = None
 
 
 class BookDetails(BaseModel):
-    page_count: int | None = Field(ge=0)
-    description: str | None
+    page_count: int | None = Field(default=None, ge=0)
+    description: NonEmptyStr | None = None
     categories: list[NonEmptyStr] = Field(default_factory=list)
 
 

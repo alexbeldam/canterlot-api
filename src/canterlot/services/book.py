@@ -10,7 +10,13 @@ from canterlot.models.book import SearchParams, TitleStr
 from canterlot.models.enums import BookProviderName
 from canterlot.providers import BookProvider, ProviderSearchResponse
 from canterlot.repositories import BookRepository, CacheRepository
-from canterlot.utils import get_logger, similarity_ratio
+from canterlot.utils import (
+    LANGUAGE_MATCH_SUBSCORES,
+    best_language_match,
+    get_logger,
+    redistribute_weights,
+    similarity_ratio,
+)
 from canterlot.utils.format import ISBNStr, LanguageStr
 
 logger = get_logger(__name__)
@@ -18,6 +24,11 @@ logger = get_logger(__name__)
 
 class BookService:
     MAX_PROVIDER_CHUNK = 40
+    RELEVANCE_WEIGHT = 0.85
+    COMPLETENESS_WEIGHT = 0.15
+    TITLE_WEIGHT = 0.5
+    AUTHOR_WEIGHT = 0.3
+    LANGUAGE_WEIGHT = 0.2
 
     def __init__(
         self,
@@ -94,7 +105,7 @@ class BookService:
             return PaginatedBooksResponse(books=[], total_pages=0, current_page=page, total_results=0)
 
         log.info("Sorting and heuristic scoring aggregated search records", items_to_score=len(raw_books))
-        sorted_books = self.__score_and_sort_books(raw_books, title, author, preferred_languages)
+        sorted_books = self.__score_and_sort_books(raw_books, title, author, isbn, preferred_languages)
 
         await self.__cache_results(cache_key, sorted_books, total_results, log)
 
@@ -195,24 +206,68 @@ class BookService:
         raw_books: list[BookSearchResult],
         title: TitleStr,
         author: str | None,
+        isbn: ISBNStr | None,
         preferred_languages: list[LanguageStr],
     ) -> list[BookSearchResult]:
-        scored_books = []
-        for book in raw_books:
-            score = similarity_ratio(title, book.title) * 100
-            if author:
-                greatest_sim_author = max([similarity_ratio(author, ret_a) for ret_a in book.authors] or [0])
-                score += greatest_sim_author * 70
-
-            for lang in preferred_languages:
-                if lang in book.languages:
-                    score += 50
-                    break
-
-            scored_books.append((score, book))
+        scored_books = [(self.__score_book(book, title, author, isbn, preferred_languages), book) for book in raw_books]
 
         scored_books.sort(key=lambda x: x[0], reverse=True)
         return [item[1] for item in scored_books]
+
+    def __score_book(
+        self,
+        book: BookSearchResult,
+        title: TitleStr,
+        author: str | None,
+        isbn: ISBNStr | None,
+        preferred_languages: list[LanguageStr],
+    ) -> float:
+        if isbn is not None and isbn in (book.isbn_10, book.isbn_13):
+            relevance_score = self.RELEVANCE_WEIGHT
+        else:
+            relevance_score = self.RELEVANCE_WEIGHT * self.__relevance_score(book, title, author, preferred_languages)
+
+        completeness_score = self.COMPLETENESS_WEIGHT * self.__completeness_score(book)
+
+        return relevance_score + completeness_score
+
+    def __relevance_score(
+        self,
+        book: BookSearchResult,
+        title: TitleStr,
+        author: str | None,
+        preferred_languages: list[LanguageStr],
+    ) -> float:
+        title_score = similarity_ratio(title, book.title)
+        weights = {"title": self.TITLE_WEIGHT}
+
+        author_score = 0.0
+        if author:
+            author_score = max((similarity_ratio(author, ret_a) for ret_a in book.authors), default=0)
+            weights["author"] = self.AUTHOR_WEIGHT
+
+        language_score = 0.0
+        if preferred_languages:
+            match_level = best_language_match(book.languages, preferred_languages)
+            language_score = LANGUAGE_MATCH_SUBSCORES[match_level]
+            weights["language"] = self.LANGUAGE_WEIGHT
+
+        weights = redistribute_weights(weights)
+
+        return (
+            title_score * weights["title"]
+            + author_score * weights.get("author", 0)
+            + language_score * weights.get("language", 0)
+        )
+
+    def __completeness_score(self, book: BookSearchResult) -> float:
+        checks = [
+            book.cover_url is not None,
+            book.year is not None,
+            bool(book.authors),
+            bool(book.isbn_10 or book.isbn_13),
+        ]
+        return sum(checks) / len(checks)
 
     async def get_external_book_details(self, provider_book_id: str, provider: BookProviderName) -> BookDetails:
         log = logger.bind(external_book_id=provider_book_id, provider_name=provider)

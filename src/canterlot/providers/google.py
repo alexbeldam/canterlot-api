@@ -13,8 +13,6 @@ from .interfaces import BookProvider, ProviderSearchResponse
 
 logger = get_logger(__name__)
 
-NO_COVER_URL: HttpsUrl = HttpUrl("https://dummyimage.com/150x220&text=No+Cover")
-
 
 class GoogleBookProvider(BookProvider):
     def __init__(self, session: AsyncSession):
@@ -77,10 +75,10 @@ class GoogleBookProvider(BookProvider):
             return BookSearchResult(
                 id=item_id,
                 provider=self.name,
-                title=volume_info.get("title", "?"),
+                title=volume_info.get("title"),
                 authors=volume_info.get("authors", []),
                 year=self.__extract_year(volume_info),
-                cover_url=self.__extract_cover_url(volume_info) or NO_COVER_URL,
+                cover_url=self.__extract_cover_url(volume_info),
                 languages=[volume_info["language"]] if volume_info.get("language") else [],
                 isbn_10=isbn_10,
                 isbn_13=isbn_13,
@@ -127,7 +125,7 @@ class GoogleBookProvider(BookProvider):
 
         log.info("Successfully fetched and extracted volume details context")
         return BookDetails(
-            description=volume_info.get("description", None),
+            description=volume_info.get("description") or None,
             page_count=volume_info.get("pageCount"),
             categories=volume_info.get("categories", []),
         )
