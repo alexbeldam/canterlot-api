@@ -72,9 +72,7 @@ def describe_search_external_books_for_club():
             books=[], total_pages=0, current_page=1, total_results=0
         )
 
-        response = client.get(
-            f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"title": "The Hobbit"}
-        )
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"title": "The Hobbit"})
 
         assert response.status_code == 200
         assert response.json()["total_results"] == 0
@@ -88,9 +86,7 @@ def describe_search_external_books_for_club():
             books=[], total_pages=0, current_page=1, total_results=0
         )
 
-        response = client.get(
-            f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"isbn": "9780345339683"}
-        )
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"isbn": "9780345339683"})
 
         assert response.status_code == 200
         call_kwargs = book_service.search_external_books.call_args.kwargs
@@ -131,9 +127,7 @@ def describe_search_external_books_for_club():
     def it_returns_403_when_the_user_is_not_a_club_member(client: TestClient, club_service: AsyncMock):
         club_service.get_preferred_languages.side_effect = UnauthorizedClubMemberError("not a member")
 
-        response = client.get(
-            f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"title": "The Hobbit"}
-        )
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"title": "The Hobbit"})
 
         assert response.status_code == 403
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
@@ -150,9 +144,7 @@ def describe_search_external_books_for_club():
         assert response.json()["error"]["error_code"] == "BOOK_SEARCH_CRITERIA_MISSING"
 
     def it_returns_422_for_a_malformed_club_id(client: TestClient, club_service: AsyncMock, book_service: AsyncMock):
-        response = client.get(
-            "/api/v1/clubs/not-a-valid-id/catalog/search/external", params={"title": "The Hobbit"}
-        )
+        response = client.get("/api/v1/clubs/not-a-valid-id/catalog/search/external", params={"title": "The Hobbit"})
 
         assert response.status_code == 422
         club_service.get_preferred_languages.assert_not_called()
@@ -161,9 +153,7 @@ def describe_search_external_books_for_club():
     def it_returns_500_with_the_error_envelope_on_an_unexpected_failure(client: TestClient, club_service: AsyncMock):
         club_service.get_preferred_languages.side_effect = RuntimeError("cache is on fire")
 
-        response = client.get(
-            f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"title": "The Hobbit"}
-        )
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_ID}/catalog/search/external", params={"title": "The Hobbit"})
 
         assert response.status_code == 500
         assert response.json()["error"]["error_code"] == "INTERNAL_SERVER_ERROR"

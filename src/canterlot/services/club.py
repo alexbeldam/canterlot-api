@@ -75,9 +75,7 @@ class ClubService:
 
         return ClubOnboarding(club_name=club.name, status=status)
 
-    async def get_preferred_languages(
-        self, club_id: PydanticObjectId, user_id: PydanticObjectId
-    ) -> list[LanguageStr]:
+    async def get_preferred_languages(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> list[LanguageStr]:
         if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
             raise UnauthorizedClubMemberError("Only members of this club can search for books to suggest.")
 
