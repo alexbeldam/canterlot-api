@@ -6,6 +6,7 @@ from pydantic import (
     AfterValidator,
     BeforeValidator,
     EmailStr,
+    Field,
     HttpUrl,
     StringConstraints,
     UrlConstraints,
@@ -31,10 +32,22 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-type LanguageStr = Annotated[str, AfterValidator(normalize_language)]
-type ISBNStr = Annotated[str, BeforeValidator(normalize_isbn)]
-type ISBN10Str = Annotated[ISBNStr, StringConstraints(min_length=ISBN10_LEN, max_length=ISBN10_LEN)]
-type ISBN13Str = Annotated[ISBNStr, StringConstraints(min_length=ISBN13_LEN, max_length=ISBN13_LEN)]
+type LanguageStr = Annotated[str, AfterValidator(normalize_language), Field(examples=["en", "pt-BR"])]
+type ISBNStr = Annotated[
+    str,
+    BeforeValidator(normalize_isbn),
+    Field(examples=["123456789X", "9781234567897"]),
+]
+type ISBN10Str = Annotated[
+    ISBNStr,
+    StringConstraints(min_length=ISBN10_LEN, max_length=ISBN10_LEN),
+    Field(examples=["123456789X", "0804139296"]),
+]
+type ISBN13Str = Annotated[
+    ISBNStr,
+    StringConstraints(min_length=ISBN13_LEN, max_length=ISBN13_LEN),
+    Field(examples=["9781234567897", "9780804139298"]),
+]
 type HttpsUrl = Annotated[HttpUrl, UrlConstraints(allowed_schemes=["https"])]
 type NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 type NormalizedEmailStr = Annotated[EmailStr, BeforeValidator(normalize_email)]

@@ -4,7 +4,7 @@ from beanie import PydanticObjectId
 
 from canterlot.exceptions import ClubSuggestionsClosedError, UnauthorizedClubMemberError
 from canterlot.models import BookModel, BookSuggestionRequest, LinkCandidate, SuggestionResponse, SuggestionStatus
-from canterlot.models.book import SearchParams, TitleStr, UrlList
+from canterlot.models.book import AuthorList, SearchParams, TitleStr, UrlList
 from canterlot.models.club import CatalogEntryModel
 from canterlot.models.enums import ExtensionType
 from canterlot.providers import LinkProvider
@@ -17,7 +17,7 @@ from canterlot.utils import (
     redistribute_weights,
     similarity_ratio,
 )
-from canterlot.utils.format import LanguageStr, NonEmptyStr
+from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
 
@@ -179,7 +179,7 @@ class CatalogService:
         self,
         candidate: LinkCandidate,
         target_title: TitleStr,
-        target_authors: list[NonEmptyStr],
+        target_authors: AuthorList,
         languages: list[LanguageStr],
         language_match: LanguageMatchLevel,
     ) -> float:
@@ -215,7 +215,7 @@ class CatalogService:
         self,
         candidates: list[LinkCandidate],
         target_title: TitleStr,
-        target_authors: list[NonEmptyStr],
+        target_authors: AuthorList,
         languages: list[LanguageStr],
         current_scores: UrlScores,
     ) -> tuple[UrlList, UrlScores]:
