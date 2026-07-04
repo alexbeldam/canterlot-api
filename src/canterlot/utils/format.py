@@ -2,8 +2,6 @@ import re
 from difflib import SequenceMatcher
 from typing import Annotated
 
-import langcodes
-from langcodes import standardize_tag, tag_is_valid
 from pydantic import (
     AfterValidator,
     BeforeValidator,
@@ -14,23 +12,10 @@ from pydantic import (
     validate_call,
 )
 
+from .language import normalize_language
+
 ISBN10_LEN = 10
 ISBN13_LEN = 13
-
-
-def normalize_language(lang_str: str) -> str:
-    cleaned = lang_str.strip()
-
-    if not cleaned:
-        raise ValueError("Language cannot be empty")
-
-    if tag_is_valid(cleaned):
-        return standardize_tag(cleaned)
-
-    try:
-        return langcodes.find(cleaned).to_tag()
-    except LookupError:
-        raise ValueError(f"{lang_str!r} is not a valid language code or name") from None
 
 
 def normalize_isbn(isbn_str: str) -> str:
