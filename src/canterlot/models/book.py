@@ -21,24 +21,54 @@ def validate_published_year(v: int) -> int:
     return v
 
 
-type UrlList = dict[ExtensionType, HttpsUrl]
-type PublishedYear = Annotated[int, AfterValidator(validate_published_year)]
-type TitleStr = Annotated[NonEmptyStr, StringConstraints(max_length=200)]
+type UrlList = Annotated[
+    dict[ExtensionType, HttpsUrl],
+    Field(
+        json_schema_extra={
+            "examples": [
+                {
+                    "pdf": "https://example.com/book.pdf",
+                    "epub": "https://example.com/book.epub",
+                }
+            ]
+        }
+    ),
+]
+type PublishedYear = Annotated[
+    int,
+    AfterValidator(validate_published_year),
+    Field(examples=[1998, 2025]),
+]
+type TitleStr = Annotated[
+    NonEmptyStr,
+    StringConstraints(max_length=200),
+    Field(examples=["The Hobbit", "A Game of Thrones"]),
+]
+type AuthorList = Annotated[
+    list[NonEmptyStr],
+    Field(
+        examples=[
+            ["J.R.R. Tolkien"],
+            ["George R.R. Martin", "Fire & Blood Editorial Team"],
+        ],
+    ),
+]
+type PageCount = Annotated[int, Field(ge=0, examples=[310, 700])]
 
 
 class LinkCandidate(BaseModel):
     title: TitleStr
-    authors: list[NonEmptyStr]
+    authors: AuthorList
     languages: list[LanguageStr]
     extension: ExtensionType
     url: HttpsUrl
 
 
 class BookSearchResult(BaseModel):
-    id: str = Field(..., description="The unique ID from the external provider")
+    id: str = Field(..., description="The unique ID from the external provider", examples=["zyTCAlFlgZ8C"])
     provider: BookProviderName = Field(..., description="The name of the source provider (e.g., 'google-books')")
     title: TitleStr
-    authors: list[NonEmptyStr] = Field(default_factory=list)
+    authors: AuthorList = Field(default_factory=list)
     year: PublishedYear | None = None
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
@@ -47,16 +77,21 @@ class BookSearchResult(BaseModel):
 
 
 class BookDetails(BaseModel):
-    page_count: int | None = Field(default=None, ge=0)
-    description: NonEmptyStr | None = None
-    categories: list[NonEmptyStr] = Field(default_factory=list)
+    page_count: PageCount | None = None
+    description: NonEmptyStr | None = Field(
+        default=None,
+        examples=[
+            "A glorious high fantasy adventure following Bilbo Baggins as he journeys to reclaim a stolen treasure."
+        ],
+    )
+    categories: list[NonEmptyStr] = Field(default_factory=list, examples=[["Fiction", "Fantasy", "High Fantasy"]])
 
 
 class PaginatedBooksResponse(BaseModel):
     books: list[BookSearchResult]
-    total_pages: int = Field(ge=0)
+    total_pages: int = Field(ge=0, examples=[1])
     current_page: int = Field(ge=1)
-    total_results: int = Field(ge=0)
+    total_results: int = Field(ge=0, examples=[1])
 
 
 class ReadBook(BaseModel):
@@ -66,16 +101,25 @@ class ReadBook(BaseModel):
 
 class BookModel(Document):
     provider: BookProviderName
-    provider_book_id: str | None = Field(None, description="The unique identifier from the external provider source")
+    provider_book_id: str | None = Field(
+        default=None,
+        description="The unique identifier from the external provider source",
+        examples=["zyTCAlFlgZ8C"],
+    )
     title: TitleStr
-    authors: list[NonEmptyStr] = Field(default_factory=list)
+    authors: AuthorList = Field(default_factory=list)
     year: PublishedYear | None = None
-    page_count: int | None = Field(None, ge=0)
+    page_count: PageCount | None = None
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
     languages: list[LanguageStr] = Field(default_factory=list)
-    description: NonEmptyStr | None = None
-    categories: list[NonEmptyStr] = Field(default_factory=list)
+    description: NonEmptyStr | None = Field(
+        default=None,
+        examples=[
+            "A glorious high fantasy adventure following Bilbo Baggins as he journeys to reclaim a stolen treasure."
+        ],
+    )
+    categories: list[NonEmptyStr] = Field(default_factory=list, examples=[["Fiction", "Fantasy", "High Fantasy"]])
     cover_url: HttpsUrl | None = None
     urls: UrlList = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -86,7 +130,7 @@ class BookModel(Document):
 
 class SearchParams(BaseModel):
     title: TitleStr | None = None
-    authors: list[NonEmptyStr] = Field(default_factory=list)
+    authors: AuthorList = Field(default_factory=list)
     isbn: ISBNStr | None = None
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None

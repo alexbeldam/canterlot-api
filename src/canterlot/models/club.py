@@ -3,13 +3,17 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from canterlot.utils.format import LanguageStr, NonEmptyStr
 
 from .enums import ClubOnboardingStatus, JoinPolicy, UserRole
 
-type ClubNameStr = Annotated[NonEmptyStr, StringConstraints(min_length=3, max_length=50)]
+type ClubNameStr = Annotated[
+    NonEmptyStr,
+    StringConstraints(min_length=3, max_length=50),
+    Field(examples=["The Canterlot Archives", "Manehattan Literature Society"]),
+]
 
 
 class MemberSchema(BaseModel):
@@ -26,7 +30,10 @@ class CatalogEntryModel(BaseModel):
 
 class ClubModel(Document):
     name: ClubNameStr
-    description: str | None = None
+    description: str | None = Field(
+        default=None,
+        examples=["A cozy corner for reading historical fiction and sharing tea recipes."],
+    )
     join_policy: JoinPolicy = JoinPolicy.PUBLIC
     allow_suggestions: bool = True
     preferred_languages: list[LanguageStr] = Field(default_factory=list)
@@ -35,6 +42,32 @@ class ClubModel(Document):
     pending_approvals: list[PydanticObjectId] = Field(default_factory=list)
     catalog: list[CatalogEntryModel] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "_id": "5eb7cf5a86d9755df3a6c593",
+                    "name": "The Canterlot Archives",
+                    "description": "A cozy corner for reading historical fiction and sharing tea recipes.",
+                    "join_policy": "PUBLIC",
+                    "allow_suggestions": True,
+                    "preferred_languages": ["en"],
+                    "members": [
+                        {
+                            "user_id": "6eb7cf5a86d9755df3a6c999",
+                            "role": "OWNER",
+                            "joined_at": "2026-07-04T18:32:58.422Z",
+                        }
+                    ],
+                    "banned_users": [],
+                    "pending_approvals": [],
+                    "catalog": [],
+                    "created_at": "2026-07-04T18:32:58.422Z",
+                }
+            ]
+        }
+    )
 
     class Settings:
         name = "clubs"
@@ -63,6 +96,9 @@ class ClubOnboarding:
 
 class ClubCreateRequest(BaseModel):
     name: ClubNameStr
-    description: str | None = None
+    description: str | None = Field(
+        default=None,
+        examples=["A cozy corner for reading historical fiction and sharing tea recipes."],
+    )
     join_policy: JoinPolicy = JoinPolicy.PUBLIC
     preferred_languages: list[LanguageStr] = Field(default_factory=list)

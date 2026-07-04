@@ -9,8 +9,16 @@ from canterlot.utils.format import NonEmptyStr, NormalizedEmailStr
 from .book import ReadBook
 from .club import ClubOnboarding
 
-type UsernameStr = Annotated[NonEmptyStr, StringConstraints(min_length=3, max_length=30, pattern=r"^[a-zA-Z0-9_]+$")]
-type PersonNameStr = Annotated[NonEmptyStr, StringConstraints(min_length=2, max_length=50)]
+type UsernameStr = Annotated[
+    NonEmptyStr,
+    StringConstraints(min_length=3, max_length=30, pattern=r"^[a-zA-Z0-9_]+$"),
+    Field(examples=["twilight_sparkle", "bookworm99"]),
+]
+type PersonNameStr = Annotated[
+    NonEmptyStr,
+    StringConstraints(min_length=2, max_length=50),
+    Field(examples=["Twilight Sparkle", "Alex Smith"]),
+]
 
 
 class UserModel(Document):
@@ -36,7 +44,7 @@ class UserRegisterRequest(BaseModel):
     name: PersonNameStr
     username: UsernameStr
     email: NormalizedEmailStr
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=6, examples=["super_secret_password_123"])
 
     @field_validator("username", mode="before")
     @classmethod

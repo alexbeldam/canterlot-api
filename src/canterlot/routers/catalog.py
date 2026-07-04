@@ -11,6 +11,7 @@ from canterlot.exceptions import (
     TokenExpiredError,
     UnauthorizedClubMemberError,
 )
+from canterlot.exceptions.auth import TokenMalformedError
 from canterlot.models import BookSuggestionRequest, ErrorResponseModel, PaginatedBooksResponse, SuggestionResponse
 from canterlot.models.book import TitleStr
 from canterlot.routers.dependencies import get_book_service, get_catalog_service, get_club_service, get_current_user_id
@@ -41,12 +42,14 @@ class ExternalBookSearchFilters:
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
             "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
             "description": (
                 "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
             ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
         },
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
