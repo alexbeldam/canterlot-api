@@ -40,45 +40,67 @@ def get_exported_symbols(module) -> list[str]:
     return sorted(set(exports))
 
 
+def _ensure_target_on_path() -> None:
+    target_path = os.path.abspath(TARGET_DIR)
+    if target_path not in sys.path:
+        sys.path.insert(0, target_path)
+
+
+def _discover_local_roots() -> set[str]:
+    local_roots = {
+        p.relative_to(TARGET_DIR).parts[0] for p in Path(TARGET_DIR).iterdir() if p.is_dir() or p.suffix == ".py"
+    }
+    local_roots.discard("__pycache__")
+    return local_roots
+
+
+def _evict_cached_modules(local_roots: set[str]) -> None:
+    for cached_key in list(sys.modules.keys()):
+        if any(cached_key == root or cached_key.startswith(f"{root}.") for root in local_roots):
+            del sys.modules[cached_key]
+
+
+def _verify_module_symbols(module) -> bool:
+    all_ok = True
+
+    for symbol in get_exported_symbols(module):
+        try:
+            getattr(module, symbol)
+        except Exception:
+            all_ok = False
+            print(f"  Error: Failed to load symbol: {symbol}")
+            traceback.print_exc()
+
+    return all_ok
+
+
+def _verify_module(module_name: str) -> bool:
+    print(f"Module: {module_name}")
+
+    try:
+        module = importlib.import_module(module_name)
+        print("  Status: Imported successfully")
+    except Exception:
+        print("  Error: Module import failed")
+        traceback.print_exc()
+        return False
+
+    return _verify_module_symbols(module)
+
+
 def verify_imports() -> bool:
     print("============================================================")
     print("Verifying Module Imports and Exported Symbols")
     print("============================================================")
 
-    target_path = os.path.abspath(TARGET_DIR)
-    if target_path not in sys.path:
-        sys.path.insert(0, target_path)
-
-    local_roots = {
-        p.relative_to(TARGET_DIR).parts[0] for p in Path(TARGET_DIR).iterdir() if p.is_dir() or p.suffix == ".py"
-    }
-
-    local_roots.discard("__pycache__")
+    _ensure_target_on_path()
+    local_roots = _discover_local_roots()
 
     all_ok = True
-
     for module_name in discover_modules():
-        print(f"Module: {module_name}")
-
-        for cached_key in list(sys.modules.keys()):
-            if any(cached_key == root or cached_key.startswith(f"{root}.") for root in local_roots):
-                del sys.modules[cached_key]
-
-        try:
-            module = importlib.import_module(module_name)
-            print("  Status: Imported successfully")
-
-            for symbol in get_exported_symbols(module):
-                try:
-                    getattr(module, symbol)
-                except Exception:
-                    all_ok = False
-                    print(f"  Error: Failed to load symbol: {symbol}")
-                    traceback.print_exc()
-        except Exception:
+        _evict_cached_modules(local_roots)
+        if not _verify_module(module_name):
             all_ok = False
-            print("  Error: Module import failed")
-            traceback.print_exc()
 
     print("------------------------------------------------------------")
     if all_ok:
