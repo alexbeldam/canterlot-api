@@ -133,16 +133,16 @@ class GoogleBookProvider(BookProvider):
         )
 
     def __build_params(self, params: SearchParams, start_index: int, max_results: int) -> dict:
-        query_parts: list[str] = []
-
-        if params.title:
-            query_parts.append(f'intitle:"{params.title}"')
-
-        query_parts.extend(f'inauthor:"{author}"' for author in params.authors)
-
         isbn = params.isbn_13 or params.isbn_10
+
         if isbn:
-            query_parts.append(f"isbn:{isbn}")
+            query_parts = [f"isbn:{isbn}"]
+        else:
+            query_parts = []
+            if params.title:
+                query_parts.append(f'intitle:"{params.title}"')
+
+            query_parts.extend(f'inauthor:"{author}"' for author in params.authors)
 
         return {
             "q": " ".join(query_parts),

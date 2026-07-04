@@ -139,7 +139,20 @@ def describe_fetch_volumes():
 
         assert result["books"][0].isbn_10 is None
 
-    async def it_builds_a_query_from_title_authors_and_isbn(provider: GoogleBookProvider, session: AsyncMock):
+    async def it_builds_a_query_from_title_and_authors_when_no_isbn_is_given(
+        provider: GoogleBookProvider, session: AsyncMock
+    ):
+        session.get.return_value = _response(json_data={"totalItems": 0, "items": []})
+
+        params = SearchParams(title="The Hobbit", authors=["Tolkien"])
+        await provider.fetch_volumes(params, 0, 40)
+
+        call_kwargs = session.get.call_args.kwargs
+        query = call_kwargs["params"]["q"]
+        assert 'intitle:"The Hobbit"' in query
+        assert 'inauthor:"Tolkien"' in query
+
+    async def it_queries_by_isbn_alone_ignoring_title_and_authors(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(json_data={"totalItems": 0, "items": []})
 
         params = SearchParams(title="The Hobbit", authors=["Tolkien"], isbn="978-3-16-148410-0")
@@ -147,9 +160,7 @@ def describe_fetch_volumes():
 
         call_kwargs = session.get.call_args.kwargs
         query = call_kwargs["params"]["q"]
-        assert 'intitle:"The Hobbit"' in query
-        assert 'inauthor:"Tolkien"' in query
-        assert "isbn:9783161484100" in query
+        assert query == "isbn:9783161484100"
 
 
 def describe_fetch_volume_details():
