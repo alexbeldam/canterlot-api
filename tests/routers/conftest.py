@@ -1,0 +1,83 @@
+from collections.abc import Iterator
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+from beanie import PydanticObjectId
+from starlette.testclient import TestClient
+
+from canterlot.app import create_app
+from canterlot.routers.dependencies import (
+    get_auth_service,
+    get_book_service,
+    get_catalog_service,
+    get_club_service,
+    get_current_user,
+    get_current_user_id,
+    get_invite_service,
+    get_user_id_from_valid_refresh_token,
+)
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
+
+SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
+
+
+@pytest.fixture
+def auth_service() -> AsyncMock:
+    return AsyncMock(spec=AuthService)
+
+
+@pytest.fixture
+def book_service() -> AsyncMock:
+    return AsyncMock(spec=BookService)
+
+
+@pytest.fixture
+def catalog_service() -> AsyncMock:
+    return AsyncMock(spec=CatalogService)
+
+
+@pytest.fixture
+def club_service() -> AsyncMock:
+    return AsyncMock(spec=ClubService)
+
+
+@pytest.fixture
+def invite_service() -> AsyncMock:
+    return AsyncMock(spec=InviteService)
+
+
+@pytest.fixture
+def current_user() -> SimpleNamespace:
+    return SimpleNamespace(id=SOME_USER_ID, email="alice@example.com", username="alice_1")
+
+
+@pytest.fixture
+def client(
+    auth_service: AsyncMock,
+    book_service: AsyncMock,
+    catalog_service: AsyncMock,
+    club_service: AsyncMock,
+    invite_service: AsyncMock,
+    current_user: SimpleNamespace,
+) -> Iterator[TestClient]:
+    app = create_app()
+
+    @asynccontextmanager
+    async def _noop_lifespan(_app):
+        yield
+
+    app.router.lifespan_context = _noop_lifespan
+
+    app.dependency_overrides[get_auth_service] = lambda: auth_service
+    app.dependency_overrides[get_book_service] = lambda: book_service
+    app.dependency_overrides[get_catalog_service] = lambda: catalog_service
+    app.dependency_overrides[get_club_service] = lambda: club_service
+    app.dependency_overrides[get_invite_service] = lambda: invite_service
+    app.dependency_overrides[get_current_user_id] = lambda: current_user.id
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: (current_user.id, "old-refresh-token")
+
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
