@@ -1,0 +1,153 @@
+from collections.abc import AsyncGenerator
+from typing import Annotated
+
+import redis.asyncio as aioredis
+from beanie import PydanticObjectId
+from bson.errors import InvalidId
+from curl_cffi.requests import AsyncSession
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer
+
+from canterlot.config import get_settings
+from canterlot.exceptions import InvalidCredentialsError
+from canterlot.models import UserModel
+from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
+from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
+from canterlot.repositories.beanie import (
+    BeanieBookRepository,
+    BeanieClubRepository,
+    BeanieInviteRepository,
+    BeanieUserRepository,
+)
+from canterlot.repositories.redis import RedisCacheRepository
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
+from canterlot.utils import decode_jwt_payload
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+async def get_redis_client() -> AsyncGenerator[aioredis.Redis]:
+    client = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
+async def get_curl_cffi_session() -> AsyncGenerator[AsyncSession]:
+    async with AsyncSession(
+        timeout=(4.0, 20.0),
+        impersonate="chrome",
+    ) as session:
+        yield session
+
+
+def get_cache_repository(redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)]) -> CacheRepository:
+    return RedisCacheRepository(redis_client)
+
+
+def get_book_repository() -> BookRepository:
+    return BeanieBookRepository()
+
+
+def get_club_repository() -> ClubRepository:
+    return BeanieClubRepository()
+
+
+def get_user_repository() -> UserRepository:
+    return BeanieUserRepository()
+
+
+def get_invite_repository() -> InviteRepository:
+    return BeanieInviteRepository()
+
+
+def get_book_providers(session: Annotated[AsyncSession, Depends(get_curl_cffi_session)]) -> list[BookProvider]:
+    return get_all_book_providers(session)
+
+
+async def get_link_providers(session: Annotated[AsyncSession, Depends(get_curl_cffi_session)]) -> list[LinkProvider]:
+    return get_all_link_providers(session)
+
+
+async def get_book_service(
+    cache: Annotated[CacheRepository, Depends(get_cache_repository)],
+    book_repo: Annotated[BookRepository, Depends(get_book_repository)],
+    providers: Annotated[list[BookProvider], Depends(get_book_providers)],
+) -> BookService:
+    return BookService(cache=cache, book_repo=book_repo, providers=providers)
+
+
+async def get_catalog_service(
+    book_repo: Annotated[BookRepository, Depends(get_book_repository)],
+    club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
+    link_providers: Annotated[list[LinkProvider], Depends(get_link_providers)],
+) -> CatalogService:
+    return CatalogService(book_repo=book_repo, club_repo=club_repo, link_providers=link_providers)
+
+
+async def get_auth_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]) -> AuthService:
+    return AuthService(user_repo)
+
+
+async def get_club_service(club_repo: Annotated[ClubRepository, Depends(get_club_repository)]):
+    return ClubService(club_repo)
+
+
+async def get_invite_service(
+    invite_repo: Annotated[InviteRepository, Depends(get_invite_repository)],
+    club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+):
+    return InviteService(invite_repo, club_repo, user_repo)
+
+
+def _parse_subject_id(user_id: str) -> PydanticObjectId:
+    try:
+        return PydanticObjectId(user_id)
+    except InvalidId:
+        raise InvalidCredentialsError("Could not validate credentials structure.") from None
+
+
+async def get_current_user_id(
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> PydanticObjectId:
+    payload = decode_jwt_payload(token)
+
+    user_id: str | None = payload.get("sub")
+    token_type: str | None = payload.get("type")
+
+    if user_id is None or token_type != "access":
+        raise InvalidCredentialsError("Could not validate credentials structure.")
+
+    return _parse_subject_id(user_id)
+
+
+async def get_user_id_from_valid_refresh_token(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> tuple[PydanticObjectId, str]:
+    payload = decode_jwt_payload(token)
+
+    user_id: str | None = payload.get("sub")
+    token_type: str | None = payload.get("type")
+
+    if user_id is None or token_type != "refresh":
+        raise InvalidCredentialsError("Invalid session refresh payload structure.")
+
+    pyid = _parse_subject_id(user_id)
+    user = await user_repo.find_by_id(pyid)
+    if user is None or token not in user.refresh_tokens:
+        raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
+
+    return pyid, token
+
+
+async def get_current_user(
+    user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> UserModel:
+    user = await user_repo.find_by_id(user_id)
+    if user is None:
+        raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
+    return user
