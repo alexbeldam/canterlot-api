@@ -20,15 +20,14 @@ _EXTENSION_PATTERN = "|".join(re.escape(ext.value) for ext in ExtensionType)
 
 _METADATA_RE = re.compile(
     rf"""
-    \[
-        (?P<lang>[^\]]+)
-    \]
-    \s+·\s+
+    (?P<langs>(?:\[[^\]]+\][^\[]*?)+)
     (?P<ext>{_EXTENSION_PATTERN})
     \b
     """,
     re.VERBOSE | re.IGNORECASE,
 )
+
+_LANG_CODE_RE = re.compile(r"\[([^\]]+)\]")
 
 
 def parse_response(response: Response) -> list[SearchResult]:
@@ -74,13 +73,15 @@ def __parse_result(node: Tag, req_url: str) -> SearchResult | None:
     if match is None:  # pragma: no cover
         return None
 
+    languages = _LANG_CODE_RE.findall(match["langs"])
+
     try:
         return SearchResult(
             md5=md5,
             title=title,
             url=HttpUrl(url),
             authors=authors,
-            language=match["lang"],
+            languages=languages,
             extension=ExtensionType(match["ext"].lower()),
         )
     except ValueError:

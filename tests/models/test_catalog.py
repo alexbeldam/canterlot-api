@@ -7,11 +7,15 @@ from canterlot.models.enums import BookProviderName
 
 
 def describe_book_suggestion_request():
-    def it_requires_a_cover_url_and_description():
+    def it_requires_a_title():
         with pytest.raises(ValidationError):
-            BookSuggestionRequest.model_validate(
-                {"source_id": "x", "provider": BookProviderName.GOOGLE, "title": "A Title"}
-            )
+            BookSuggestionRequest.model_validate({"source_id": "x", "provider": BookProviderName.GOOGLE})
+
+    def it_defaults_the_description_to_none_when_absent():
+        suggestion = BookSuggestionRequest.model_validate(
+            {"source_id": "x", "provider": BookProviderName.GOOGLE, "title": "A Title"}
+        )
+        assert suggestion.description is None
 
     def it_accepts_a_minimal_valid_suggestion():
         suggestion = BookSuggestionRequest.model_validate(
@@ -25,6 +29,28 @@ def describe_book_suggestion_request():
         )
         assert suggestion.authors == []
         assert suggestion.categories == []
+
+    def it_defaults_the_cover_url_to_none_when_absent():
+        suggestion = BookSuggestionRequest.model_validate(
+            {
+                "source_id": "x",
+                "provider": BookProviderName.GOOGLE,
+                "title": "A Title",
+                "description": "A description",
+            }
+        )
+        assert suggestion.cover_url is None
+
+    def it_rejects_a_blank_description():
+        with pytest.raises(ValidationError):
+            BookSuggestionRequest.model_validate(
+                {
+                    "source_id": "x",
+                    "provider": BookProviderName.GOOGLE,
+                    "title": "A Title",
+                    "description": "   ",
+                }
+            )
 
 
 def describe_suggestion_response():

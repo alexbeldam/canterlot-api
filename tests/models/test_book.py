@@ -69,7 +69,7 @@ def describe_book_search_result():
 
 
 def describe_book_model():
-    def it_requires_a_title_and_cover_url():
+    def it_requires_a_title():
         with pytest.raises(ValidationError):
             BookModel.model_validate({"provider": BookProviderName.GOOGLE})
 
@@ -83,6 +83,14 @@ def describe_book_model():
         )
         assert book.authors == []
         assert book.urls == {}
+
+    def it_defaults_the_cover_url_to_none_when_absent():
+        book = BookModel.model_validate({"provider": BookProviderName.GOOGLE, "title": "A Title"})
+        assert book.cover_url is None
+
+    def it_rejects_a_blank_description():
+        with pytest.raises(ValidationError):
+            BookModel.model_validate({"provider": BookProviderName.GOOGLE, "title": "A Title", "description": "   "})
 
 
 def describe_book_details():
