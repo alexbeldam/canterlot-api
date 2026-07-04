@@ -15,3 +15,8 @@ class BookNotFoundError(BookDomainError):
 class BookDetailsNotFoundError(BookDomainError):
     error_code = ErrorCode.EXTERNAL_BOOK_DETAILS_NOT_FOUND
     status_code = status.HTTP_404_NOT_FOUND
+
+
+class BookSearchCriteriaMissingError(BookDomainError):
+    error_code = ErrorCode.BOOK_SEARCH_CRITERIA_MISSING
+    status_code = status.HTTP_400_BAD_REQUEST

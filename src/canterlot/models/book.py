@@ -29,7 +29,7 @@ type TitleStr = Annotated[NonEmptyStr, StringConstraints(max_length=200)]
 class LinkCandidate(BaseModel):
     title: TitleStr
     authors: list[NonEmptyStr]
-    language: LanguageStr
+    languages: list[LanguageStr]
     extension: ExtensionType
     url: HttpsUrl
 
@@ -43,12 +43,12 @@ class BookSearchResult(BaseModel):
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
     languages: list[LanguageStr] = Field(default_factory=list)
-    cover_url: HttpsUrl
+    cover_url: HttpsUrl | None = None
 
 
 class BookDetails(BaseModel):
-    page_count: int | None = Field(ge=0)
-    description: str | None
+    page_count: int | None = Field(default=None, ge=0)
+    description: NonEmptyStr | None = None
     categories: list[NonEmptyStr] = Field(default_factory=list)
 
 
@@ -74,8 +74,9 @@ class BookModel(Document):
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
     languages: list[LanguageStr] = Field(default_factory=list)
+    description: NonEmptyStr | None = None
     categories: list[NonEmptyStr] = Field(default_factory=list)
-    cover_url: HttpsUrl
+    cover_url: HttpsUrl | None = None
     urls: UrlList = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

@@ -17,8 +17,8 @@ class BookSuggestionRequest(BaseModel):
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
     languages: list[LanguageStr] = Field(default_factory=list)
-    cover_url: HttpsUrl
-    description: str
+    cover_url: HttpsUrl | None = None
+    description: NonEmptyStr | None = None
     categories: list[NonEmptyStr] = Field(default_factory=list)
     page_count: int | None = Field(None, ge=0)
 

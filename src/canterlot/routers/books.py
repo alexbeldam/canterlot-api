@@ -1,51 +1,16 @@
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 
-from canterlot.models import BookDetails, BookModel, ErrorResponseModel, PaginatedBooksResponse
-from canterlot.models.book import TitleStr
+from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
+from canterlot.models import BookDetails, BookModel, ErrorResponseModel
 from canterlot.models.enums import BookProviderName
 from canterlot.routers.dependencies import get_book_service
+from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import BookService
-from canterlot.utils.format import ISBNStr, LanguageStr
 
 router = APIRouter(prefix="/books", tags=["Books"])
-
-
-@router.get(
-    "/external",
-    response_model=PaginatedBooksResponse,
-    responses={
-        status.HTTP_200_OK: {
-            "description": "Successfully retrieved paginated list of external books matching criteria."
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": "Validation error. Provided query parameters (page/limit) violate constraints."
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected backend error, cache layer failure, or upstream timeout.",
-        },
-    },
-)
-async def search_books(
-    title: TitleStr,
-    search_service: Annotated[BookService, Depends(get_book_service)],
-    preferred_languages: Annotated[list[LanguageStr], Query(default_factory=list)],
-    author: str | None = None,
-    isbn: ISBNStr | None = None,
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=5, ge=1, le=40),
-):
-    return await search_service.search_external_books(
-        title=title,
-        author=author,
-        isbn=isbn,
-        preferred_languages=preferred_languages,
-        page=page,
-        limit=limit,
-    )
 
 
 @router.get(
@@ -59,6 +24,7 @@ async def search_books(
                 "BookDetailsNotFoundError: The active provider engine "
                 "was not found, or the volume does not exist on that provider."
             ),
+            "content": error_example(BookDetailsNotFoundError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. The provider query parameter is not a recognized provider name."
@@ -66,6 +32,7 @@ async def search_books(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected global or integration breakdown.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -85,6 +52,7 @@ async def get_external_book_details(
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponseModel,
             "description": "BookNotFoundError: The specified book identifier does not exist in the system.",
+            "content": error_example(BookNotFoundError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. The book_id path parameter is not a valid object identifier."
@@ -92,6 +60,7 @@ async def get_external_book_details(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Internal server/database connection failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )

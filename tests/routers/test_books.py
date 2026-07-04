@@ -3,47 +3,9 @@ from unittest.mock import AsyncMock
 from starlette.testclient import TestClient
 
 from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
-from canterlot.models import BookDetails, BookModel, PaginatedBooksResponse
+from canterlot.models import BookDetails, BookModel
 
 SOME_BOOK_ID = "507f1f77bcf86cd799439011"
-
-
-def describe_search_external_books():
-    def it_returns_paginated_results_from_the_book_service(client: TestClient, book_service: AsyncMock):
-        book_service.search_external_books.return_value = PaginatedBooksResponse(
-            books=[], total_pages=0, current_page=1, total_results=0
-        )
-
-        response = client.get("/api/v1/books/external", params={"title": "The Hobbit"})
-
-        assert response.status_code == 200
-        assert response.json()["total_results"] == 0
-        book_service.search_external_books.assert_awaited_once()
-
-    def it_returns_422_when_the_title_is_missing(client: TestClient, book_service: AsyncMock):
-        response = client.get("/api/v1/books/external")
-
-        assert response.status_code == 422
-        book_service.search_external_books.assert_not_called()
-
-    def it_propagates_search_limit_and_page_query_params(client: TestClient, book_service: AsyncMock):
-        book_service.search_external_books.return_value = PaginatedBooksResponse(
-            books=[], total_pages=0, current_page=2, total_results=0
-        )
-
-        client.get("/api/v1/books/external", params={"title": "The Hobbit", "page": 2, "limit": 20})
-
-        call_kwargs = book_service.search_external_books.call_args.kwargs
-        assert call_kwargs["page"] == 2
-        assert call_kwargs["limit"] == 20
-
-    def it_returns_500_with_the_error_envelope_on_an_unexpected_failure(client: TestClient, book_service: AsyncMock):
-        book_service.search_external_books.side_effect = RuntimeError("cache is on fire")
-
-        response = client.get("/api/v1/books/external", params={"title": "The Hobbit"})
-
-        assert response.status_code == 500
-        assert response.json()["error"]["error_code"] == "INTERNAL_SERVER_ERROR"
 
 
 def describe_get_external_book_details():

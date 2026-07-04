@@ -1,6 +1,6 @@
 from beanie import PydanticObjectId
 
-from canterlot.exceptions import ClubNotFoundError
+from canterlot.exceptions import ClubNotFoundError, UnauthorizedClubMemberError
 from canterlot.models import (
     ClubCreateRequest,
     ClubModel,
@@ -12,6 +12,7 @@ from canterlot.models import (
 )
 from canterlot.repositories import ClubRepository
 from canterlot.utils import get_logger
+from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
 
@@ -73,3 +74,9 @@ class ClubService:
             log.info("User profile successfully pushed into the club pending approval queue", status=status)
 
         return ClubOnboarding(club_name=club.name, status=status)
+
+    async def get_preferred_languages(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> list[LanguageStr]:
+        if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
+            raise UnauthorizedClubMemberError("Only members of this club can search for books to suggest.")
+
+        return await self.__club_repo.get_preferred_languages_by_id(club_id)

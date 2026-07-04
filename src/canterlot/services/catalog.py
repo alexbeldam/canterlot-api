@@ -1,6 +1,5 @@
 import asyncio
 
-import langcodes
 from beanie import PydanticObjectId
 
 from canterlot.exceptions import ClubSuggestionsClosedError, UnauthorizedClubMemberError
@@ -10,7 +9,14 @@ from canterlot.models.club import CatalogEntryModel
 from canterlot.models.enums import ExtensionType
 from canterlot.providers import LinkProvider
 from canterlot.repositories import BookRepository, ClubRepository
-from canterlot.utils import get_logger, similarity_ratio
+from canterlot.utils import (
+    LANGUAGE_MATCH_SUBSCORES,
+    LanguageMatchLevel,
+    best_language_match,
+    get_logger,
+    redistribute_weights,
+    similarity_ratio,
+)
 from canterlot.utils.format import LanguageStr, NonEmptyStr
 
 logger = get_logger(__name__)
@@ -20,6 +26,11 @@ type UrlScores = dict[ExtensionType, float]
 
 class CatalogService:
     THRESHOLD = 0.65
+    TITLE_WEIGHT = 0.5
+    AUTHOR_WEIGHT = 0.3
+    LANGUAGE_WEIGHT = 0.2
+    FILLABLE_SCALAR_FIELDS = ("year", "page_count", "isbn_10", "isbn_13", "description", "cover_url")
+    FILLABLE_LIST_FIELDS = ("authors", "categories", "languages")
 
     def __init__(
         self,
@@ -46,54 +57,24 @@ class CatalogService:
         )
         log.info("Processing book suggestion request for club catalog")
 
-        if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
-            log.warn("Suggestion rejected: user is not a member of the club")
-            raise UnauthorizedClubMemberError("Only members of this club can suggest books.")
+        await self.__ensure_suggestion_allowed(club_id, user_id, log)
 
-        if not await self.__club_repo.is_suggestions_allowed(club_id):
-            log.warn("Suggestion rejected: club suggestions queue is closed")
-            raise ClubSuggestionsClosedError("Suggestions are currently closed for this club.")
-
-        book = await self.__book_repo.find_by_provider_and_provider_book_id(suggestion.provider, suggestion.source_id)
+        book = await self.__find_existing_book(suggestion)
 
         if book and book.id:
             book_id = PydanticObjectId(book.id)
             log = log.bind(book_id=str(book_id))
 
-            missing_extensions = [ext for ext in ExtensionType if ext not in book.urls]
+            await self.__supplement_existing_book(book, book_id, suggestion, log)
 
-            if missing_extensions:
-                log.info(
-                    "Book found but missing formats, initiating targeted scraping sequence", formats=missing_extensions
-                )
-                links = await self.__scrape_best_links(suggestion, missing_extensions)
-
-                if links:
-                    await self.__book_repo.add_to_urls(book.id, links)
-
-                    log.info(
-                        "Successfully supplemented database reference with discovered formats",
-                        formats=list(links.keys()),
-                    )
-
-            already_linked = await self.__club_repo.exists_by_club_id_and_catalog_book_id(club_id, book_id)
-            if already_linked:
+            if await self.__club_repo.exists_by_club_id_and_catalog_book_id(club_id, book_id):
                 log.info(
                     "Suggestion processed: book already exists in club catalog",
                     status=SuggestionStatus.ALREADY_EXISTS,
                 )
                 return SuggestionResponse(status=SuggestionStatus.ALREADY_EXISTS, book_id=book.id)
         else:
-            log.info("Book not found in global database, initiating scraping sequence")
-            links = await self.__scrape_best_links(suggestion, list(ExtensionType))
-            book_data = suggestion.model_dump(exclude={"source_id"})
-
-            new_book = BookModel(provider_book_id=suggestion.source_id, urls=links, **book_data)
-
-            book = await self.__book_repo.save(new_book)
-            book_id = PydanticObjectId(book.id)
-            log = log.bind(book_id=str(book_id))
-            log.info("Successfully scraped and persisted new global book reference")
+            book_id, log = await self.__create_new_book(suggestion, log)
 
         entry = CatalogEntryModel(
             book_id=book_id,
@@ -105,32 +86,130 @@ class CatalogService:
         log.info("Book suggestion transaction completed successfully", status=SuggestionStatus.SUCCESS)
         return SuggestionResponse(status=SuggestionStatus.SUCCESS, book_id=book_id)
 
-    def __matches_preferred_language(self, candidate: LinkCandidate, languages: list[LanguageStr]) -> bool:
-        if not languages or not candidate.language:
-            return True
+    async def __ensure_suggestion_allowed(self, club_id: PydanticObjectId, user_id: PydanticObjectId, log) -> None:
+        if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
+            log.warn("Suggestion rejected: user is not a member of the club")
+            raise UnauthorizedClubMemberError("Only members of this club can suggest books.")
 
-        try:
-            candidate_base = langcodes.get(candidate.language).language
-            return any(langcodes.get(target_lang).language == candidate_base for target_lang in languages)
-        except (LookupError, ValueError):
-            return any(lang == candidate.language for lang in languages)
+        if not await self.__club_repo.is_suggestions_allowed(club_id):
+            log.warn("Suggestion rejected: club suggestions queue is closed")
+            raise ClubSuggestionsClosedError("Suggestions are currently closed for this club.")
+
+    async def __find_existing_book(self, suggestion: BookSuggestionRequest) -> BookModel | None:
+        book = None
+        if suggestion.isbn_10 or suggestion.isbn_13:
+            book = await self.__book_repo.find_by_isbn(suggestion.isbn_10, suggestion.isbn_13)
+
+        if book is None:
+            book = await self.__book_repo.find_by_provider_and_provider_book_id(
+                suggestion.provider, suggestion.source_id
+            )
+
+        return book
+
+    async def __supplement_existing_book(
+        self,
+        book: BookModel,
+        book_id: PydanticObjectId,
+        suggestion: BookSuggestionRequest,
+        log,
+    ) -> None:
+        missing_extensions = [ext for ext in ExtensionType if ext not in book.urls]
+
+        if missing_extensions:
+            log.info(
+                "Book found but missing formats, initiating targeted scraping sequence", formats=missing_extensions
+            )
+            links = await self.__scrape_best_links(suggestion, missing_extensions)
+
+            if links:
+                await self.__book_repo.add_to_urls(book_id, links)
+
+                log.info(
+                    "Successfully supplemented database reference with discovered formats",
+                    formats=list(links.keys()),
+                )
+
+        missing_fields = self.__resolve_missing_fields(book, suggestion)
+        if missing_fields:
+            await self.__book_repo.fill_missing_fields(book_id, missing_fields)
+            log.info(
+                "Supplemented existing book with previously missing metadata",
+                fields=list(missing_fields.keys()),
+            )
+
+    async def __create_new_book(self, suggestion: BookSuggestionRequest, log):
+        log.info("Book not found in global database, initiating scraping sequence")
+        links = await self.__scrape_best_links(suggestion, list(ExtensionType))
+        book_data = suggestion.model_dump(exclude={"source_id"})
+
+        new_book = BookModel(provider_book_id=suggestion.source_id, urls=links, **book_data)
+
+        book = await self.__book_repo.save(new_book)
+        book_id = PydanticObjectId(book.id)
+        log = log.bind(book_id=str(book_id))
+        log.info("Successfully scraped and persisted new global book reference")
+
+        return book_id, log
+
+    def __resolve_missing_fields(self, book: BookModel, suggestion: BookSuggestionRequest) -> dict[str, object]:
+        updates: dict[str, object] = {}
+
+        for field in self.FILLABLE_SCALAR_FIELDS:
+            if getattr(book, field) is None:
+                value = getattr(suggestion, field)
+                if value is not None:
+                    updates[field] = value
+
+        for field in self.FILLABLE_LIST_FIELDS:
+            if not getattr(book, field):
+                value = getattr(suggestion, field)
+                if value:
+                    updates[field] = value
+
+        return updates
+
+    def __resolve_language_match(self, candidate: LinkCandidate, languages: list[LanguageStr]) -> LanguageMatchLevel:
+        if not languages or not candidate.languages:
+            return LanguageMatchLevel.NONE
+
+        return best_language_match(candidate.languages, languages)
 
     def __score_candidate(
         self,
         candidate: LinkCandidate,
         target_title: TitleStr,
         target_authors: list[NonEmptyStr],
+        languages: list[LanguageStr],
+        language_match: LanguageMatchLevel,
     ) -> float:
         title_score = similarity_ratio(target_title, candidate.title)
-        author_score = max(
-            (
-                similarity_ratio(target, candidate_author)
-                for target in target_authors
-                for candidate_author in candidate.authors
-            ),
-            default=0,
+        weights = {"title": self.TITLE_WEIGHT}
+
+        author_score = 0.0
+        if target_authors:
+            author_score = max(
+                (
+                    similarity_ratio(target, candidate_author)
+                    for target in target_authors
+                    for candidate_author in candidate.authors
+                ),
+                default=0,
+            )
+            weights["author"] = self.AUTHOR_WEIGHT
+
+        language_score = 0.0
+        if languages:
+            language_score = LANGUAGE_MATCH_SUBSCORES[language_match]
+            weights["language"] = self.LANGUAGE_WEIGHT
+
+        weights = redistribute_weights(weights)
+
+        return (
+            title_score * weights["title"]
+            + author_score * weights.get("author", 0)
+            + language_score * weights.get("language", 0)
         )
-        return (title_score * 0.6) + (author_score * 0.4)
 
     def __evaluate_candidates_with_scores(
         self,
@@ -143,11 +222,13 @@ class CatalogService:
         discovered_urls: UrlList = {}
 
         for candidate in candidates:
-            if not self.__matches_preferred_language(candidate, languages):
+            language_match = self.__resolve_language_match(candidate, languages)
+
+            if languages and candidate.languages and language_match is LanguageMatchLevel.NONE:
                 continue
 
             ext = candidate.extension
-            combined_score = self.__score_candidate(candidate, target_title, target_authors)
+            combined_score = self.__score_candidate(candidate, target_title, target_authors, languages, language_match)
 
             if combined_score > current_scores.get(ext, self.THRESHOLD):
                 discovered_urls[ext] = candidate.url

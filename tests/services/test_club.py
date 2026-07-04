@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.exceptions import ClubNotFoundError
+from canterlot.exceptions import ClubNotFoundError, UnauthorizedClubMemberError
 from canterlot.models import ClubCreateRequest, ClubOnboardingStatus, JoinPolicy
 from canterlot.services.club import ClubService
 
@@ -80,3 +80,31 @@ def describe_admit_user():
         assert result.status == ClubOnboardingStatus.PENDING_APPROVAL
         club_repo.add_to_pending_approvals.assert_awaited_once_with(SOME_CLUB_ID, SOME_USER_ID)
         club_repo.add_member.assert_not_called()
+
+
+def describe_get_preferred_languages():
+    async def it_returns_the_clubs_preferred_languages_for_a_member(club_repo: AsyncMock):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        club_repo.get_preferred_languages_by_id.return_value = ["en", "pt-BR"]
+        service = ClubService(club_repo)
+
+        result = await service.get_preferred_languages(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
+
+        assert result == ["en", "pt-BR"]
+
+    async def it_raises_when_the_user_is_not_a_member(club_repo: AsyncMock):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = False
+        service = ClubService(club_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.get_preferred_languages(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
+
+        club_repo.get_preferred_languages_by_id.assert_not_called()
+
+    async def it_propagates_a_club_not_found_error_from_the_repository(club_repo: AsyncMock):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        club_repo.get_preferred_languages_by_id.side_effect = ClubNotFoundError("not found")
+        service = ClubService(club_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.get_preferred_languages(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)

@@ -5,6 +5,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from canterlot.models.book import (
     MIN_PUBLISHED_YEAR,
+    BookDetails,
     BookModel,
     BookSearchResult,
     PublishedYear,
@@ -38,9 +39,9 @@ def describe_validate_published_year():
 
 
 def describe_book_search_result():
-    def it_requires_a_cover_url():
-        with pytest.raises(ValidationError):
-            BookSearchResult.model_validate({"id": "x", "provider": BookProviderName.GOOGLE, "title": "A Title"})
+    def it_defaults_the_cover_url_to_none_when_absent():
+        result = BookSearchResult.model_validate({"id": "x", "provider": BookProviderName.GOOGLE, "title": "A Title"})
+        assert result.cover_url is None
 
     def it_rejects_a_plain_http_cover_url():
         with pytest.raises(ValidationError):
@@ -68,7 +69,7 @@ def describe_book_search_result():
 
 
 def describe_book_model():
-    def it_requires_a_title_and_cover_url():
+    def it_requires_a_title():
         with pytest.raises(ValidationError):
             BookModel.model_validate({"provider": BookProviderName.GOOGLE})
 
@@ -82,6 +83,26 @@ def describe_book_model():
         )
         assert book.authors == []
         assert book.urls == {}
+
+    def it_defaults_the_cover_url_to_none_when_absent():
+        book = BookModel.model_validate({"provider": BookProviderName.GOOGLE, "title": "A Title"})
+        assert book.cover_url is None
+
+    def it_rejects_a_blank_description():
+        with pytest.raises(ValidationError):
+            BookModel.model_validate({"provider": BookProviderName.GOOGLE, "title": "A Title", "description": "   "})
+
+
+def describe_book_details():
+    def it_defaults_page_count_and_description_to_none():
+        details = BookDetails.model_validate({})
+        assert details.page_count is None
+        assert details.description is None
+        assert details.categories == []
+
+    def it_rejects_a_blank_description():
+        with pytest.raises(ValidationError):
+            BookDetails.model_validate({"description": "   "})
 
 
 def describe_search_params_isbn_splitting():

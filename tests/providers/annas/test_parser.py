@@ -28,7 +28,7 @@ def describe_parse_response():
         assert result.title == "The Hobbit"
         assert str(result.url) == "https://annas-archive.gl/md5/abc123"
         assert result.authors == ["J.R.R. Tolkien"]
-        assert result.language == "en"
+        assert result.languages == ["en"]
         assert result.extension == ExtensionType.PDF
 
     def it_parses_a_result_without_an_author_sibling():
@@ -98,6 +98,19 @@ def describe_parse_response():
         results = parse_response(_response(html, url="https://annas-archive.pk/search?q=another"))
 
         assert str(results[0].url) == "https://annas-archive.pk/md5/xyz789"
+
+    def it_parses_multiple_languages_from_separate_bracketed_segments():
+        html = """
+        <div>
+          <a href="/md5/abc123">The Hobbit</a>
+          <div>English [en] &middot; Russian [ru] &middot; PDF</div>
+        </div>
+        """
+        results = parse_response(_response(html))
+
+        assert len(results) == 1
+        assert results[0].languages == ["en", "ru"]
+        assert results[0].extension == ExtensionType.PDF
 
     def it_parses_multiple_results_on_the_same_page():
         html = """

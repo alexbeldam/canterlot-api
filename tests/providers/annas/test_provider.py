@@ -15,7 +15,7 @@ def _search_result(md5: str = "abc123", **overrides) -> SearchResult:
         "md5": md5,
         "title": "The Hobbit",
         "authors": ["J.R.R. Tolkien"],
-        "language": "en",
+        "languages": ["en"],
         "extension": ExtensionType.PDF,
         "url": "https://mirror.example.com/x.pdf",
     }

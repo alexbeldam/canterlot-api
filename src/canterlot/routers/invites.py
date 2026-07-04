@@ -3,9 +3,19 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
+from canterlot.exceptions import (
+    ClubNotFoundError,
+    DirectInviteIdentityMismatchError,
+    InvalidCredentialsError,
+    InvalidInviteTokenError,
+    InviteLinkDeactivatedError,
+    TokenExpiredError,
+    TokenMalformedError,
+)
 from canterlot.models import ErrorResponseModel
 from canterlot.models.club import ClubOnboarding, ClubOnboardingStatus
 from canterlot.models.user import UserModel
+from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
 
 from .dependencies import get_club_service, get_current_user, get_invite_service
@@ -25,30 +35,36 @@ router = APIRouter(prefix="/invites", tags=["Invitations"])
                 "TokenMalformedError or InvalidInviteTokenError: The bearer token is malformed, or the invite_id "
                 "does not correspond to an existing invitation."
             ),
+            "content": error_example(TokenMalformedError, InvalidInviteTokenError),
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
             "description": (
                 "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
             ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
         },
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
             "description": (
                 "DirectInviteIdentityMismatchError: This direct invitation is bound to a different user's email."
             ),
+            "content": error_example(DirectInviteIdentityMismatchError),
         },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponseModel,
             "description": "ClubNotFoundError: The club associated with this invitation no longer exists.",
+            "content": error_example(ClubNotFoundError),
         },
         status.HTTP_410_GONE: {
             "model": ErrorResponseModel,
             "description": "InviteLinkDeactivatedError: This invitation has been deactivated or has expired.",
+            "content": error_example(InviteLinkDeactivatedError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )

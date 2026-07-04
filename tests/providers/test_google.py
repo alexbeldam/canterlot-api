@@ -74,7 +74,7 @@ def describe_fetch_volumes():
         assert book.isbn_13 == "9780345339683"
         assert str(book.cover_url) == "https://books.google.com/cover.jpg"
 
-    async def it_falls_back_to_the_default_cover_when_no_image_is_available(
+    async def it_leaves_the_cover_url_unset_when_no_image_is_available(
         provider: GoogleBookProvider, session: AsyncMock
     ):
         session.get.return_value = _response(
@@ -83,7 +83,7 @@ def describe_fetch_volumes():
 
         result = await provider.fetch_volumes(SearchParams(), 0, 40)
 
-        assert str(result["books"][0].cover_url).startswith("https://")
+        assert result["books"][0].cover_url is None
 
     async def it_defaults_to_an_empty_language_list_when_the_field_is_absent(
         provider: GoogleBookProvider, session: AsyncMock
@@ -96,6 +96,22 @@ def describe_fetch_volumes():
 
         assert len(result["books"]) == 1
         assert result["books"][0].languages == []
+
+    async def it_skips_a_volume_with_no_title(provider: GoogleBookProvider, session: AsyncMock):
+        session.get.return_value = _response(
+            json_data={
+                "totalItems": 2,
+                "items": [
+                    {"id": "no-title", "volumeInfo": {}},
+                    {"id": "good", "volumeInfo": {"title": "Good Book"}},
+                ],
+            }
+        )
+
+        result = await provider.fetch_volumes(SearchParams(), 0, 40)
+
+        assert len(result["books"]) == 1
+        assert result["books"][0].id == "good"
 
     async def it_skips_a_volume_that_fails_validation(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(
@@ -139,7 +155,20 @@ def describe_fetch_volumes():
 
         assert result["books"][0].isbn_10 is None
 
-    async def it_builds_a_query_from_title_authors_and_isbn(provider: GoogleBookProvider, session: AsyncMock):
+    async def it_builds_a_query_from_title_and_authors_when_no_isbn_is_given(
+        provider: GoogleBookProvider, session: AsyncMock
+    ):
+        session.get.return_value = _response(json_data={"totalItems": 0, "items": []})
+
+        params = SearchParams(title="The Hobbit", authors=["Tolkien"])
+        await provider.fetch_volumes(params, 0, 40)
+
+        call_kwargs = session.get.call_args.kwargs
+        query = call_kwargs["params"]["q"]
+        assert 'intitle:"The Hobbit"' in query
+        assert 'inauthor:"Tolkien"' in query
+
+    async def it_queries_by_isbn_alone_ignoring_title_and_authors(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(json_data={"totalItems": 0, "items": []})
 
         params = SearchParams(title="The Hobbit", authors=["Tolkien"], isbn="978-3-16-148410-0")
@@ -147,9 +176,7 @@ def describe_fetch_volumes():
 
         call_kwargs = session.get.call_args.kwargs
         query = call_kwargs["params"]["q"]
-        assert 'intitle:"The Hobbit"' in query
-        assert 'inauthor:"Tolkien"' in query
-        assert "isbn:9783161484100" in query
+        assert query == "isbn:9783161484100"
 
 
 def describe_fetch_volume_details():
@@ -175,3 +202,11 @@ def describe_fetch_volume_details():
         assert details.description == "A great book"
         assert details.page_count == 310
         assert details.categories == ["Fantasy"]
+
+    async def it_normalizes_a_blank_description_to_none(provider: GoogleBookProvider, session: AsyncMock):
+        session.get.return_value = _response(json_data={"volumeInfo": {"description": ""}})
+
+        details = await provider.fetch_volume_details("abc123")
+
+        assert details is not None
+        assert details.description is None

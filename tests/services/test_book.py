@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
+from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
 from canterlot.models import BookDetails, BookSearchResult
 from canterlot.models.enums import BookProviderName
 from canterlot.services.book import BookService
@@ -27,6 +27,48 @@ def _book_payload(**overrides) -> dict:
 def _service(cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock) -> BookService:
     book_provider.name = BookProviderName.GOOGLE
     return BookService(cache_repo, book_repo, [book_provider])
+
+
+def describe_search_external_books_validation():
+    async def it_raises_when_title_author_and_isbn_are_all_missing(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        service = _service(cache_repo, book_repo, book_provider)
+
+        with pytest.raises(BookSearchCriteriaMissingError):
+            await service.search_external_books(
+                title=None, author=None, isbn=None, preferred_languages=[], page=1, limit=10
+            )
+
+        book_provider.fetch_volumes.assert_not_called()
+
+    async def it_does_not_crash_building_the_cache_key_when_title_is_none(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        book_provider.fetch_volumes.return_value = {"books": [_book_payload()], "total_results": 1}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title=None, author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
+        )
+
+        assert len(result.books) == 1
+
+    async def it_ranks_by_author_alone_when_title_is_not_given(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        matching_author = _book_payload(id="matching", title="Anything", authors=["J.R.R. Tolkien"])
+        other_author = _book_payload(id="other", title="Anything", authors=["Someone Else"])
+        book_provider.fetch_volumes.return_value = {"books": [other_author, matching_author], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title=None, author="J.R.R. Tolkien", isbn=None, preferred_languages=[], page=1, limit=10
+        )
+
+        assert result.books[0].id == "matching"
 
 
 def describe_search_external_books_cache_behavior():
@@ -119,7 +161,7 @@ def describe_search_external_books_provider_aggregation():
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
     ):
         cache_repo.find.return_value = None
-        malformed = {"id": "bad", "provider": BookProviderName.GOOGLE, "title": "No Cover"}
+        malformed = {"id": "bad", "provider": BookProviderName.GOOGLE}
         book_provider.fetch_volumes.return_value = {"books": [malformed, _book_payload()], "total_results": 2}
         service = _service(cache_repo, book_repo, book_provider)
 
@@ -128,6 +170,21 @@ def describe_search_external_books_provider_aggregation():
         )
 
         assert len(result.books) == 1
+
+    async def it_leaves_the_cover_url_unset_when_no_provider_supplied_one(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        no_cover = _book_payload(cover_url=None)
+        book_provider.fetch_volumes.return_value = {"books": [no_cover], "total_results": 1}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
+        )
+
+        assert len(result.books) == 1
+        assert result.books[0].cover_url is None
 
     async def it_accepts_a_provider_returning_an_already_built_book_search_result(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -176,6 +233,36 @@ def describe_search_external_books_scoring():
 
         assert result.books[0].id == "en-book"
 
+    async def it_ranks_an_exact_language_match_above_a_same_base_language_match(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        exact = _book_payload(id="pt-br-book", title="A Tale", languages=["pt-BR"])
+        base_only = _book_payload(id="pt-pt-book", title="A Tale", languages=["pt-PT"])
+        book_provider.fetch_volumes.return_value = {"books": [base_only, exact], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="A Tale", author=None, isbn=None, preferred_languages=["pt-BR"], page=1, limit=10
+        )
+
+        assert [b.id for b in result.books] == ["pt-br-book", "pt-pt-book"]
+
+    async def it_boosts_a_same_base_language_match_above_no_language_match(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        base_only = _book_payload(id="pt-pt-book", title="A Tale", languages=["pt-PT"])
+        no_match = _book_payload(id="es-book", title="A Tale", languages=["es"])
+        book_provider.fetch_volumes.return_value = {"books": [no_match, base_only], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="A Tale", author=None, isbn=None, preferred_languages=["pt-BR"], page=1, limit=10
+        )
+
+        assert [b.id for b in result.books] == ["pt-pt-book", "es-book"]
+
     async def it_boosts_books_matching_the_searched_author(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
     ):
@@ -190,6 +277,73 @@ def describe_search_external_books_scoring():
         )
 
         assert result.books[0].id == "matching"
+
+    async def it_ranks_a_more_complete_entry_above_an_equally_relevant_sparse_one(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        complete_book = _book_payload(
+            id="complete",
+            title="A Tale",
+            authors=["Some Author"],
+            year=2000,
+            isbn_10="0261102214",
+            cover_url="https://example.com/c.jpg",
+        )
+        sparse_book = _book_payload(id="sparse", title="A Tale", authors=[], cover_url=None)
+        book_provider.fetch_volumes.return_value = {"books": [sparse_book, complete_book], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="A Tale", author=None, isbn=None, preferred_languages=[], page=1, limit=10
+        )
+
+        assert [b.id for b in result.books] == ["complete", "sparse"]
+
+    async def it_ranks_an_isbn_match_above_a_much_better_title_match(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        isbn_match = _book_payload(id="isbn-match", title="Completely Different Title", isbn_10="0261102214")
+        title_match = _book_payload(id="title-match", title="The Hobbit")
+        book_provider.fetch_volumes.return_value = {"books": [title_match, isbn_match], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="The Hobbit", author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
+        )
+
+        assert result.books[0].id == "isbn-match"
+
+    async def it_falls_back_to_normal_ranking_when_no_result_matches_the_searched_isbn(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        close_match = _book_payload(id="close", title="The Hobbit")
+        far_match = _book_payload(id="far", title="Completely Unrelated Book")
+        book_provider.fetch_volumes.return_value = {"books": [far_match, close_match], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="The Hobbit", author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
+        )
+
+        assert [b.id for b in result.books] == ["close", "far"]
+
+    async def it_prefers_a_verified_author_match_over_a_book_missing_author_data(
+        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
+    ):
+        cache_repo.find.return_value = None
+        no_author_data = _book_payload(id="no-author", title="A Tale", authors=[])
+        verified_author = _book_payload(id="verified-author", title="A Tale", authors=["J.R.R. Tolkien"])
+        book_provider.fetch_volumes.return_value = {"books": [no_author_data, verified_author], "total_results": 2}
+        service = _service(cache_repo, book_repo, book_provider)
+
+        result = await service.search_external_books(
+            title="A Tale", author="J.R.R. Tolkien", isbn=None, preferred_languages=[], page=1, limit=10
+        )
+
+        assert result.books[0].id == "verified-author"
 
 
 def describe_get_external_book_details():

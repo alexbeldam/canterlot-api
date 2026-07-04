@@ -4,12 +4,20 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
+from canterlot.exceptions import (
+    InvalidCredentialsError,
+    InviteLinkDeactivatedError,
+    TokenExpiredError,
+    TokenMalformedError,
+    UnauthorizedClubMemberError,
+)
 from canterlot.models import (
     ClubCreateRequest,
     ClubModel,
     ErrorResponseModel,
 )
 from canterlot.routers.dependencies import get_club_service, get_current_user_id, get_invite_service
+from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
 from canterlot.utils.format import NormalizedEmailStr
 
@@ -39,12 +47,14 @@ class InviteTokenResponse(BaseModel):
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
             "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
             "description": (
                 "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
             ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
         },
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
@@ -52,6 +62,7 @@ class InviteTokenResponse(BaseModel):
                 "UnauthorizedClubMemberError: The newly created club's initial public invite link could not be "
                 "rotated because the creator's ownership role could not be verified."
             ),
+            "content": error_example(UnauthorizedClubMemberError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. Request payload violates payload field lengths or type constraints.",
@@ -59,6 +70,7 @@ class InviteTokenResponse(BaseModel):
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected engine error encountered during database collection writing routines.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -86,18 +98,21 @@ async def create_club(
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
             "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
             "description": (
                 "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
             ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
         },
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
             "description": (
                 "UnauthorizedClubMemberError: Requesting user lacks Administrative or Owner permissions for this club."
             ),
+            "content": error_example(UnauthorizedClubMemberError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. The club_id path parameter is not a valid object identifier.",
@@ -105,6 +120,7 @@ async def create_club(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Internal database write error while saving the mutated invite token slot.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -129,18 +145,21 @@ async def rotate_public_admission_link(
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
             "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
             "description": (
                 "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
             ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
         },
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
             "description": (
                 "UnauthorizedClubMemberError: Requesting user lacks Administrative or Owner permissions for this club."
             ),
+            "content": error_example(UnauthorizedClubMemberError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. Target payload does not conform to a valid email address requirement.",
@@ -148,6 +167,7 @@ async def rotate_public_admission_link(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected engine error encountered during token serialization signature routines.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
@@ -175,6 +195,7 @@ async def create_direct_invite(
         status.HTTP_410_GONE: {
             "model": ErrorResponseModel,
             "description": "InviteLinkDeactivatedError: This club has no active public invite link.",
+            "content": error_example(InviteLinkDeactivatedError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. The club_id path parameter is not a valid object identifier."
@@ -182,6 +203,7 @@ async def create_direct_invite(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
