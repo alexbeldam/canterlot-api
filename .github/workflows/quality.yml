@@ -26,7 +26,7 @@ jobs:
         id: gate-hash
         run: |
           set -o pipefail
-          FILES_TO_HASH=$(find src/ tests/ scripts/ pyproject.toml uv.lock justfile -type f 2>/dev/null || true)
+          FILES_TO_HASH=$(find src/ tests/ tools/ pyproject.toml uv.lock justfile -type f 2>/dev/null || true)
           HASH=$(echo "$FILES_TO_HASH" | sort | md5sum | awk '{print $1}')
           echo "cache-key=quality-gate-$HASH" >> $GITHUB_OUTPUT
 

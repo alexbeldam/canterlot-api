@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "CanterlotAPI"
 version = "1.0.0"
 description = "API for a Book Club management system"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = { text = "AGPL-3.0-or-later" }
 
 authors = [{ name = "Alex Beldam Souza", email = "alex.beldam@gmail.com" }]
@@ -19,7 +19,6 @@ classifiers = [
 
 dependencies = [
     "pymongo>=4.6.0",
-    "motor>=3.3.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
     "redis>=5.0.0",
@@ -27,72 +26,87 @@ dependencies = [
     "pydantic-settings>=2.2.0",
     "pyjwt[crypto]>=2.8.0",
     "bcrypt>=4.0.0",
-    "httpx>=0.25.0",
-    "requests>=2.32.0",
-    "langcodes>=3.4.0",
-    "language_data>=1.2.0",
-    "python-multipart",
+    "langcodes[data]>=3.4.0",
+    "python-multipart>=0.0.32",
     "shortuuid>=1.0.13",
+    "structlog>=26.1.0",
+    "beanie>=2.1.0",
+    "beautifulsoup4[lxml]>=4.15.0",
+    "brotli>=1.2.0",
+    "curl-cffi>=0.15.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.11.1",
-    "respx>=0.20.0",
     "mypy>=1.5.0",
-    "pydantic>=2.5.0",
     "ruff>=0.1.0",
-    "types-requests>=2.31.0",
     "pyright>=1.1.400",
     "pytest-describe>=2.2.0",
     "pytest-cov>=4.1.0",
     "xenon>=0.9.0",
     "radon>=6.0.0",
+    "deptry>=0.25.1",
+    "mongomock-motor>=0.0.36",
+    "httpx2>=2.5.0",
+    "pytest-github-actions-annotate-failures>=0.4.2",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/canterlot"]
+
 [tool.pytest.ini_options]
-addopts = "-ra"
-pythonpath = ["src"]
+addopts = "-ra --import-mode=importlib"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["it_*"]
 asyncio_mode = "auto"
 filterwarnings = [
-    "ignore:.*starlette\\.testclient.*",
-    "ignore:.*httpx.*",
-    "ignore:.*StarletteDeprecationWarning.*",
-    "ignore:.*cannot collect 'self'.*:pytest.PytestCollectionWarning",
+    "ignore::curl_cffi.utils.CurlCffiWarning",
 ]
 
 [tool.coverage.run]
-source = ["src"]
-omit = ["*/__init__.py", "src/vendor/*"]
+source = ["canterlot"]
+omit = [
+    "*/__init__.py",
+    "*/canterlot/main.py",
+    "*/canterlot/config/settings.py",
+    "*/canterlot/config/database.py",
+    "*/canterlot/utils/logger.py",
+    "*/canterlot/exceptions/*",
+    "*/canterlot/repositories/beanie/*",
+    "*/canterlot/repositories/redis/*",
+]
 branch = true
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 80
+fail_under = 95
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
-ignore_missing_imports = true
+ignore_missing_imports = false
 plugins = ["pydantic.mypy"]
-exclude = '^src/vendor/'
+
+[[tool.mypy.overrides]]
+module = "canterlot.repositories.beanie.*"
+disable_error_code = ["attr-defined"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 120
 src = ["src"]
-extend-exclude = ["src/vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "ARG", "B", "UP", "SIM", "RET", "RUF", "PLR"]
 ignore = []
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
 
 [tool.ruff.lint.pylint]
 max-branches = 12
@@ -102,14 +116,20 @@ max-statements = 50
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**/*.py" = ["PLR2004", "PLR0915", "S101"]
-"scripts/*" = ["PLR2004", "PLR0915", "S101"]
-
+"src/canterlot/repositories/beanie/**/*.py" = ["E712"]
 
 [tool.pyright]
-include = ["src", "tests"]
-ignore = ["src/vendor"]
-extraPaths = ["src"]
-pythonVersion = "3.11"
+include = ["src", "tests", "tools"]
+pythonVersion = "3.13"
 typeCheckingMode = "basic"
 reportMissingImports = true
 reportMissingTypeStubs = false
+executionEnvironments = [
+    { root = "src/canterlot/repositories/beanie", reportUnhashable = false, reportAttributeAccessIssue = false },
+]
+
+[tool.deptry]
+known_first_party = ["canterlot"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["python-multipart", "uvicorn", "brotli"]
