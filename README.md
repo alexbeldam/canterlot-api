@@ -20,8 +20,7 @@
  <a href="#logica-de-funcionamento">Lógica de Funcionamento</a> •
  <a href="#primeiros-passos">Primeiros Passos</a> •
  <a href="#rotas-principais">Rotas Principais</a> •
- <a href="#frontend">Frontend</a> •
- <a href="#creditos-e-atribuicoes">Créditos</a>
+ <a href="#frontend">Frontend</a>
 </p>
 
 <br/>
@@ -125,12 +124,6 @@ Rotas protegidas exigem um header de autorização: `Authorization: Bearer <toke
 
 O frontend que consome esta API pode ser encontrado neste repositório:  
 👉 **[https://github.com/alexbeldam/canterlot](https://github.com/alexbeldam/canterlot)**
-
----
-
-Este projeto faz uso de software de terceiros em sua camada de integração com acervos digitais:
-
-- O módulo de conexão com a biblioteca digital utiliza o arquivo de integração open-source `Zlibrary.py`, originário do projeto [Zlibrary-API](https://github.com/bipinkrish/Zlibrary-API), desenvolvido e mantido por [@bipinkrish](https://github.com/bipinkrish). O arquivo foi incorporado diretamente à árvore de componentes locais sem sofrer qualquer tipo de alteração ou modificação em suas rotinas lógicas originais.
 
 ---
 
