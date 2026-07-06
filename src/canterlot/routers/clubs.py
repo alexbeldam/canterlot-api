@@ -3,7 +3,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
-from canterlot.dto.club import ClubCreateRequest, ClubResponse
+from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse
 from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
 from canterlot.exceptions import (
     InvalidCredentialsError,
@@ -14,13 +14,12 @@ from canterlot.exceptions import (
 )
 from canterlot.exceptions.club import ClubNotFoundError
 from canterlot.models import ErrorResponseModel
-from canterlot.repositories import UserRepository
+from canterlot.models.club import ClubSlugStr
 from canterlot.routers.dependencies import (
     get_club_id_from_slug,
     get_club_service,
     get_current_user_id,
     get_invite_service,
-    get_user_repository,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
@@ -71,16 +70,67 @@ async def create_club(
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
-    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
 ):
     res = await club_service.create_new_club(creator_id=current_user_id, data=payload)
 
     await invite_service.rotate_public_link(club_id=PydanticObjectId(res.id), user_id=current_user_id)
 
-    owner_username = await user_repo.find_username_by_id(current_user_id)
-    assert owner_username is not None, "authenticated club creator must have a resolvable username"
+    member_usernames = await club_service.resolve_member_usernames(res.members)
 
-    return ClubResponse.from_model(res, user_usernames={current_user_id: owner_username})
+    return ClubResponse.from_model(res, user_usernames=member_usernames)
+
+
+@router.get(
+    "/{club_slug}",
+    response_model=ClubDetailResponse | ClubResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "Club metadata retrieved. Callers with OWNER or ADMIN standing additionally receive the "
+                "pending-approval queue (ClubDetailResponse); other members receive the same public shape as "
+                "club creation (ClubResponse). banned_users is never returned to anyone."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The requesting user is not a member of this club.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: No club exists with the given slug.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def get_club(
+    club_slug: ClubSlugStr,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> ClubDetailResponse | ClubResponse:
+    view = await club_service.get_club_view(club_slug, current_user_id)
+
+    if view.pending_usernames is not None:
+        return ClubDetailResponse.from_model_with_pending(view.club, view.member_usernames, view.pending_usernames)
+
+    return ClubResponse.from_model(view.club, view.member_usernames)
 
 
 @router.post(

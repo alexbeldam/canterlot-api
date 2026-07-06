@@ -3,7 +3,7 @@ from beanie.operators import Pull, Push
 from pydantic import BaseModel
 
 from canterlot.exceptions import ClubNotFoundError
-from canterlot.models import ClubModel, MemberSchema, UserRole
+from canterlot.models import ClubModel, MemberSchema, PendingApprovalSchema, UserRole
 from canterlot.models.club import CatalogEntryModel, ClubSlugStr
 from canterlot.repositories import ClubRepository
 from canterlot.utils.format import LanguageStr
@@ -88,7 +88,9 @@ class BeanieClubRepository(ClubRepository):
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.members: member}))
 
     async def add_to_pending_approvals(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
-        await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.pending_approvals: user_id}))
+        entry = PendingApprovalSchema(user_id=user_id)
+
+        await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.pending_approvals: entry}))
 
     async def add_to_banned_users(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.banned_users: user_id}))
@@ -100,7 +102,9 @@ class BeanieClubRepository(ClubRepository):
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Pull({ClubModel.members: {"user_id": member_id}}))
 
     async def remove_from_pending_approvals(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
-        await ClubModel.find_one(ClubModel.id == club_id).update_one(Pull({ClubModel.pending_approvals: user_id}))
+        await ClubModel.find_one(ClubModel.id == club_id).update_one(
+            Pull({ClubModel.pending_approvals: {"user_id": user_id}})
+        )
 
     async def remove_from_banned_users(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Pull({ClubModel.banned_users: user_id}))

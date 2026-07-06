@@ -2,7 +2,7 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import ValidationError
 
-from canterlot.models.club import ClubModel, MemberSchema
+from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
 from canterlot.models.enums import JoinPolicy
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -43,7 +43,7 @@ def describe_membership_state_exclusivity():
                 name="Book Club",
                 slug="book-club",
                 members=[MemberSchema(user_id=SOME_USER_ID)],
-                pending_approvals=[SOME_USER_ID],
+                pending_approvals=[PendingApprovalSchema(user_id=SOME_USER_ID)],
             )
 
     def it_rejects_a_user_who_is_both_banned_and_pending():
@@ -52,7 +52,7 @@ def describe_membership_state_exclusivity():
                 name="Book Club",
                 slug="book-club",
                 banned_users=[SOME_USER_ID],
-                pending_approvals=[SOME_USER_ID],
+                pending_approvals=[PendingApprovalSchema(user_id=SOME_USER_ID)],
             )
 
     def it_accepts_disjoint_membership_states():
@@ -61,6 +61,6 @@ def describe_membership_state_exclusivity():
             slug="book-club",
             members=[MemberSchema(user_id=SOME_USER_ID)],
             banned_users=[PydanticObjectId("507f1f77bcf86cd799439012")],
-            pending_approvals=[PydanticObjectId("507f1f77bcf86cd799439013")],
+            pending_approvals=[PendingApprovalSchema(user_id=PydanticObjectId("507f1f77bcf86cd799439013"))],
         )
         assert len(club.members) == 1

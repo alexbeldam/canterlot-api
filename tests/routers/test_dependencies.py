@@ -193,7 +193,10 @@ def describe_service_factories():
         assert isinstance(service, AuthService)
 
     async def it_builds_a_club_service():
-        service = await get_club_service(club_repo=AsyncMock(spec=ClubRepository))
+        service = await get_club_service(
+            club_repo=AsyncMock(spec=ClubRepository),
+            user_repo=AsyncMock(spec=UserRepository),
+        )
         assert isinstance(service, ClubService)
 
     async def it_builds_an_invite_service():
