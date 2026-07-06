@@ -3,10 +3,11 @@ from unittest.mock import AsyncMock
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
+from canterlot.dto.auth import TokenResponse
+from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import InvalidCredentialsError, UsernameAlreadyExistsError
-from canterlot.models.club import ClubOnboarding
 from canterlot.models.enums import ClubOnboardingStatus
-from canterlot.models.user import RegisterResult, TokenResponse
+from canterlot.services.auth import RegisterResult
 from canterlot.services.invite import InviteValidationResult
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")

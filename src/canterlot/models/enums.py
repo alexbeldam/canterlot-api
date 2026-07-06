@@ -14,7 +14,7 @@ class InviteType(StrEnum):
 class UserRole(StrEnum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
-    USER = "USER"
+    MEMBER = "MEMBER"
 
 
 class ClubOnboardingStatus(StrEnum):

@@ -1,15 +1,13 @@
 from beanie import PydanticObjectId
 
+from canterlot.dto.auth import TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models import (
-    TokenResponse,
-    UserModel,
-)
-from canterlot.models.user import RegisterResult, UsernameStr, UserRegisterRequest
+from canterlot.models import UserModel
+from canterlot.models.user import UsernameStr
 from canterlot.repositories import UserRepository
 from canterlot.utils import (
     create_access_token,
@@ -20,6 +18,10 @@ from canterlot.utils import (
 )
 
 logger = get_logger(__name__)
+
+
+class RegisterResult(TokenResponse):
+    user_id: PydanticObjectId
 
 
 class AuthService:

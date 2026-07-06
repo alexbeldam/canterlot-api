@@ -1,24 +1,33 @@
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
-from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from canterlot.utils.format import LanguageStr, NonEmptyStr
 
-from .enums import ClubOnboardingStatus, JoinPolicy, UserRole
+from .enums import JoinPolicy, UserRole
 
 type ClubNameStr = Annotated[
     NonEmptyStr,
     StringConstraints(min_length=3, max_length=50),
     Field(examples=["The Canterlot Archives", "Manehattan Literature Society"]),
 ]
+type ClubSlugStr = Annotated[
+    NonEmptyStr,
+    StringConstraints(max_length=32),
+    Field(
+        examples=[
+            "the-canterlot-archives",
+            "manehattan-literature-society",
+        ]
+    ),
+]
 
 
 class MemberSchema(BaseModel):
     user_id: PydanticObjectId
-    role: UserRole = UserRole.USER
+    role: UserRole = UserRole.MEMBER
     joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -30,10 +39,8 @@ class CatalogEntryModel(BaseModel):
 
 class ClubModel(Document):
     name: ClubNameStr
-    description: str | None = Field(
-        default=None,
-        examples=["A cozy corner for reading historical fiction and sharing tea recipes."],
-    )
+    description: str | None = None
+    slug: Annotated[ClubSlugStr, Indexed(unique=True)]
     join_policy: JoinPolicy = JoinPolicy.PUBLIC
     allow_suggestions: bool = True
     preferred_languages: list[LanguageStr] = Field(default_factory=list)
@@ -42,32 +49,6 @@ class ClubModel(Document):
     pending_approvals: list[PydanticObjectId] = Field(default_factory=list)
     catalog: list[CatalogEntryModel] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "_id": "5eb7cf5a86d9755df3a6c593",
-                    "name": "The Canterlot Archives",
-                    "description": "A cozy corner for reading historical fiction and sharing tea recipes.",
-                    "join_policy": "PUBLIC",
-                    "allow_suggestions": True,
-                    "preferred_languages": ["en"],
-                    "members": [
-                        {
-                            "user_id": "6eb7cf5a86d9755df3a6c999",
-                            "role": "OWNER",
-                            "joined_at": "2026-07-04T18:32:58.422Z",
-                        }
-                    ],
-                    "banned_users": [],
-                    "pending_approvals": [],
-                    "catalog": [],
-                    "created_at": "2026-07-04T18:32:58.422Z",
-                }
-            ]
-        }
-    )
 
     class Settings:
         name = "clubs"
@@ -86,19 +67,3 @@ class ClubModel(Document):
             raise ValueError(f"Users cannot be banned and pending approval: {intersection}")
 
         return self
-
-
-@dataclass(frozen=True)
-class ClubOnboarding:
-    club_name: ClubNameStr
-    status: ClubOnboardingStatus
-
-
-class ClubCreateRequest(BaseModel):
-    name: ClubNameStr
-    description: str | None = Field(
-        default=None,
-        examples=["A cozy corner for reading historical fiction and sharing tea recipes."],
-    )
-    join_policy: JoinPolicy = JoinPolicy.PUBLIC
-    preferred_languages: list[LanguageStr] = Field(default_factory=list)

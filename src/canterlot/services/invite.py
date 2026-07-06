@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from beanie import PydanticObjectId
 
+from canterlot.dto.invite import InvitePreviewResponse
 from canterlot.exceptions import (
     ClubNotFoundError,
     DirectInviteIdentityMismatchError,
@@ -10,7 +11,6 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models import InvitePreviewResponse
 from canterlot.models.club import ClubNameStr
 from canterlot.models.enums import InviteType, UserRole
 from canterlot.models.invite import InviteModel
@@ -71,7 +71,7 @@ class InviteService:
 
         log.info("Preview metadata successfully built and dispatched")
         return InvitePreviewResponse(
-            club_id=club.id,
+            club_slug=club.slug,
             club_name=club.name,
             join_policy=club.join_policy,
             invite_type=invite.type,

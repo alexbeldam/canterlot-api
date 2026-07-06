@@ -3,21 +3,11 @@ from typing import Annotated
 
 import shortuuid
 from beanie import Document, Indexed, PydanticObjectId
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from canterlot.utils.format import NormalizedEmailStr
 
-from .club import ClubNameStr
-from .enums import InviteType, JoinPolicy
-from .user import UsernameStr
-
-
-class InvitePreviewResponse(BaseModel):
-    club_id: PydanticObjectId
-    club_name: ClubNameStr
-    join_policy: JoinPolicy
-    invite_type: InviteType
-    invited_by_username: UsernameStr | None = None
+from .enums import InviteType
 
 
 class InviteModel(Document):

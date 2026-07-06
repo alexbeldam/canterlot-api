@@ -4,8 +4,9 @@ from unittest.mock import AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
+from canterlot.dto.club import ClubCreateRequest
 from canterlot.exceptions import ClubNotFoundError, UnauthorizedClubMemberError
-from canterlot.models import ClubCreateRequest, ClubOnboardingStatus, JoinPolicy
+from canterlot.models import ClubOnboardingStatus, JoinPolicy
 from canterlot.services.club import ClubService
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -18,6 +19,7 @@ def _club(join_policy: JoinPolicy = JoinPolicy.PUBLIC) -> SimpleNamespace:
 
 def describe_create_new_club():
     async def it_saves_a_club_with_the_creator_as_owner(club_repo: AsyncMock):
+        club_repo.exists_by_club_slug.return_value = False
         club_repo.save.side_effect = lambda club: club
         service = ClubService(club_repo)
 
@@ -25,6 +27,7 @@ def describe_create_new_club():
         result = await service.create_new_club(creator_id=SOME_USER_ID, data=request)
 
         assert result.name == "Book Club"
+        assert result.slug
         assert len(result.members) == 1
         assert result.members[0].user_id == SOME_USER_ID
         club_repo.save.assert_awaited_once()

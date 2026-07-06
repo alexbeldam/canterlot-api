@@ -1,7 +1,9 @@
 import re
+from collections.abc import Callable, Coroutine
 from difflib import SequenceMatcher
-from typing import Annotated
+from typing import Annotated, Any
 
+import shortuuid
 from pydantic import (
     AfterValidator,
     BeforeValidator,
@@ -12,6 +14,7 @@ from pydantic import (
     UrlConstraints,
     validate_call,
 )
+from slugify import slugify
 
 from .language import normalize_language
 
@@ -64,3 +67,27 @@ def similarity_ratio(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+
+async def make_slug(
+    text: str,
+    duplicate_verifier: Callable[[str], Coroutine[Any, Any, bool]],
+    max_length: int = 32,
+    suffix_length: int = 5,
+) -> str:
+    slug = slugify(text=text, max_length=max_length, word_boundary=True, save_order=True)
+
+    base_max_length = max_length - suffix_length - 1
+
+    while await duplicate_verifier(slug):
+        suffix = shortuuid.random(length=suffix_length)
+
+        base_slug = slugify(
+            text=text,
+            max_length=base_max_length,
+            word_boundary=True,
+            save_order=True,
+        )
+        slug = f"{base_slug}-{suffix}"
+
+    return slug

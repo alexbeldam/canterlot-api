@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from canterlot.exceptions import ClubNotFoundError
 from canterlot.models import ClubModel, MemberSchema, UserRole
-from canterlot.models.club import CatalogEntryModel
+from canterlot.models.club import CatalogEntryModel, ClubSlugStr
 from canterlot.repositories import ClubRepository
 from canterlot.utils.format import LanguageStr
 
@@ -50,6 +50,14 @@ class BeanieClubRepository(ClubRepository):
         target = next((m for m in projected.members if m.user_id == user_id), None)
 
         return target.role if target else None
+
+    async def find_by_slug(self, slug: ClubSlugStr) -> ClubModel | None:
+        return await ClubModel.find_one(ClubModel.slug == slug)
+
+    async def exists_by_club_slug(self, slug: ClubSlugStr) -> bool:
+        count = await ClubModel.find(ClubModel.slug == slug).count()
+
+        return count > 0
 
     async def exists_by_club_id_and_member_user_id(
         self,

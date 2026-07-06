@@ -4,6 +4,8 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Query, status
 
+from canterlot.dto.book import PaginatedBooksResponse
+from canterlot.dto.catalog import BookSuggestionRequest, SuggestionResponse
 from canterlot.exceptions import (
     BookSearchCriteriaMissingError,
     ClubSuggestionsClosedError,
@@ -12,14 +14,20 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.exceptions.auth import TokenMalformedError
-from canterlot.models import BookSuggestionRequest, ErrorResponseModel, PaginatedBooksResponse, SuggestionResponse
+from canterlot.models import ErrorResponseModel
 from canterlot.models.book import TitleStr
-from canterlot.routers.dependencies import get_book_service, get_catalog_service, get_club_service, get_current_user_id
+from canterlot.routers.dependencies import (
+    get_book_service,
+    get_catalog_service,
+    get_club_id_from_slug,
+    get_club_service,
+    get_current_user_id,
+)
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import BookService, CatalogService, ClubService
 from canterlot.utils.format import ISBNStr
 
-router = APIRouter(prefix="/clubs/{club_id}/catalog", tags=["Club Catalogs"])
+router = APIRouter(prefix="/clubs/{club_slug}/catalog", tags=["Club Catalogs"])
 
 
 @dataclass
@@ -70,7 +78,7 @@ class ExternalBookSearchFilters:
     },
 )
 async def suggest_book_to_club(
-    club_id: PydanticObjectId,
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
     suggestion: BookSuggestionRequest,
     catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
@@ -117,7 +125,7 @@ async def suggest_book_to_club(
     },
 )
 async def search_external_books_for_club(
-    club_id: PydanticObjectId,
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
     search_service: Annotated[BookService, Depends(get_book_service)],

@@ -66,7 +66,7 @@ def describe_fetch_volumes():
 
         assert result["total_results"] == 1
         book = result["books"][0]
-        assert book.id == "abc123"
+        assert book.id.book_id == "abc123"
         assert book.title == "The Hobbit"
         assert book.authors == ["J.R.R. Tolkien"]
         assert book.year == 1937
@@ -111,7 +111,7 @@ def describe_fetch_volumes():
         result = await provider.fetch_volumes(SearchParams(), 0, 40)
 
         assert len(result["books"]) == 1
-        assert result["books"][0].id == "good"
+        assert result["books"][0].id.book_id == "good"
 
     async def it_skips_a_volume_that_fails_validation(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(
@@ -133,7 +133,7 @@ def describe_fetch_volumes():
         result = await provider.fetch_volumes(SearchParams(), 0, 40)
 
         assert len(result["books"]) == 1
-        assert result["books"][0].id == "good"
+        assert result["books"][0].id.book_id == "good"
 
     async def it_ignores_non_string_industry_identifiers(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(

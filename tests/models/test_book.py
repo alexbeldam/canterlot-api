@@ -5,9 +5,8 @@ from pydantic import TypeAdapter, ValidationError
 
 from canterlot.models.book import (
     MIN_PUBLISHED_YEAR,
-    BookDetails,
     BookModel,
-    BookSearchResult,
+    BookProviderIdentifier,
     PublishedYear,
     SearchParams,
     validate_published_year,
@@ -38,45 +37,35 @@ def describe_validate_published_year():
         assert published_year_adapter.validate_python(max_allowed) == max_allowed
 
 
-def describe_book_search_result():
-    def it_defaults_the_cover_url_to_none_when_absent():
-        result = BookSearchResult.model_validate({"id": "x", "provider": BookProviderName.GOOGLE, "title": "A Title"})
-        assert result.cover_url is None
+def describe_book_provider_identifier():
+    def it_round_trips_through_string_serialization():
+        adapter = TypeAdapter(BookProviderIdentifier)
+        identifier = adapter.validate_python("google-books__zyTCAlFlgZ8C")
 
-    def it_rejects_a_plain_http_cover_url():
+        assert identifier.provider == BookProviderName.GOOGLE
+        assert identifier.book_id == "zyTCAlFlgZ8C"
+        assert str(identifier) == "google-books__zyTCAlFlgZ8C"
+
+    def it_rejects_a_string_missing_the_separator():
+        adapter = TypeAdapter(BookProviderIdentifier)
         with pytest.raises(ValidationError):
-            BookSearchResult.model_validate(
-                {
-                    "id": "x",
-                    "provider": BookProviderName.GOOGLE,
-                    "title": "A Title",
-                    "cover_url": "http://example.com/c.jpg",
-                }
-            )
+            adapter.validate_python("no-separator-here")
 
-    def it_accepts_a_minimal_valid_result():
-        result = BookSearchResult.model_validate(
-            {
-                "id": "x",
-                "provider": BookProviderName.GOOGLE,
-                "title": "A Title",
-                "cover_url": "https://example.com/c.jpg",
-            }
-        )
-        assert result.authors == []
-        assert result.languages == []
-        assert result.year is None
+    def it_rejects_an_unknown_provider_segment():
+        adapter = TypeAdapter(BookProviderIdentifier)
+        with pytest.raises(ValidationError):
+            adapter.validate_python("not-a-provider__abc123")
 
 
 def describe_book_model():
     def it_requires_a_title():
         with pytest.raises(ValidationError):
-            BookModel.model_validate({"provider": BookProviderName.GOOGLE})
+            BookModel.model_validate({"external_id": "google-books__abc123"})
 
     def it_accepts_a_minimal_valid_document():
         book = BookModel.model_validate(
             {
-                "provider": BookProviderName.GOOGLE,
+                "external_id": "google-books__abc123",
                 "title": "A Title",
                 "cover_url": "https://example.com/c.jpg",
             }
@@ -85,24 +74,12 @@ def describe_book_model():
         assert book.urls == {}
 
     def it_defaults_the_cover_url_to_none_when_absent():
-        book = BookModel.model_validate({"provider": BookProviderName.GOOGLE, "title": "A Title"})
+        book = BookModel.model_validate({"external_id": "google-books__abc123", "title": "A Title"})
         assert book.cover_url is None
 
     def it_rejects_a_blank_description():
         with pytest.raises(ValidationError):
-            BookModel.model_validate({"provider": BookProviderName.GOOGLE, "title": "A Title", "description": "   "})
-
-
-def describe_book_details():
-    def it_defaults_page_count_and_description_to_none():
-        details = BookDetails.model_validate({})
-        assert details.page_count is None
-        assert details.description is None
-        assert details.categories == []
-
-    def it_rejects_a_blank_description():
-        with pytest.raises(ValidationError):
-            BookDetails.model_validate({"description": "   "})
+            BookModel.model_validate({"external_id": "google-books__abc123", "title": "A Title", "description": "   "})
 
 
 def describe_search_params_isbn_splitting():

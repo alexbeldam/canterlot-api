@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
+from canterlot.dto.catalog import BookSuggestionRequest, SuggestionStatus
 from canterlot.exceptions import ClubSuggestionsClosedError, UnauthorizedClubMemberError
 from canterlot.models.book import LinkCandidate
-from canterlot.models.catalog import BookSuggestionRequest, SuggestionStatus
-from canterlot.models.enums import BookProviderName, ExtensionType, LinkProviderName
+from canterlot.models.enums import ExtensionType, LinkProviderName
 from canterlot.services.catalog import CatalogService
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -16,8 +16,7 @@ SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 def _suggestion(**overrides) -> BookSuggestionRequest:
     defaults = {
-        "source_id": "ext-1",
-        "provider": BookProviderName.GOOGLE,
+        "source_id": "google-books__ext-1",
         "title": "The Hobbit",
         "authors": ["J.R.R. Tolkien"],
         "cover_url": "https://example.com/c.jpg",
@@ -41,6 +40,7 @@ def _candidate(**overrides) -> LinkCandidate:
 def _existing_book(urls: dict | None = None, **overrides) -> AsyncMock:
     book = AsyncMock()
     book.id = SOME_BOOK_ID
+    book.external_id = overrides.get("external_id", "google-books__existing-book")
     book.urls = urls or {}
     book.year = overrides.get("year")
     book.page_count = overrides.get("page_count")
@@ -86,7 +86,7 @@ def describe_suggesting_a_new_book():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = [_candidate()]
 
         saved_book = _existing_book(urls={ExtensionType.PDF: "https://mirror.example.com/hobbit.pdf"})
@@ -109,7 +109,7 @@ def describe_suggesting_a_new_book():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = []
 
         captured = {}
@@ -134,7 +134,7 @@ def describe_suggesting_an_existing_book():
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
-        book_repo.find_by_provider_and_provider_book_id.return_value = _existing_book(urls=complete_urls)
+        book_repo.find_by_external_id.return_value = _existing_book(urls=complete_urls)
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -149,7 +149,7 @@ def describe_suggesting_an_existing_book():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = _existing_book(urls={})
+        book_repo.find_by_external_id.return_value = _existing_book(urls={})
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = False
         link_provider.find_links.return_value = [_candidate()]
         service = _service(book_repo, club_repo, link_provider)
@@ -174,7 +174,7 @@ def describe_suggesting_an_existing_book():
 
         assert result.status == SuggestionStatus.ALREADY_EXISTS
         book_repo.find_by_isbn.assert_awaited_once_with("0261102214", None)
-        book_repo.find_by_provider_and_provider_book_id.assert_not_called()
+        book_repo.find_by_external_id.assert_not_called()
 
     async def it_falls_back_to_provider_and_source_id_when_no_book_matches_the_isbn(
         book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
@@ -183,7 +183,7 @@ def describe_suggesting_an_existing_book():
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         book_repo.find_by_isbn.return_value = None
-        book_repo.find_by_provider_and_provider_book_id.return_value = _existing_book(urls=complete_urls)
+        book_repo.find_by_external_id.return_value = _existing_book(urls=complete_urls)
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -191,7 +191,7 @@ def describe_suggesting_an_existing_book():
 
         assert result.status == SuggestionStatus.ALREADY_EXISTS
         book_repo.find_by_isbn.assert_awaited_once_with("0261102214", None)
-        book_repo.find_by_provider_and_provider_book_id.assert_awaited_once()
+        book_repo.find_by_external_id.assert_awaited_once()
 
     async def it_skips_the_isbn_lookup_when_the_suggestion_has_no_isbn(
         book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
@@ -199,7 +199,7 @@ def describe_suggesting_an_existing_book():
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
-        book_repo.find_by_provider_and_provider_book_id.return_value = _existing_book(urls=complete_urls)
+        book_repo.find_by_external_id.return_value = _existing_book(urls=complete_urls)
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -213,7 +213,7 @@ def describe_suggesting_an_existing_book():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = _existing_book(urls={})
+        book_repo.find_by_external_id.return_value = _existing_book(urls={})
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = False
         link_provider.find_links.return_value = []
         service = _service(book_repo, club_repo, link_provider)
@@ -231,7 +231,7 @@ def describe_backfilling_missing_metadata():
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         existing = _existing_book(urls=complete_urls, authors=["Existing Author"], languages=["en"])
-        book_repo.find_by_provider_and_provider_book_id.return_value = existing
+        book_repo.find_by_external_id.return_value = existing
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -256,7 +256,7 @@ def describe_backfilling_missing_metadata():
             description="Existing description",
             languages=["en"],
         )
-        book_repo.find_by_provider_and_provider_book_id.return_value = existing
+        book_repo.find_by_external_id.return_value = existing
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -271,7 +271,7 @@ def describe_backfilling_missing_metadata():
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         existing = _existing_book(urls=complete_urls, authors=["Existing Author"], languages=["en"])
-        book_repo.find_by_provider_and_provider_book_id.return_value = existing
+        book_repo.find_by_external_id.return_value = existing
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -295,7 +295,7 @@ def describe_backfilling_missing_metadata():
             cover_url="https://existing.example.com/c.jpg",
             description="Existing description",
         )
-        book_repo.find_by_provider_and_provider_book_id.return_value = existing
+        book_repo.find_by_external_id.return_value = existing
         club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
         service = _service(book_repo, club_repo, link_provider)
 
@@ -310,7 +310,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = [
             _candidate(title="Completely Unrelated Text", authors=["Someone Else"])
         ]
@@ -334,7 +334,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = [_candidate(languages=["pt-BR"])]
 
         captured = {}
@@ -356,7 +356,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = [_candidate(languages=["pt-BR", "en"])]
 
         captured = {}
@@ -378,7 +378,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         base_match = _candidate(languages=["pt-PT"], url="https://mirror.example.com/pt-pt.pdf")
         exact_match = _candidate(languages=["pt-BR"], url="https://mirror.example.com/pt-br.pdf")
         link_provider.find_links.return_value = [base_match, exact_match]
@@ -402,7 +402,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = [_candidate(languages=["pt-BR"])]
 
         captured = {}
@@ -424,7 +424,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = [_candidate(title="The Hobbit (Deluxe)", authors=[])]
 
         captured = {}
@@ -446,7 +446,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         no_author_data = _candidate(authors=[], url="https://mirror.example.com/no-author.pdf")
         verified_author = _candidate(url="https://mirror.example.com/verified-author.pdf")
         link_provider.find_links.return_value = [no_author_data, verified_author]
@@ -470,7 +470,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.side_effect = RuntimeError("scraper is down")
 
         captured = {}
@@ -493,7 +493,7 @@ def describe_link_candidate_scoring():
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
-        book_repo.find_by_provider_and_provider_book_id.return_value = None
+        book_repo.find_by_external_id.return_value = None
         link_provider.find_links.return_value = "not-a-list"
 
         captured = {}

@@ -3,8 +3,8 @@ from fastapi import status
 from pydantic import HttpUrl
 
 from canterlot.config import get_settings
-from canterlot.models import BookDetails, BookSearchResult
-from canterlot.models.book import SearchParams
+from canterlot.dto.book import BookDetails, BookSearchResult
+from canterlot.models.book import BookProviderIdentifier, SearchParams
 from canterlot.models.enums import BookProviderName
 from canterlot.utils import get_logger
 from canterlot.utils.format import HttpsUrl
@@ -73,8 +73,7 @@ class GoogleBookProvider(BookProvider):
 
         try:
             return BookSearchResult(
-                id=item_id,
-                provider=self.name,
+                id=BookProviderIdentifier(provider=self.name, book_id=item_id),
                 title=volume_info.get("title"),
                 authors=volume_info.get("authors", []),
                 year=self.__extract_year(volume_info),

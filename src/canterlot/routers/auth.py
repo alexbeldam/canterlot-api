@@ -4,6 +4,7 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
+from canterlot.dto.auth import RegisterResponse, TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
     ClubNotFoundError,
     DirectInviteIdentityMismatchError,
@@ -15,7 +16,7 @@ from canterlot.exceptions import (
     TokenMalformedError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models import ErrorResponseModel, RegisterResponse, TokenResponse, UserRegisterRequest
+from canterlot.models import ErrorResponseModel
 from canterlot.models.enums import ClubOnboardingStatus
 from canterlot.models.user import UsernameStr
 from canterlot.routers.dependencies import (

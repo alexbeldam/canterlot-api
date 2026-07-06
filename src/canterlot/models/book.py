@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from beanie import Document, PydanticObjectId
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_validator
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import AfterValidator, BaseModel, Field, GetCoreSchemaHandler, StringConstraints, model_validator
+from pydantic_core import CoreSchema, core_schema
 
 from canterlot.models.enums import BookProviderName, ExtensionType
 from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, ISBNStr, LanguageStr, NonEmptyStr, split_isbn
@@ -56,6 +57,65 @@ type AuthorList = Annotated[
 type PageCount = Annotated[int, Field(ge=0, examples=[310, 700])]
 
 
+class BookProviderIdentifier:
+    def __init__(self, provider: BookProviderName, book_id: str):
+        self.provider = provider
+        self.book_id = book_id
+
+    def __repr__(self) -> str:
+        return f"ProviderIdentifier(provider='{self.provider}', id='{self.book_id}')"
+
+    def __str__(self) -> str:
+        return f"{self.provider}__{self.book_id}"
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        _source_type: Any,
+        _handler: GetCoreSchemaHandler,
+    ) -> CoreSchema:
+        def validate(value: Any) -> BookProviderIdentifier:
+            if isinstance(value, cls):
+                return value
+            if isinstance(value, str):
+                if "__" not in value:
+                    raise ValueError("Identifier must follow the 'provider__id' format")
+                provider, provider_book_id = value.split("__", 1)
+                if not provider or not provider_book_id:
+                    raise ValueError("Both provider and id segments must be non-empty strings")
+                try:
+                    provider_name = BookProviderName(provider)
+                except ValueError:
+                    raise ValueError("Provider segment must be a valid name") from None
+                return cls(provider_name, provider_book_id)
+            raise ValueError("Input must be a string or an instance of ProviderIdentifier")
+
+        def serialize(instance: BookProviderIdentifier) -> str:
+            return str(instance)
+
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.no_info_plain_validator_function(
+                validate, json_schema_input_schema=core_schema.str_schema()
+            ),
+            python_schema=core_schema.no_info_plain_validator_function(validate),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                serialize, return_schema=core_schema.str_schema()
+            ),
+        )
+
+
+type BookExternalId = Annotated[
+    BookProviderIdentifier,
+    Field(
+        description=(
+            "The unique, URL-safe external identifier combining the source provider name "
+            "and their asset ID, separated by a double underscore. Format: 'provider__id'."
+        ),
+        examples=["google-books__zyTCAlFlgZ8C"],
+    ),
+]
+
+
 class LinkCandidate(BaseModel):
     title: TitleStr
     authors: AuthorList
@@ -64,48 +124,13 @@ class LinkCandidate(BaseModel):
     url: HttpsUrl
 
 
-class BookSearchResult(BaseModel):
-    id: str = Field(..., description="The unique ID from the external provider", examples=["zyTCAlFlgZ8C"])
-    provider: BookProviderName = Field(..., description="The name of the source provider (e.g., 'google-books')")
-    title: TitleStr
-    authors: AuthorList = Field(default_factory=list)
-    year: PublishedYear | None = None
-    isbn_10: ISBN10Str | None = None
-    isbn_13: ISBN13Str | None = None
-    languages: list[LanguageStr] = Field(default_factory=list)
-    cover_url: HttpsUrl | None = None
-
-
-class BookDetails(BaseModel):
-    page_count: PageCount | None = None
-    description: NonEmptyStr | None = Field(
-        default=None,
-        examples=[
-            "A glorious high fantasy adventure following Bilbo Baggins as he journeys to reclaim a stolen treasure."
-        ],
-    )
-    categories: list[NonEmptyStr] = Field(default_factory=list, examples=[["Fiction", "Fantasy", "High Fantasy"]])
-
-
-class PaginatedBooksResponse(BaseModel):
-    books: list[BookSearchResult]
-    total_pages: int = Field(ge=0, examples=[1])
-    current_page: int = Field(ge=1)
-    total_results: int = Field(ge=0, examples=[1])
-
-
 class ReadBook(BaseModel):
     id: PydanticObjectId
     read_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class BookModel(Document):
-    provider: BookProviderName
-    provider_book_id: str | None = Field(
-        default=None,
-        description="The unique identifier from the external provider source",
-        examples=["zyTCAlFlgZ8C"],
-    )
+    external_id: Annotated[BookExternalId, Indexed(unique=True)]
     title: TitleStr
     authors: AuthorList = Field(default_factory=list)
     year: PublishedYear | None = None
@@ -113,13 +138,8 @@ class BookModel(Document):
     isbn_10: ISBN10Str | None = None
     isbn_13: ISBN13Str | None = None
     languages: list[LanguageStr] = Field(default_factory=list)
-    description: NonEmptyStr | None = Field(
-        default=None,
-        examples=[
-            "A glorious high fantasy adventure following Bilbo Baggins as he journeys to reclaim a stolen treasure."
-        ],
-    )
-    categories: list[NonEmptyStr] = Field(default_factory=list, examples=[["Fiction", "Fantasy", "High Fantasy"]])
+    description: NonEmptyStr | None = None
+    categories: list[NonEmptyStr] = Field(default_factory=list)
     cover_url: HttpsUrl | None = None
     urls: UrlList = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
