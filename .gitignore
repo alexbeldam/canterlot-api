@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .infisical.json
+.void/
 
 # --- Virtual Environments & Package Managers ---
 .venv/
