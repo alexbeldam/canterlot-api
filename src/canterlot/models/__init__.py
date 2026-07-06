@@ -1,5 +1,5 @@
 from .book import BookModel, LinkCandidate
-from .club import CatalogEntryModel, ClubModel, MemberSchema
+from .club import CatalogEntryModel, ClubModel, MemberSchema, PendingApprovalSchema
 from .enums import ClubOnboardingStatus, InviteType, JoinPolicy, UserRole
 from .error import ErrorCode, ErrorDetail, ErrorResponseModel
 from .invite import InviteModel
@@ -18,6 +18,7 @@ __all__ = [
     "JoinPolicy",
     "LinkCandidate",
     "MemberSchema",
+    "PendingApprovalSchema",
     "UserModel",
     "UserRole",
 ]

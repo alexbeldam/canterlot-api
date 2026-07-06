@@ -1,10 +1,11 @@
 from beanie import PydanticObjectId
 
-from canterlot.dto.club import ClubCreateRequest, ClubResponse
-from canterlot.models.club import ClubModel, MemberSchema
+from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse
+from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
 from canterlot.models.enums import UserRole
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
+SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 
 
 def describe_club_create_request():
@@ -34,3 +35,31 @@ def describe_club_response_from_model():
         assert not hasattr(response, "banned_users")
         assert not hasattr(response, "pending_approvals")
         assert not hasattr(response, "catalog")
+
+
+def describe_club_detail_response_from_model_with_pending():
+    def it_resolves_pending_approvals_to_usernames_and_timestamps():
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[MemberSchema(user_id=SOME_OWNER_ID, role=UserRole.OWNER)],
+            pending_approvals=[PendingApprovalSchema(user_id=SOME_PENDING_ID)],
+        )
+
+        response = ClubDetailResponse.from_model_with_pending(
+            club,
+            user_usernames={SOME_OWNER_ID: "owner_1"},
+            pending_usernames={SOME_PENDING_ID: "pending_1"},
+        )
+
+        assert response.members[0].username == "owner_1"
+        assert response.pending_approvals[0].username == "pending_1"
+        assert response.pending_approvals[0].requested_at == club.pending_approvals[0].requested_at
+
+    def it_never_exposes_banned_users():
+        club = ClubModel(name="Book Club", slug="book-club")
+
+        response = ClubDetailResponse.from_model_with_pending(club, {}, {})
+
+        assert not hasattr(response, "banned_users")
+        assert response.pending_approvals == []

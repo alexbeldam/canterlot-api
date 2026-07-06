@@ -32,6 +32,11 @@ class ClubMemberDTO(BaseModel):
     joined_at: datetime
 
 
+class PendingApprovalDTO(BaseModel):
+    username: UsernameStr
+    requested_at: datetime
+
+
 class ClubResponse(BaseModel):
     slug: ClubSlugStr
     name: ClubNameStr
@@ -60,4 +65,30 @@ class ClubResponse(BaseModel):
                 for member in club.members
             ],
             created_at=club.created_at,
+        )
+
+
+class ClubDetailResponse(ClubResponse):
+    """`ClubResponse` plus fields only ever shown to an `OWNER`/`ADMIN` caller, never to plain members."""
+
+    pending_approvals: list[PendingApprovalDTO]
+
+    @classmethod
+    def from_model_with_pending(
+        cls,
+        club: ClubModel,
+        user_usernames: dict[PydanticObjectId, UsernameStr],
+        pending_usernames: dict[PydanticObjectId, UsernameStr],
+    ) -> "ClubDetailResponse":
+        base = ClubResponse.from_model(club, user_usernames)
+
+        return cls(
+            **base.model_dump(),
+            pending_approvals=[
+                PendingApprovalDTO(
+                    username=pending_usernames[pending.user_id],
+                    requested_at=pending.requested_at,
+                )
+                for pending in club.pending_approvals
+            ],
         )

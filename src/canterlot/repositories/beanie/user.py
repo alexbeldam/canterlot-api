@@ -1,5 +1,5 @@
 from beanie import PydanticObjectId
-from beanie.operators import Pull, Push
+from beanie.operators import In, Pull, Push
 from pydantic import BaseModel
 
 from canterlot.models import UserModel
@@ -22,6 +22,14 @@ class BeanieUserRepository(UserRepository):
         if not p or not p.username:
             return None
         return p.username
+
+    async def find_usernames_by_ids(self, user_ids: list[PydanticObjectId]) -> dict[PydanticObjectId, UsernameStr]:
+        if not user_ids:
+            return {}
+
+        users = await UserModel.find(In(UserModel.id, user_ids)).to_list()
+
+        return {PydanticObjectId(u.id): u.username for u in users}
 
     async def find_by_username(self, username: UsernameStr) -> UserModel | None:
         return await UserModel.find_one(UserModel.username == username)

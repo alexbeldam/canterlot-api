@@ -31,6 +31,11 @@ class MemberSchema(BaseModel):
     joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class PendingApprovalSchema(BaseModel):
+    user_id: PydanticObjectId
+    requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class CatalogEntryModel(BaseModel):
     book_id: PydanticObjectId
     suggested_by: PydanticObjectId
@@ -46,7 +51,7 @@ class ClubModel(Document):
     preferred_languages: list[LanguageStr] = Field(default_factory=list)
     members: list[MemberSchema] = Field(default_factory=list)
     banned_users: list[PydanticObjectId] = Field(default_factory=list)
-    pending_approvals: list[PydanticObjectId] = Field(default_factory=list)
+    pending_approvals: list[PendingApprovalSchema] = Field(default_factory=list)
     catalog: list[CatalogEntryModel] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -57,7 +62,7 @@ class ClubModel(Document):
     def verify_unique_membership_states(self):
         member_ids = {m.user_id for m in self.members}
         banned_ids = set(self.banned_users)
-        pending_ids = set(self.pending_approvals)
+        pending_ids = {p.user_id for p in self.pending_approvals}
 
         if intersection := member_ids.intersection(banned_ids):
             raise ValueError(f"Users cannot be active members and banned: {intersection}")

@@ -91,8 +91,11 @@ async def get_auth_service(user_repo: Annotated[UserRepository, Depends(get_user
     return AuthService(user_repo)
 
 
-async def get_club_service(club_repo: Annotated[ClubRepository, Depends(get_club_repository)]):
-    return ClubService(club_repo)
+async def get_club_service(
+    club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+):
+    return ClubService(club_repo, user_repo)
 
 
 async def get_invite_service(

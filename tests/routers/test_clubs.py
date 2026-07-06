@@ -4,13 +4,15 @@ from unittest.mock import AsyncMock
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
-from canterlot.exceptions import InviteLinkDeactivatedError, UnauthorizedClubMemberError
-from canterlot.models.club import ClubModel, MemberSchema
+from canterlot.exceptions import ClubNotFoundError, InviteLinkDeactivatedError, UnauthorizedClubMemberError
+from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
 from canterlot.models.enums import UserRole
+from canterlot.services.club import ClubView
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")  # matches conftest's `current_user` fixture
+SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 
 
 def _found_club(club_id: PydanticObjectId = SOME_CLUB_ID) -> SimpleNamespace:
@@ -25,12 +27,23 @@ def _created_club() -> ClubModel:
     )
 
 
+def _club_view(
+    role: UserRole,
+    pending_usernames: dict[PydanticObjectId, str] | None = None,
+    club: ClubModel | None = None,
+) -> ClubView:
+    return ClubView(
+        club=club or _created_club(),
+        member_usernames={SOME_OWNER_ID: "alice_1"},
+        viewer_role=role,
+        pending_usernames=pending_usernames,
+    )
+
+
 def describe_create_club():
-    def it_creates_a_club_and_returns_it(
-        client: TestClient, club_service: AsyncMock, invite_service: AsyncMock, user_repo: AsyncMock
-    ):
+    def it_creates_a_club_and_returns_it(client: TestClient, club_service: AsyncMock, invite_service: AsyncMock):
         club_service.create_new_club.return_value = _created_club()
-        user_repo.find_username_by_id.return_value = "alice_1"
+        club_service.resolve_member_usernames.return_value = {SOME_OWNER_ID: "alice_1"}
 
         response = client.post("/api/v1/clubs", json={"name": "Book Club"})
 
@@ -43,9 +56,9 @@ def describe_create_club():
         assert "id" not in body
         invite_service.rotate_public_link.assert_awaited_once()
 
-    def it_does_not_leak_the_internal_object_id(client: TestClient, club_service: AsyncMock, user_repo: AsyncMock):
+    def it_does_not_leak_the_internal_object_id(client: TestClient, club_service: AsyncMock):
         club_service.create_new_club.return_value = _created_club()
-        user_repo.find_username_by_id.return_value = "alice_1"
+        club_service.resolve_member_usernames.return_value = {SOME_OWNER_ID: "alice_1"}
 
         response = client.post("/api/v1/clubs", json={"name": "Book Club"})
 
@@ -68,6 +81,60 @@ def describe_create_club():
         response = client.post("/api/v1/clubs", json={"name": "Book Club"})
 
         assert response.status_code == 403
+
+
+def describe_get_club():
+    def it_returns_the_public_shape_for_a_plain_member(client: TestClient, club_service: AsyncMock):
+        club_service.get_club_view.return_value = _club_view(role=UserRole.MEMBER)
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["members"][0]["username"] == "alice_1"
+        assert "pending_approvals" not in body
+        assert "banned_users" not in body
+        assert "id" not in body
+
+    def it_returns_403_when_the_caller_is_not_a_member(client: TestClient, club_service: AsyncMock):
+        club_service.get_club_view.side_effect = UnauthorizedClubMemberError("not a member")
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_includes_pending_approvals_for_an_owner(client: TestClient, club_service: AsyncMock):
+        club = _created_club()
+        club.pending_approvals = [PendingApprovalSchema(user_id=SOME_PENDING_ID)]
+        club_service.get_club_view.return_value = _club_view(
+            role=UserRole.OWNER,
+            pending_usernames={SOME_PENDING_ID: "bob_2"},
+            club=club,
+        )
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["pending_approvals"][0]["username"] == "bob_2"
+        assert "banned_users" not in body
+
+    def it_includes_pending_approvals_for_an_admin(client: TestClient, club_service: AsyncMock):
+        club_service.get_club_view.return_value = _club_view(role=UserRole.ADMIN, pending_usernames={})
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 200
+        assert response.json()["pending_approvals"] == []
+
+    def it_returns_404_when_the_slug_does_not_exist(client: TestClient, club_service: AsyncMock):
+        club_service.get_club_view.side_effect = ClubNotFoundError("not found")
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
 
 
 def describe_rotate_public_admission_link():

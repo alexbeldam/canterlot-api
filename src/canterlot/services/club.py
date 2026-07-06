@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest, ClubOnboarding
@@ -9,16 +11,28 @@ from canterlot.models import (
     MemberSchema,
     UserRole,
 )
-from canterlot.repositories import ClubRepository
+from canterlot.models.club import ClubSlugStr
+from canterlot.models.user import UsernameStr
+from canterlot.repositories import ClubRepository, UserRepository
 from canterlot.utils import get_logger, make_slug
 from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
 
 
+@dataclass
+class ClubView:
+    club: ClubModel
+    member_usernames: dict[PydanticObjectId, UsernameStr]
+    viewer_role: UserRole
+    # None unless the viewer is an OWNER/ADMIN — pending approvals are never resolved for anyone else.
+    pending_usernames: dict[PydanticObjectId, UsernameStr] | None
+
+
 class ClubService:
-    def __init__(self, club_repo: ClubRepository):
+    def __init__(self, club_repo: ClubRepository, user_repo: UserRepository):
         self.__club_repo = club_repo
+        self.__user_repo = user_repo
 
     async def create_new_club(self, creator_id: PydanticObjectId, data: ClubCreateRequest) -> ClubModel:
         log = logger.bind(creator_id=str(creator_id), club_name=data.name, join_policy=str(data.join_policy))
@@ -81,3 +95,39 @@ class ClubService:
             raise UnauthorizedClubMemberError("Only members of this club can search for books to suggest.")
 
         return await self.__club_repo.get_preferred_languages_by_id(club_id)
+
+    async def get_club_by_slug(self, slug: ClubSlugStr) -> ClubModel:
+        club = await self.__club_repo.find_by_slug(slug)
+        if not club:
+            raise ClubNotFoundError(f"Club with slug '{slug}' not found")
+
+        return club
+
+    async def get_member_role(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> UserRole | None:
+        return await self.__club_repo.find_member_role_by_club_id_and_user_id(club_id, user_id)
+
+    async def resolve_member_usernames(self, members: list[MemberSchema]) -> dict[PydanticObjectId, UsernameStr]:
+        return await self.__user_repo.find_usernames_by_ids([member.user_id for member in members])
+
+    async def get_club_view(self, slug: ClubSlugStr, viewer_id: PydanticObjectId) -> ClubView:
+        club = await self.get_club_by_slug(slug)
+        club_id = PydanticObjectId(club.id)
+
+        viewer_role = await self.get_member_role(club_id, viewer_id)
+        if viewer_role is None:
+            raise UnauthorizedClubMemberError("Only members of this club can view it.")
+
+        member_usernames = await self.resolve_member_usernames(club.members)
+
+        pending_usernames = None
+        if viewer_role in (UserRole.OWNER, UserRole.ADMIN):
+            pending_usernames = await self.__user_repo.find_usernames_by_ids(
+                [pending.user_id for pending in club.pending_approvals]
+            )
+
+        return ClubView(
+            club=club,
+            member_usernames=member_usernames,
+            viewer_role=viewer_role,
+            pending_usernames=pending_usernames,
+        )
