@@ -2,11 +2,11 @@ import asyncio
 import json
 import math
 
-from beanie import PydanticObjectId
+from pydantic import TypeAdapter, ValidationError
 
+from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
 from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
-from canterlot.models import BookDetails, BookModel, BookSearchResult, PaginatedBooksResponse
-from canterlot.models.book import SearchParams, TitleStr
+from canterlot.models.book import BookProviderIdentifier, SearchParams, TitleStr, split_isbn
 from canterlot.models.enums import BookProviderName
 from canterlot.providers import BookProvider, ProviderSearchResponse
 from canterlot.repositories import BookRepository, CacheRepository
@@ -193,7 +193,7 @@ class BookService:
 
             for book in books_list:
                 if isinstance(book, BookSearchResult):
-                    book.provider = current_provider_name
+                    book.id.provider = current_provider_name
                     raw_books.append(book)
                 elif isinstance(book, dict):
                     book["provider"] = current_provider_name
@@ -292,14 +292,31 @@ class BookService:
         log.info("Successfully recovered third-party detailed book context")
         return details
 
-    async def get_by_id(self, book_id: PydanticObjectId) -> BookModel:
-        log = logger.bind(book_id=str(book_id))
-        log.info("Fetching persistent book record from global database collection")
+    async def get_by_identifier(self, identifier: str) -> BookResponse:
+        log = logger.bind(identifier=identifier)
+        log.info("Fetching persistent book record by public identifier")
 
-        book = await self.__repo.find_by_id(book_id)
+        book = None
+
+        try:
+            external_id = TypeAdapter(BookProviderIdentifier).validate_python(identifier)
+        except ValidationError:
+            external_id = None
+
+        if external_id is not None:
+            book = await self.__repo.find_by_external_id(external_id)
+        else:
+            try:
+                isbn_10, isbn_13 = split_isbn(identifier)
+            except ValidationError:
+                isbn_10, isbn_13 = None, None
+
+            if isbn_10 or isbn_13:
+                book = await self.__repo.find_by_isbn(isbn_10, isbn_13)
+
         if book is None:
-            log.warn("Query mismatch: requested book object identifier not found")
-            raise BookNotFoundError(f"Book with ID '{book_id}' not found")
+            log.warn("Query mismatch: requested book identifier not found")
+            raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
 
         log.info("Global book reference successfully mapped and returned")
-        return book
+        return BookResponse.model_validate(book, from_attributes=True)

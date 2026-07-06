@@ -1,13 +1,12 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from beanie import Document, Indexed, PydanticObjectId
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from beanie import Document, Indexed
+from pydantic import Field, StringConstraints, field_validator
 
 from canterlot.utils.format import NonEmptyStr, NormalizedEmailStr
 
 from .book import ReadBook
-from .club import ClubOnboarding
 
 type UsernameStr = Annotated[
     NonEmptyStr,
@@ -38,29 +37,3 @@ class UserModel(Document):
     @classmethod
     def normalize_username(cls, v: str) -> str:
         return v.lower()
-
-
-class UserRegisterRequest(BaseModel):
-    name: PersonNameStr
-    username: UsernameStr
-    email: NormalizedEmailStr
-    password: str = Field(..., min_length=6, examples=["super_secret_password_123"])
-
-    @field_validator("username", mode="before")
-    @classmethod
-    def normalize_username(cls, v: str) -> str:
-        return v.lower()
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class RegisterResult(TokenResponse):
-    user_id: PydanticObjectId
-
-
-class RegisterResponse(TokenResponse):
-    onboarding: ClubOnboarding | None = None

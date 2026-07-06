@@ -1,6 +1,7 @@
 from typing import Protocol, TypedDict
 
-from canterlot.models import BookDetails, BookSearchResult, LinkCandidate
+from canterlot.dto.book import BookDetails, BookSearchResult
+from canterlot.models import LinkCandidate
 from canterlot.models.book import SearchParams
 from canterlot.models.enums import BookProviderName, LinkProviderName
 

@@ -2,8 +2,9 @@ import asyncio
 
 from beanie import PydanticObjectId
 
+from canterlot.dto.catalog import BookSuggestionRequest, SuggestionResponse, SuggestionStatus
 from canterlot.exceptions import ClubSuggestionsClosedError, UnauthorizedClubMemberError
-from canterlot.models import BookModel, BookSuggestionRequest, LinkCandidate, SuggestionResponse, SuggestionStatus
+from canterlot.models import BookModel, LinkCandidate
 from canterlot.models.book import AuthorList, SearchParams, TitleStr, UrlList
 from canterlot.models.club import CatalogEntryModel
 from canterlot.models.enums import ExtensionType
@@ -51,7 +52,6 @@ class CatalogService:
         log = logger.bind(
             club_id=str(club_id),
             user_id=str(user_id),
-            provider=suggestion.provider,
             source_id=suggestion.source_id,
             book_title=suggestion.title,
         )
@@ -63,6 +63,7 @@ class CatalogService:
 
         if book and book.id:
             book_id = PydanticObjectId(book.id)
+            external_id = book.external_id
             log = log.bind(book_id=str(book_id))
 
             await self.__supplement_existing_book(book, book_id, suggestion, log)
@@ -72,9 +73,10 @@ class CatalogService:
                     "Suggestion processed: book already exists in club catalog",
                     status=SuggestionStatus.ALREADY_EXISTS,
                 )
-                return SuggestionResponse(status=SuggestionStatus.ALREADY_EXISTS, book_id=book.id)
+                return SuggestionResponse(status=SuggestionStatus.ALREADY_EXISTS, book_external_id=external_id)
         else:
             book_id, log = await self.__create_new_book(suggestion, log)
+            external_id = suggestion.source_id
 
         entry = CatalogEntryModel(
             book_id=book_id,
@@ -84,7 +86,7 @@ class CatalogService:
         await self.__club_repo.add_to_catalog(club_id=club_id, entry=entry)
 
         log.info("Book suggestion transaction completed successfully", status=SuggestionStatus.SUCCESS)
-        return SuggestionResponse(status=SuggestionStatus.SUCCESS, book_id=book_id)
+        return SuggestionResponse(status=SuggestionStatus.SUCCESS, book_external_id=external_id)
 
     async def __ensure_suggestion_allowed(self, club_id: PydanticObjectId, user_id: PydanticObjectId, log) -> None:
         if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
@@ -101,9 +103,7 @@ class CatalogService:
             book = await self.__book_repo.find_by_isbn(suggestion.isbn_10, suggestion.isbn_13)
 
         if book is None:
-            book = await self.__book_repo.find_by_provider_and_provider_book_id(
-                suggestion.provider, suggestion.source_id
-            )
+            book = await self.__book_repo.find_by_external_id(suggestion.source_id)
 
         return book
 
@@ -143,7 +143,7 @@ class CatalogService:
         links = await self.__scrape_best_links(suggestion, list(ExtensionType))
         book_data = suggestion.model_dump(exclude={"source_id"})
 
-        new_book = BookModel(provider_book_id=suggestion.source_id, urls=links, **book_data)
+        new_book = BookModel(external_id=suggestion.source_id, urls=links, **book_data)
 
         book = await self.__book_repo.save(new_book)
         book_id = PydanticObjectId(book.id)

@@ -3,6 +3,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
+from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import (
     ClubNotFoundError,
     DirectInviteIdentityMismatchError,
@@ -13,7 +14,7 @@ from canterlot.exceptions import (
     TokenMalformedError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.club import ClubOnboarding, ClubOnboardingStatus
+from canterlot.models.enums import ClubOnboardingStatus
 from canterlot.models.user import UserModel
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService

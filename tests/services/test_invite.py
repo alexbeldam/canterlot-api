@@ -34,7 +34,7 @@ def _invite(**overrides) -> SimpleNamespace:
 
 
 def _club() -> SimpleNamespace:
-    return SimpleNamespace(id=SOME_CLUB_ID, name="Book Club", join_policy="PUBLIC")
+    return SimpleNamespace(id=SOME_CLUB_ID, slug="book-club", name="Book Club", join_policy="PUBLIC")
 
 
 def describe_get_preview_metadata():
@@ -205,7 +205,7 @@ def describe_rotate_public_link():
     async def it_raises_when_the_requester_lacks_a_privileged_role(
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
-        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.USER
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.MEMBER
         service = InviteService(invite_repo, club_repo, user_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):

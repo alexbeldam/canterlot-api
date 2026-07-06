@@ -1,7 +1,7 @@
 from beanie import PydanticObjectId
 
-from canterlot.models.enums import InviteType, JoinPolicy
-from canterlot.models.invite import InviteModel, InvitePreviewResponse
+from canterlot.models.enums import InviteType
+from canterlot.models.invite import InviteModel
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 
@@ -28,14 +28,3 @@ def describe_invite_model_target_email_normalization():
     def it_normalizes_the_target_email():
         invite = InviteModel(club_id=SOME_CLUB_ID, target_email="  Alice@Example.COM  ")
         assert invite.target_email == "alice@example.com"
-
-
-def describe_invite_preview_response():
-    def it_allows_an_absent_invited_by_username():
-        preview = InvitePreviewResponse(
-            club_id=SOME_CLUB_ID,
-            club_name="Book Club",
-            join_policy=JoinPolicy.PUBLIC,
-            invite_type=InviteType.DIRECT,
-        )
-        assert preview.invited_by_username is None

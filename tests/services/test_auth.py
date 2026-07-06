@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
+from canterlot.dto.auth import UserRegisterRequest
 from canterlot.exceptions import EmailAlreadyExistsError, InvalidCredentialsError, UsernameAlreadyExistsError
-from canterlot.models.user import UserRegisterRequest
 from canterlot.services.auth import AuthService
 from canterlot.utils.security import hash_password
 

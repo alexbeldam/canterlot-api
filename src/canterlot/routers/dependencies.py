@@ -9,8 +9,9 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 
 from canterlot.config import get_settings
-from canterlot.exceptions import InvalidCredentialsError
+from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError
 from canterlot.models import UserModel
+from canterlot.models.club import ClubSlugStr
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
 from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
 from canterlot.repositories.beanie import (
@@ -100,6 +101,16 @@ async def get_invite_service(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
 ):
     return InviteService(invite_repo, club_repo, user_repo)
+
+
+async def get_club_id_from_slug(
+    club_slug: ClubSlugStr,
+    club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
+) -> PydanticObjectId:
+    club = await club_repo.find_by_slug(club_slug)
+    if club is None:
+        raise ClubNotFoundError(f"Club with slug '{club_slug}' not found")
+    return PydanticObjectId(club.id)
 
 
 def _parse_subject_id(user_id: str) -> PydanticObjectId:

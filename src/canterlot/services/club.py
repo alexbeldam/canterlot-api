@@ -1,17 +1,16 @@
 from beanie import PydanticObjectId
 
+from canterlot.dto.club import ClubCreateRequest, ClubOnboarding
 from canterlot.exceptions import ClubNotFoundError, UnauthorizedClubMemberError
 from canterlot.models import (
-    ClubCreateRequest,
     ClubModel,
-    ClubOnboarding,
     ClubOnboardingStatus,
     JoinPolicy,
     MemberSchema,
     UserRole,
 )
 from canterlot.repositories import ClubRepository
-from canterlot.utils import get_logger
+from canterlot.utils import get_logger, make_slug
 from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
@@ -26,9 +25,11 @@ class ClubService:
         log.info("Initiating new book club workspace creation")
 
         owner = MemberSchema(user_id=creator_id, role=UserRole.OWNER)
+        slug = await make_slug(data.name, self.__club_repo.exists_by_club_slug)
 
         club = ClubModel(
             name=data.name,
+            slug=slug,
             description=data.description,
             join_policy=data.join_policy,
             preferred_languages=data.preferred_languages,
@@ -65,7 +66,7 @@ class ClubService:
             status = ClubOnboardingStatus.ALREADY_MEMBER
         elif is_direct or club.join_policy == JoinPolicy.PUBLIC:
             status = ClubOnboardingStatus.JOINED
-            new_member = MemberSchema(user_id=user_id, role=UserRole.USER)
+            new_member = MemberSchema(user_id=user_id, role=UserRole.MEMBER)
             await self.__club_repo.add_member(club_id, new_member)
             log.info("User successfully admitted into the club roster", status=status)
         else:

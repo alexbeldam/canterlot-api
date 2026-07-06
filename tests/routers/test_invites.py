@@ -3,13 +3,13 @@ from unittest.mock import AsyncMock
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
+from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import (
     ClubNotFoundError,
     DirectInviteIdentityMismatchError,
     InvalidInviteTokenError,
     InviteLinkDeactivatedError,
 )
-from canterlot.models.club import ClubOnboarding
 from canterlot.models.enums import ClubOnboardingStatus
 from canterlot.services.invite import InviteValidationResult
 

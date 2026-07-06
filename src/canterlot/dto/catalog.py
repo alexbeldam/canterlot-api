@@ -1,16 +1,13 @@
 from enum import StrEnum
 
-from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 
-from canterlot.models.book import AuthorList, PageCount, PublishedYear, TitleStr
-from canterlot.models.enums import BookProviderName
+from canterlot.models.book import AuthorList, BookExternalId, PageCount, PublishedYear, TitleStr
 from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
 
 
 class BookSuggestionRequest(BaseModel):
-    source_id: str = Field(..., description="The ID returned by the search endpoint", examples=["zyTCAlFlgZ8C"])
-    provider: BookProviderName
+    source_id: BookExternalId
     title: TitleStr
     authors: AuthorList = Field(default_factory=list)
     year: PublishedYear | None = None
@@ -35,4 +32,4 @@ class SuggestionStatus(StrEnum):
 
 class SuggestionResponse(BaseModel):
     status: SuggestionStatus
-    book_id: PydanticObjectId
+    book_external_id: BookExternalId

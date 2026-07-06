@@ -2,19 +2,13 @@ from beanie import PydanticObjectId
 from beanie.operators import Or, Set
 
 from canterlot.models import BookModel
-from canterlot.models.book import UrlList
-from canterlot.models.enums import BookProviderName
+from canterlot.models.book import BookProviderIdentifier, UrlList
 from canterlot.repositories import BookRepository
 
 
 class BeanieBookRepository(BookRepository):
-    async def find_by_provider_and_provider_book_id(
-        self, provider: BookProviderName, provider_book_id: str
-    ) -> BookModel | None:
-        return await BookModel.find_one(
-            BookModel.provider == provider,
-            BookModel.provider_book_id == provider_book_id,
-        )
+    async def find_by_external_id(self, external_id: BookProviderIdentifier) -> BookModel | None:
+        return await BookModel.find_one(BookModel.external_id == external_id)
 
     async def find_by_isbn(self, isbn_10: str | None, isbn_13: str | None) -> BookModel | None:
         conditions = []
