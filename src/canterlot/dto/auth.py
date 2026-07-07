@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator
 
 from canterlot.dto.club import ClubOnboarding
-from canterlot.models.enums import AuthOutcome
-from canterlot.models.user import PersonNameStr, UsernameStr
+from canterlot.models.enums import AuthOutcome, AuthProviderName
+from canterlot.models.user import PersonNameStr, UserModel, UsernameStr
 from canterlot.utils.format import NormalizedEmailStr
 
 
@@ -40,3 +42,30 @@ class OAuthSignInResponse(BaseModel):
     access_token: str | None = None
     refresh_token: str | None = None
     token_type: str = "bearer"
+
+
+class LinkProviderRequest(BaseModel):
+    credential: str = Field(
+        ...,
+        description="The provider's opaque proof-of-ownership token (e.g. a Google ID token).",
+    )
+
+
+class LinkedProviderDTO(BaseModel):
+    provider: AuthProviderName
+    linked_at: datetime
+
+
+class ConnectedProvidersResponse(BaseModel):
+    has_password: bool
+    linked_providers: list[LinkedProviderDTO]
+
+    @classmethod
+    def from_model(cls, user: UserModel) -> "ConnectedProvidersResponse":
+        return cls(
+            has_password=user.hashed_password is not None,
+            linked_providers=[
+                LinkedProviderDTO(provider=linked.provider, linked_at=linked.linked_at)
+                for linked in user.linked_providers
+            ],
+        )

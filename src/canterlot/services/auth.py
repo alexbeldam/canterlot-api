@@ -1,10 +1,13 @@
 from beanie import PydanticObjectId
 
-from canterlot.dto.auth import OAuthSignInResponse, TokenResponse, UserRegisterRequest
+from canterlot.dto.auth import ConnectedProvidersResponse, OAuthSignInResponse, TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
+    AuthProviderAlreadyLinkedError,
+    AuthProviderNotLinkedError,
     EmailAlreadyExistsError,
     GatewayConfigurationError,
     InvalidCredentialsError,
+    LastAuthenticationMethodError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models import AuthOutcome, AuthProviderName, LinkedProviderSchema, UserModel
@@ -79,9 +82,7 @@ class AuthService:
         log.info("Attempting user authentication")
 
         user = await self.__user_repo.find_by_username(username)
-        if not (
-            user and user.id and user.hashed_password and verify_password(plain_password, user.hashed_password)
-        ):
+        if not (user and user.id and user.hashed_password and verify_password(plain_password, user.hashed_password)):
             log.warn("Authentication failed: invalid security credentials", error_type="credentials_mismatch")
             raise InvalidCredentialsError("Incorrect username or password")
 
@@ -157,3 +158,50 @@ class AuthService:
 
         log.info("New account created from OAuth identity", user_id=str(saved_user.id))
         return await self.__issue_login_tokens(PydanticObjectId(saved_user.id), AuthOutcome.CREATED)
+
+    async def link_provider(self, user_id: PydanticObjectId, provider: AuthProviderName, credential: str) -> None:
+        log = logger.bind(user_id=str(user_id), provider=provider)
+        log.info("Attempting to link a new authentication provider")
+
+        identity = await self.__get_oauth_provider(provider).verify(credential)
+
+        existing = await self.__user_repo.find_by_linked_provider(provider, identity.external_id)
+        if existing and PydanticObjectId(existing.id) != user_id:
+            log.warn("Link rejected: credential already linked to a different account")
+            raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
+
+        if existing:
+            log.info("Provider already linked to this account, nothing to do")
+            return
+
+        await self.__user_repo.add_linked_provider(
+            user_id,
+            LinkedProviderSchema(provider=provider, external_id=identity.external_id),
+        )
+        log.info("Authentication provider linked successfully")
+
+    async def disconnect_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:
+        log = logger.bind(user_id=str(user_id), provider=provider)
+        log.info("Attempting to disconnect an authentication provider")
+
+        user = await self.__user_repo.find_by_id(user_id)
+        if not user:
+            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
+
+        if not any(linked.provider == provider for linked in user.linked_providers):
+            raise AuthProviderNotLinkedError(f"No linked '{provider}' account to disconnect.")
+
+        remaining_providers = [linked for linked in user.linked_providers if linked.provider != provider]
+        if not user.hashed_password and not remaining_providers:
+            log.warn("Disconnect rejected: this is the account's last remaining authentication method")
+            raise LastAuthenticationMethodError("Cannot disconnect your only remaining way to sign in.")
+
+        await self.__user_repo.remove_linked_provider(user_id, provider)
+        log.info("Authentication provider disconnected successfully")
+
+    async def list_connected_providers(self, user_id: PydanticObjectId) -> ConnectedProvidersResponse:
+        user = await self.__user_repo.find_by_id(user_id)
+        if not user:
+            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
+
+        return ConnectedProvidersResponse.from_model(user)
