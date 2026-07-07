@@ -87,6 +87,13 @@ def describe_login_user():
         with pytest.raises(InvalidCredentialsError):
             await service.login_user("alice_1", "wrong-password")
 
+    async def it_rejects_a_password_login_for_an_oauth_only_account(user_repo: AsyncMock):
+        user_repo.find_by_username.return_value = SimpleNamespace(id=SOME_USER_ID, hashed_password=None)
+        service = AuthService(user_repo)
+
+        with pytest.raises(InvalidCredentialsError):
+            await service.login_user("alice_1", "anything")
+
 
 def describe_rotate_refresh_token():
     async def it_pulls_the_old_token_and_pushes_a_freshly_issued_pair(user_repo: AsyncMock):

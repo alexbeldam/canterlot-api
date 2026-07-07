@@ -6,9 +6,12 @@ import pytest
 from beanie import PydanticObjectId
 from curl_cffi.requests import AsyncSession
 
+from canterlot.config import get_settings
 from canterlot.exceptions import InvalidCredentialsError, TokenExpiredError, TokenMalformedError
+from canterlot.models.enums import AuthProviderName
 from canterlot.providers import BookProvider, GoogleBookProvider, LinkProvider
 from canterlot.providers.annas import AnnaLinkProvider
+from canterlot.providers.auth import GoogleAuthProvider
 from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
@@ -33,6 +36,7 @@ from canterlot.routers.dependencies import (
     get_invite_repository,
     get_invite_service,
     get_link_providers,
+    get_oauth_providers,
     get_redis_client,
     get_user_id_from_valid_refresh_token,
     get_user_repository,
@@ -169,6 +173,16 @@ def describe_infrastructure_factories():
 
         assert len(providers) == 1
         assert isinstance(providers[0], AnnaLinkProvider)
+
+    def it_builds_the_configured_oauth_providers(monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(get_settings(), "google_oauth_client_id", "some-client-id")
+
+        providers = get_oauth_providers()
+
+        assert isinstance(providers[AuthProviderName.GOOGLE], GoogleAuthProvider)
+
+    def it_returns_no_oauth_providers_when_none_are_configured():
+        assert get_oauth_providers() == {}
 
 
 def describe_service_factories():

@@ -75,7 +75,9 @@ class AuthService:
         log.info("Attempting user authentication")
 
         user = await self.__user_repo.find_by_username(username)
-        if not (user and user.id and verify_password(plain_password, user.hashed_password)):
+        if not (
+            user and user.id and user.hashed_password and verify_password(plain_password, user.hashed_password)
+        ):
             log.warn("Authentication failed: invalid security credentials", error_type="credentials_mismatch")
             raise InvalidCredentialsError("Incorrect username or password")
 
