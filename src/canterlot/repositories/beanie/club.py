@@ -68,6 +68,15 @@ class BeanieClubRepository(ClubRepository):
 
         return count > 0
 
+    async def exists_by_club_id_and_pending_user_id(
+        self,
+        club_id: PydanticObjectId,
+        user_id: PydanticObjectId,
+    ) -> bool:
+        count = await ClubModel.find(ClubModel.id == club_id, ClubModel.pending_approvals.user_id == user_id).count()
+
+        return count > 0
+
     async def exists_by_club_id_and_catalog_book_id(
         self,
         club_id: PydanticObjectId,

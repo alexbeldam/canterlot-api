@@ -41,6 +41,11 @@ class ClubRepository(Protocol):
         club_id: PydanticObjectId,
         user_id: PydanticObjectId,
     ) -> bool: ...
+    async def exists_by_club_id_and_pending_user_id(
+        self,
+        club_id: PydanticObjectId,
+        user_id: PydanticObjectId,
+    ) -> bool: ...
     async def exists_by_club_id_and_catalog_book_id(
         self,
         club_id: PydanticObjectId,

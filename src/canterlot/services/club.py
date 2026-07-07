@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest, ClubOnboarding
-from canterlot.exceptions import ClubNotFoundError, UnauthorizedClubMemberError
+from canterlot.exceptions import ClubNotFoundError, PendingRequestNotFoundError, UnauthorizedClubMemberError
 from canterlot.models import (
     ClubModel,
     ClubOnboardingStatus,
@@ -131,3 +131,22 @@ class ClubService:
             viewer_role=viewer_role,
             pending_usernames=pending_usernames,
         )
+
+    async def review_pending_request(
+        self,
+        club_id: PydanticObjectId,
+        reviewer_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+        approve: bool,
+    ) -> None:
+        reviewer_role = await self.get_member_role(club_id, reviewer_id)
+        if reviewer_role not in (UserRole.OWNER, UserRole.ADMIN):
+            raise UnauthorizedClubMemberError("Only an OWNER or ADMIN can review pending join requests.")
+
+        if not await self.__club_repo.exists_by_club_id_and_pending_user_id(club_id, target_user_id):
+            raise PendingRequestNotFoundError(f"No pending join request for user '{target_user_id}' in this club.")
+
+        if approve:
+            await self.__club_repo.add_member(club_id, MemberSchema(user_id=target_user_id, role=UserRole.MEMBER))
+
+        await self.__club_repo.remove_from_pending_approvals(club_id, target_user_id)

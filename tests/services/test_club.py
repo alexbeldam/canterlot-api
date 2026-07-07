@@ -5,7 +5,7 @@ import pytest
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest
-from canterlot.exceptions import ClubNotFoundError, UnauthorizedClubMemberError
+from canterlot.exceptions import ClubNotFoundError, PendingRequestNotFoundError, UnauthorizedClubMemberError
 from canterlot.models import ClubOnboardingStatus, JoinPolicy, UserRole
 from canterlot.models.club import MemberSchema, PendingApprovalSchema
 from canterlot.services.club import ClubService
@@ -227,3 +227,56 @@ def describe_get_club_view():
 
         with pytest.raises(ClubNotFoundError):
             await service.get_club_view("missing-club", SOME_USER_ID)
+
+
+def describe_review_pending_request():
+    SOME_REVIEWER_ID = PydanticObjectId("507f1f77bcf86cd799439014")
+
+    async def it_raises_when_the_reviewer_is_not_owner_or_admin(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.MEMBER
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.review_pending_request(SOME_CLUB_ID, SOME_REVIEWER_ID, SOME_PENDING_ID, approve=True)
+
+        club_repo.exists_by_club_id_and_pending_user_id.assert_not_called()
+
+    async def it_raises_when_the_reviewer_is_not_a_member_at_all(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.review_pending_request(SOME_CLUB_ID, SOME_REVIEWER_ID, SOME_PENDING_ID, approve=True)
+
+    async def it_raises_when_the_target_user_has_no_pending_request(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.OWNER
+        club_repo.exists_by_club_id_and_pending_user_id.return_value = False
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(PendingRequestNotFoundError):
+            await service.review_pending_request(SOME_CLUB_ID, SOME_REVIEWER_ID, SOME_PENDING_ID, approve=True)
+
+        club_repo.add_member.assert_not_called()
+        club_repo.remove_from_pending_approvals.assert_not_called()
+
+    async def it_admits_the_user_as_a_member_when_approved(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.ADMIN
+        club_repo.exists_by_club_id_and_pending_user_id.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        await service.review_pending_request(SOME_CLUB_ID, SOME_REVIEWER_ID, SOME_PENDING_ID, approve=True)
+
+        added_member = club_repo.add_member.call_args.args[1]
+        assert added_member.user_id == SOME_PENDING_ID
+        assert added_member.role == UserRole.MEMBER
+        club_repo.remove_from_pending_approvals.assert_awaited_once_with(SOME_CLUB_ID, SOME_PENDING_ID)
+
+    async def it_only_dequeues_the_user_when_rejected(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.OWNER
+        club_repo.exists_by_club_id_and_pending_user_id.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        await service.review_pending_request(SOME_CLUB_ID, SOME_REVIEWER_ID, SOME_PENDING_ID, approve=False)
+
+        club_repo.add_member.assert_not_called()
+        club_repo.remove_from_pending_approvals.assert_awaited_once_with(SOME_CLUB_ID, SOME_PENDING_ID)
