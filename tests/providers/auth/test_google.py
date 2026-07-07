@@ -23,7 +23,12 @@ def describe_verify():
         monkeypatch.setattr(
             google_module.google_id_token,
             "verify_oauth2_token",
-            lambda *_args, **_kwargs: {"sub": "google-sub-123", "email": "alice@example.com", "name": "Alice"},
+            lambda *_args, **_kwargs: {
+                "sub": "google-sub-123",
+                "email": "alice@example.com",
+                "email_verified": True,
+                "name": "Alice",
+            },
         )
 
         identity = await provider.verify("some-id-token")
@@ -38,7 +43,7 @@ def describe_verify():
         monkeypatch.setattr(
             google_module.google_id_token,
             "verify_oauth2_token",
-            lambda *_args, **_kwargs: {"sub": "google-sub-123", "email": "alice@example.com"},
+            lambda *_args, **_kwargs: {"sub": "google-sub-123", "email": "alice@example.com", "email_verified": True},
         )
 
         identity = await provider.verify("some-id-token")
@@ -55,3 +60,31 @@ def describe_verify():
 
         with pytest.raises(InvalidOAuthCredentialError):
             await provider.verify("expired-token")
+
+    async def it_raises_invalid_oauth_credential_when_google_has_not_verified_the_email(
+        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+    ):
+        monkeypatch.setattr(
+            google_module.google_id_token,
+            "verify_oauth2_token",
+            lambda *_args, **_kwargs: {
+                "sub": "google-sub-123",
+                "email": "alice@example.com",
+                "email_verified": False,
+            },
+        )
+
+        with pytest.raises(InvalidOAuthCredentialError):
+            await provider.verify("some-id-token")
+
+    async def it_raises_invalid_oauth_credential_when_the_email_verified_claim_is_absent(
+        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+    ):
+        monkeypatch.setattr(
+            google_module.google_id_token,
+            "verify_oauth2_token",
+            lambda *_args, **_kwargs: {"sub": "google-sub-123", "email": "alice@example.com"},
+        )
+
+        with pytest.raises(InvalidOAuthCredentialError):
+            await provider.verify("some-id-token")

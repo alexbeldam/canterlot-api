@@ -36,6 +36,10 @@ class GoogleAuthProvider(OAuthProvider):
             log.warn("Google ID token failed cryptographic verification", error=str(exc))
             raise InvalidOAuthCredentialError("The provided Google credential could not be verified.") from exc
 
+        if not claims.get("email_verified"):
+            log.warn("Google reported this account's email as unverified", email=claims.get("email"))
+            raise InvalidOAuthCredentialError("Google has not verified this account's email address.")
+
         log.info("Google ID token successfully verified")
         return OAuthIdentity(
             external_id=claims["sub"],
