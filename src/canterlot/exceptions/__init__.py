@@ -9,7 +9,13 @@ from .auth import (
 )
 from .base import BusinessError
 from .book import BookDetailsNotFoundError, BookDomainError, BookNotFoundError, BookSearchCriteriaMissingError
-from .club import ClubDomainError, ClubNotFoundError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
+from .club import (
+    ClubDomainError,
+    ClubNotFoundError,
+    ClubSuggestionsClosedError,
+    PendingRequestNotFoundError,
+    UnauthorizedClubMemberError,
+)
 from .gateway import GatewayConfigurationError
 from .invite import DirectInviteIdentityMismatchError, InvalidInviteTokenError, InviteLinkDeactivatedError
 
@@ -29,6 +35,7 @@ __all__ = [
     "InvalidCredentialsError",
     "InvalidInviteTokenError",
     "InviteLinkDeactivatedError",
+    "PendingRequestNotFoundError",
     "TokenError",
     "TokenExpiredError",
     "TokenMalformedError",

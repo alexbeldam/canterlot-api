@@ -20,3 +20,8 @@ class ClubSuggestionsClosedError(ClubDomainError):
 class UnauthorizedClubMemberError(ClubDomainError):
     error_code = ErrorCode.UNAUTHORIZED_CLUB_MEMBER
     status_code = status.HTTP_403_FORBIDDEN
+
+
+class PendingRequestNotFoundError(ClubDomainError):
+    error_code = ErrorCode.PENDING_REQUEST_NOT_FOUND
+    status_code = status.HTTP_404_NOT_FOUND

@@ -8,6 +8,7 @@ from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
 from canterlot.exceptions import (
     InvalidCredentialsError,
     InviteLinkDeactivatedError,
+    PendingRequestNotFoundError,
     TokenExpiredError,
     TokenMalformedError,
     UnauthorizedClubMemberError,
@@ -131,6 +132,104 @@ async def get_club(
         return ClubDetailResponse.from_model_with_pending(view.club, view.member_usernames, view.pending_usernames)
 
     return ClubResponse.from_model(view.club, view.member_usernames)
+
+
+@router.post(
+    "/{club_slug}/pending-approvals/{user_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": "Join request approved; the user is now a MEMBER and no longer appears in the queue."
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller does not hold OWNER or ADMIN standing.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError: No club exists with the given slug. "
+                "PendingRequestNotFoundError: This user has no pending join request for this club."
+            ),
+            "content": error_example(ClubNotFoundError, PendingRequestNotFoundError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def approve_pending_request(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    user_id: PydanticObjectId,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.review_pending_request(club_id, current_user_id, user_id, approve=True)
+
+
+@router.post(
+    "/{club_slug}/pending-approvals/{user_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Join request rejected — a plain decline, not a ban. The user may request to join again later."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller does not hold OWNER or ADMIN standing.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError: No club exists with the given slug. "
+                "PendingRequestNotFoundError: This user has no pending join request for this club."
+            ),
+            "content": error_example(ClubNotFoundError, PendingRequestNotFoundError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def reject_pending_request(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    user_id: PydanticObjectId,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.review_pending_request(club_id, current_user_id, user_id, approve=False)
 
 
 @router.post(
