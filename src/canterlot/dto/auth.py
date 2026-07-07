@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_validator
 
 from canterlot.dto.club import ClubOnboarding
+from canterlot.models.enums import AuthOutcome
 from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.utils.format import NormalizedEmailStr
 
@@ -25,3 +26,17 @@ class TokenResponse(BaseModel):
 
 class RegisterResponse(TokenResponse):
     onboarding: ClubOnboarding | None = None
+
+
+class OAuthSignInRequest(BaseModel):
+    credential: str = Field(
+        ...,
+        description="The provider's opaque proof-of-ownership token (e.g. a Google ID token).",
+    )
+
+
+class OAuthSignInResponse(BaseModel):
+    outcome: AuthOutcome
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"

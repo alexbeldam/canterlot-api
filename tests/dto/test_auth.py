@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from canterlot.dto.auth import UserRegisterRequest
+from canterlot.dto.auth import OAuthSignInResponse, UserRegisterRequest
+from canterlot.models.enums import AuthOutcome
 
 
 def describe_username_normalization_and_constraints():
@@ -43,3 +44,10 @@ def describe_password_constraints():
     def it_accepts_a_password_at_the_minimum_length():
         request = UserRegisterRequest(name="Alice Smith", username="alice_1", email="a@b.com", password="123456")
         assert request.password == "123456"
+
+
+def describe_oauth_sign_in_response():
+    def it_carries_no_tokens_by_default():
+        response = OAuthSignInResponse(outcome=AuthOutcome.LINK_REQUIRED)
+        assert response.access_token is None
+        assert response.refresh_token is None

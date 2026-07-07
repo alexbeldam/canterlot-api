@@ -203,7 +203,7 @@ def describe_service_factories():
         assert isinstance(service, CatalogService)
 
     async def it_builds_an_auth_service():
-        service = await get_auth_service(user_repo=AsyncMock(spec=UserRepository))
+        service = await get_auth_service(user_repo=AsyncMock(spec=UserRepository), oauth_providers={})
         assert isinstance(service, AuthService)
 
     async def it_builds_a_club_service():

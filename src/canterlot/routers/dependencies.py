@@ -93,8 +93,11 @@ def get_oauth_providers() -> dict[AuthProviderName, OAuthProvider]:
     return get_all_oauth_providers()
 
 
-async def get_auth_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]) -> AuthService:
-    return AuthService(user_repo)
+async def get_auth_service(
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    oauth_providers: Annotated[dict[AuthProviderName, OAuthProvider], Depends(get_oauth_providers)],
+) -> AuthService:
+    return AuthService(user_repo, oauth_providers)
 
 
 async def get_club_service(
