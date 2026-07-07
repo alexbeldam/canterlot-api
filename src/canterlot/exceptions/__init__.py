@@ -1,7 +1,11 @@
 from .auth import (
     AuthenticationError,
+    AuthProviderAlreadyLinkedError,
+    AuthProviderNotLinkedError,
     EmailAlreadyExistsError,
     InvalidCredentialsError,
+    InvalidOAuthCredentialError,
+    LastAuthenticationMethodError,
     TokenError,
     TokenExpiredError,
     TokenMalformedError,
@@ -20,6 +24,8 @@ from .gateway import GatewayConfigurationError
 from .invite import DirectInviteIdentityMismatchError, InvalidInviteTokenError, InviteLinkDeactivatedError
 
 __all__ = [
+    "AuthProviderAlreadyLinkedError",
+    "AuthProviderNotLinkedError",
     "AuthenticationError",
     "BookDetailsNotFoundError",
     "BookDomainError",
@@ -34,7 +40,9 @@ __all__ = [
     "GatewayConfigurationError",
     "InvalidCredentialsError",
     "InvalidInviteTokenError",
+    "InvalidOAuthCredentialError",
     "InviteLinkDeactivatedError",
+    "LastAuthenticationMethodError",
     "PendingRequestNotFoundError",
     "TokenError",
     "TokenExpiredError",

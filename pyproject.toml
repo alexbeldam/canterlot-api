@@ -36,6 +36,7 @@ dependencies = [
     "curl-cffi>=0.15.0",
     "python-slugify>=8.0.4",
     "pydantic-core>=2.46.4",
+    "google-auth>=2.55.1",
 ]
 
 [dependency-groups]

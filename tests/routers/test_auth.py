@@ -3,10 +3,15 @@ from unittest.mock import AsyncMock
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
-from canterlot.dto.auth import TokenResponse
+from canterlot.dto.auth import OAuthSignInResponse, TokenResponse
 from canterlot.dto.club import ClubOnboarding
-from canterlot.exceptions import InvalidCredentialsError, UsernameAlreadyExistsError
-from canterlot.models.enums import ClubOnboardingStatus
+from canterlot.exceptions import (
+    GatewayConfigurationError,
+    InvalidCredentialsError,
+    InvalidOAuthCredentialError,
+    UsernameAlreadyExistsError,
+)
+from canterlot.models.enums import AuthOutcome, AuthProviderName, ClubOnboardingStatus
 from canterlot.services.auth import RegisterResult
 from canterlot.services.invite import InviteValidationResult
 
@@ -99,3 +104,61 @@ def describe_refresh_token_rotation():
         assert response.status_code == 200
         assert response.json()["access_token"] == "new-access"
         auth_service.rotate_refresh_token.assert_awaited_once_with(SOME_USER_ID, "old-refresh-token")
+
+
+def describe_sign_in_with_provider():
+    def it_returns_a_token_pair_when_logged_in(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResponse(
+            outcome=AuthOutcome.LOGGED_IN, access_token="access", refresh_token="refresh"
+        )
+
+        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["outcome"] == "LOGGED_IN"
+        assert body["access_token"] == "access"
+        auth_service.sign_in_with_provider.assert_awaited_once_with(AuthProviderName.GOOGLE, "some-id-token")
+
+    def it_returns_created_with_tokens_for_a_new_account(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResponse(
+            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
+        )
+
+        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
+
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "CREATED"
+
+    def it_returns_link_required_with_no_tokens(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResponse(outcome=AuthOutcome.LINK_REQUIRED)
+
+        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["outcome"] == "LINK_REQUIRED"
+        assert body["access_token"] is None
+        assert body["refresh_token"] is None
+
+    def it_returns_401_for_an_invalid_credential(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.side_effect = InvalidOAuthCredentialError("bad token")
+
+        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "garbage"})
+
+        assert response.status_code == 401
+        assert response.json()["error"]["error_code"] == "INVALID_OAUTH_CREDENTIAL"
+
+    def it_returns_503_when_the_provider_is_not_configured(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.side_effect = GatewayConfigurationError("disabled")
+
+        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
+
+        assert response.status_code == 503
+        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"
+
+    def it_returns_422_for_an_unrecognized_provider(client: TestClient, auth_service: AsyncMock):
+        response = client.post("/api/v1/auth/FACEBOOK", json={"credential": "some-id-token"})
+
+        assert response.status_code == 422
+        auth_service.sign_in_with_provider.assert_not_called()

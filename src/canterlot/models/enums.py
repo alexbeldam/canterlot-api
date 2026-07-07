@@ -23,6 +23,16 @@ class ClubOnboardingStatus(StrEnum):
     ALREADY_MEMBER = "ALREADY_MEMBER"
 
 
+class AuthProviderName(StrEnum):
+    GOOGLE = "GOOGLE"
+
+
+class AuthOutcome(StrEnum):
+    LOGGED_IN = "LOGGED_IN"
+    CREATED = "CREATED"
+    LINK_REQUIRED = "LINK_REQUIRED"
+
+
 class ExtensionType(StrEnum):
     PDF = "pdf"
     EPUB = "epub"

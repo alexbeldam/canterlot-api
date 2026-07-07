@@ -1,8 +1,8 @@
 from beanie import PydanticObjectId
-from beanie.operators import In, Pull, Push
+from beanie.operators import ElemMatch, In, Pull, Push
 from pydantic import BaseModel
 
-from canterlot.models import UserModel
+from canterlot.models import AuthProviderName, LinkedProviderSchema, UserModel
 from canterlot.models.user import UsernameStr
 from canterlot.repositories import UserRepository
 from canterlot.utils.format import NormalizedEmailStr
@@ -37,6 +37,11 @@ class BeanieUserRepository(UserRepository):
     async def find_by_email(self, email: NormalizedEmailStr) -> UserModel | None:
         return await UserModel.find_one(UserModel.email == email)
 
+    async def find_by_linked_provider(self, provider: AuthProviderName, external_id: str) -> UserModel | None:
+        return await UserModel.find_one(
+            ElemMatch(UserModel.linked_providers, {"provider": provider, "external_id": external_id})
+        )
+
     async def exists_by_username(self, username: UsernameStr) -> bool:
         return await UserModel.find(UserModel.username == username).count() > 0
 
@@ -54,3 +59,11 @@ class BeanieUserRepository(UserRepository):
 
     async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(Pull({UserModel.refresh_tokens: token}))
+
+    async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> None:
+        await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.linked_providers: entry}))
+
+    async def remove_linked_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:
+        await UserModel.find_one(UserModel.id == user_id).update_one(
+            Pull({UserModel.linked_providers: {"provider": provider}})
+        )

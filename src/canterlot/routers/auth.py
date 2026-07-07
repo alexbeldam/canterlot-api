@@ -4,20 +4,28 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from canterlot.dto.auth import RegisterResponse, TokenResponse, UserRegisterRequest
+from canterlot.dto.auth import (
+    OAuthSignInRequest,
+    OAuthSignInResponse,
+    RegisterResponse,
+    TokenResponse,
+    UserRegisterRequest,
+)
 from canterlot.exceptions import (
     ClubNotFoundError,
     DirectInviteIdentityMismatchError,
     EmailAlreadyExistsError,
+    GatewayConfigurationError,
     InvalidCredentialsError,
     InvalidInviteTokenError,
+    InvalidOAuthCredentialError,
     InviteLinkDeactivatedError,
     TokenExpiredError,
     TokenMalformedError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import ClubOnboardingStatus
+from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
 from canterlot.models.user import UsernameStr
 from canterlot.routers.dependencies import (
     get_auth_service,
@@ -199,3 +207,43 @@ async def refresh_token_rotation(
     user_id, old_refresh_token = token_data
 
     return await auth_service.rotate_refresh_token(user_id, old_refresh_token)
+
+
+@router.post(
+    "/{provider}",
+    response_model=OAuthSignInResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "Provider credential verified. `outcome` discriminates the result: LOGGED_IN or CREATED carry a "
+                "token pair; LINK_REQUIRED carries none and means an account with this email already exists "
+                "under a different authentication method -- the frontend should prompt the user to log in with "
+                "that method and link this provider from there (see POST /users/me/auth-providers/{provider})."
+            )
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": "InvalidOAuthCredentialError: The provided credential failed cryptographic verification.",
+            "content": error_example(InvalidOAuthCredentialError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. `provider` is not a recognized authentication provider."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected global backend execution failure or persistence error.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ErrorResponseModel,
+            "description": "GatewayConfigurationError: This authentication provider is not currently configured.",
+            "content": error_example(GatewayConfigurationError),
+        },
+    },
+)
+async def sign_in_with_provider(
+    provider: AuthProviderName,
+    payload: OAuthSignInRequest,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> OAuthSignInResponse:
+    return await auth_service.sign_in_with_provider(provider, payload.credential)

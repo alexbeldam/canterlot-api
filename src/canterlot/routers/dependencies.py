@@ -12,7 +12,9 @@ from canterlot.config import get_settings
 from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError
 from canterlot.models import UserModel
 from canterlot.models.club import ClubSlugStr
+from canterlot.models.enums import AuthProviderName
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
+from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
 from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
@@ -87,8 +89,15 @@ async def get_catalog_service(
     return CatalogService(book_repo=book_repo, club_repo=club_repo, link_providers=link_providers)
 
 
-async def get_auth_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]) -> AuthService:
-    return AuthService(user_repo)
+def get_oauth_providers() -> dict[AuthProviderName, OAuthProvider]:
+    return get_all_oauth_providers()
+
+
+async def get_auth_service(
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    oauth_providers: Annotated[dict[AuthProviderName, OAuthProvider], Depends(get_oauth_providers)],
+) -> AuthService:
+    return AuthService(user_repo, oauth_providers)
 
 
 async def get_club_service(

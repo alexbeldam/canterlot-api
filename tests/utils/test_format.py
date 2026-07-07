@@ -10,6 +10,7 @@ from canterlot.utils.format import (
     NonEmptyStr,
     NormalizedEmailStr,
     make_slug,
+    make_username,
     similarity_ratio,
     split_isbn,
 )
@@ -188,3 +189,26 @@ def describe_make_slug():
         slug = await make_slug("A" * 100, never_taken, max_length=10, suffix_length=3)
 
         assert len(slug) <= 10
+
+
+def describe_make_username():
+    async def it_returns_an_underscore_separated_username_when_it_is_not_a_duplicate():
+        async def never_taken(_username: str) -> bool:
+            return False
+
+        username = await make_username("Twilight Sparkle", never_taken)
+
+        assert username == "twilight_sparkle"
+
+    async def it_appends_a_random_suffix_with_underscores_when_taken():
+        calls: list[str] = []
+
+        async def taken_once(candidate: str) -> bool:
+            calls.append(candidate)
+            return len(calls) == 1
+
+        username = await make_username("Twilight Sparkle", taken_once)
+
+        assert calls[0] == "twilight_sparkle"
+        assert username.startswith("twilight_sparkle_")
+        assert "-" not in username
