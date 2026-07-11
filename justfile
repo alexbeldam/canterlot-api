@@ -89,7 +89,12 @@ pyright:
 
 test:
     @echo "{{ info }}Executing test suites via Pytest...{{ reset }}"
-    @uv run pytest
+    @uv run pytest -m "not integration"
+
+# Runs tests that need a real MongoDB (via testcontainers/Docker) in isolation.
+test-integration:
+    @echo "{{ info }}Executing integration test suites against a real MongoDB (Docker required)...{{ reset }}"
+    @uv run pytest -m integration
 
 deptry flags="":
     @echo "{{ info }}Running dependency analysis...{{ reset }}"
