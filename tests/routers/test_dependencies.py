@@ -21,6 +21,7 @@ from canterlot.repositories.beanie import (
 )
 from canterlot.repositories.redis import RedisCacheRepository
 from canterlot.routers.dependencies import (
+    RefreshTokenContext,
     _parse_subject_id,
     get_auth_service,
     get_book_providers,
@@ -93,11 +94,11 @@ def describe_get_current_user_id():
 def describe_get_user_id_from_valid_refresh_token():
     async def it_returns_the_user_id_and_token_for_a_valid_refresh_token(user_repo: AsyncMock):
         token = create_refresh_token(SOME_USER_ID)
-        user_repo.find_by_id.return_value = SimpleNamespace(refresh_tokens=[token])
+        user_repo.find_refresh_tokens_by_id.return_value = [token]
 
         result = await get_user_id_from_valid_refresh_token(token, user_repo)
 
-        assert result == (SOME_USER_ID, token)
+        assert result == RefreshTokenContext(user_id=SOME_USER_ID, token=token)
 
     async def it_raises_for_an_access_token_used_as_a_refresh_token(user_repo: AsyncMock):
         token = create_access_token(SOME_USER_ID)
@@ -105,18 +106,18 @@ def describe_get_user_id_from_valid_refresh_token():
         with pytest.raises(InvalidCredentialsError):
             await get_user_id_from_valid_refresh_token(token, user_repo)
 
-        user_repo.find_by_id.assert_not_called()
+        user_repo.find_refresh_tokens_by_id.assert_not_called()
 
     async def it_raises_when_the_user_no_longer_exists(user_repo: AsyncMock):
         token = create_refresh_token(SOME_USER_ID)
-        user_repo.find_by_id.return_value = None
+        user_repo.find_refresh_tokens_by_id.return_value = None
 
         with pytest.raises(InvalidCredentialsError):
             await get_user_id_from_valid_refresh_token(token, user_repo)
 
     async def it_raises_when_the_refresh_token_has_been_revoked(user_repo: AsyncMock):
         token = create_refresh_token(SOME_USER_ID)
-        user_repo.find_by_id.return_value = SimpleNamespace(refresh_tokens=["some-other-token"])
+        user_repo.find_refresh_tokens_by_id.return_value = ["some-other-token"]
 
         with pytest.raises(InvalidCredentialsError):
             await get_user_id_from_valid_refresh_token(token, user_repo)

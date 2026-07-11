@@ -12,7 +12,7 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.enums import InviteType, UserRole
+from canterlot.models.enums import InviteType, MemberRole
 from canterlot.services.invite import InviteService
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -116,7 +116,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite()
-        club_repo.find_by_id.return_value = None
+        club_repo.find_club_name_by_id.return_value = None
         service = InviteService(invite_repo, club_repo, user_repo)
 
         with pytest.raises(ClubNotFoundError):
@@ -126,7 +126,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite(type=InviteType.DIRECT, target_email="alice@example.com")
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
 
         with pytest.raises(DirectInviteIdentityMismatchError):
@@ -136,7 +136,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite(type=InviteType.DIRECT, target_email="alice@example.com")
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
 
         with pytest.raises(DirectInviteIdentityMismatchError):
@@ -146,7 +146,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite(type=InviteType.DIRECT, target_email="alice@example.com")
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
 
         result = await service.validate_incoming_invite("some-id", user_email="alice@example.com")
@@ -157,7 +157,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite(type=InviteType.PUBLIC)
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
 
         result = await service.validate_incoming_invite("some-id")
@@ -168,7 +168,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite(created_by=SOME_INVITER_ID)
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         user_repo.find_username_by_id.return_value = "inviter_1"
         service = InviteService(invite_repo, club_repo, user_repo)
 
@@ -180,7 +180,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite()
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         user_repo.exists_by_username.return_value = True
         service = InviteService(invite_repo, club_repo, user_repo)
 
@@ -192,7 +192,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = _invite()
-        club_repo.find_by_id.return_value = _club()
+        club_repo.find_club_name_by_id.return_value = "Book Club"
         user_repo.exists_by_username.return_value = False
         service = InviteService(invite_repo, club_repo, user_repo)
 
@@ -205,15 +205,15 @@ def describe_rotate_public_link():
     async def it_raises_when_the_requester_lacks_a_privileged_role(
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
-        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.MEMBER
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
         service = InviteService(invite_repo, club_repo, user_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):
             await service.rotate_public_link(SOME_CLUB_ID, SOME_USER_ID)
 
-    @pytest.mark.parametrize("role", [UserRole.OWNER, UserRole.ADMIN])
+    @pytest.mark.parametrize("role", [MemberRole.OWNER, MemberRole.ADMIN])
     async def it_deactivates_existing_links_and_issues_a_new_one(
-        role: UserRole, invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        role: MemberRole, invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = role
         invite_repo.save.return_value = _invite(id="new-invite-id")
@@ -255,7 +255,7 @@ def describe_create_direct_invite():
     async def it_issues_a_direct_invite_for_a_privileged_issuer(
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
-        club_repo.find_member_role_by_club_id_and_user_id.return_value = UserRole.OWNER
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         invite_repo.save.return_value = _invite(id="direct-invite-id", type=InviteType.DIRECT)
         service = InviteService(invite_repo, club_repo, user_repo)
 

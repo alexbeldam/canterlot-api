@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 from canterlot.app import create_app
 from canterlot.repositories import BookRepository, ClubRepository, UserRepository
 from canterlot.routers.dependencies import (
+    RefreshTokenContext,
     get_auth_service,
     get_book_repository,
     get_book_service,
@@ -110,7 +111,9 @@ def client(
     app.dependency_overrides[get_book_repository] = lambda: book_repo
     app.dependency_overrides[get_current_user_id] = lambda: current_user.id
     app.dependency_overrides[get_current_user] = lambda: current_user
-    app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: (current_user.id, "old-refresh-token")
+    app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: RefreshTokenContext(
+        user_id=current_user.id, token="old-refresh-token"
+    )
 
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client

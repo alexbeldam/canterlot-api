@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Annotated
 
 import redis.asyncio as aioredis
@@ -175,10 +176,16 @@ async def get_current_user_id(
     return _parse_subject_id(user_id)
 
 
+@dataclass(frozen=True, slots=True)
+class RefreshTokenContext:
+    user_id: PydanticObjectId
+    token: str
+
+
 async def get_user_id_from_valid_refresh_token(
     token: Annotated[str, Depends(oauth2_scheme)],
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
-) -> tuple[PydanticObjectId, str]:
+) -> RefreshTokenContext:
     payload = decode_jwt_payload(token)
 
     user_id: str | None = payload.get("sub")
@@ -188,11 +195,11 @@ async def get_user_id_from_valid_refresh_token(
         raise InvalidCredentialsError("Invalid session refresh payload structure.")
 
     pyid = _parse_subject_id(user_id)
-    user = await user_repo.find_by_id(pyid)
-    if user is None or token not in user.refresh_tokens:
+    refresh_tokens = await user_repo.find_refresh_tokens_by_id(pyid)
+    if refresh_tokens is None or token not in refresh_tokens:
         raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
 
-    return pyid, token
+    return RefreshTokenContext(user_id=pyid, token=token)
 
 
 async def get_current_user(

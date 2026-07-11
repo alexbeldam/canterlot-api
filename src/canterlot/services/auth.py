@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from beanie import PydanticObjectId
 
 from canterlot.dto.auth import ConnectedProvidersResponse, OAuthSignInResponse, TokenResponse, UserRegisterRequest
@@ -28,6 +30,12 @@ logger = get_logger(__name__)
 
 class RegisterResult(TokenResponse):
     user_id: PydanticObjectId
+
+
+@dataclass(frozen=True, slots=True)
+class TokenPair:
+    access_token: str
+    refresh_token: str
 
 
 class AuthService:
@@ -67,13 +75,13 @@ class AuthService:
             log.info("Processing referral growth attribution")
             await self.__user_repo.increment_referral_count_by_username(invited_by)
 
-        access_token, refresh_token = self.__create_tokens(user_id)
-        await self.__user_repo.push_refresh_token_by_id(user_id, refresh_token)
+        tokens = self.__create_tokens(user_id)
+        await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
 
         log.info("User registration transaction completed successfully")
         return RegisterResult(
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
             user_id=user_id,
         )
 
@@ -89,13 +97,13 @@ class AuthService:
         user_id = user.id
         log = log.bind(user_id=str(user_id))
 
-        access_token, refresh_token = self.__create_tokens(user_id)
-        await self.__user_repo.push_refresh_token_by_id(user_id, refresh_token)
+        tokens = self.__create_tokens(user_id)
+        await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
 
         log.info("User authenticated successfully, tokens issued")
         return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
         )
 
     async def rotate_refresh_token(self, user_id: PydanticObjectId, old_token: str) -> TokenResponse:
@@ -104,32 +112,35 @@ class AuthService:
 
         await self.__user_repo.pull_refresh_token_by_id(user_id, old_token)
 
-        access_token, refresh_token = self.__create_tokens(user_id)
-        await self.__user_repo.push_refresh_token_by_id(user_id, refresh_token)
+        tokens = self.__create_tokens(user_id)
+        await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
 
         log.info("Refresh token rotation completed successfully")
         return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
         )
 
-    def __create_tokens(self, user_id: PydanticObjectId) -> tuple[str, str]:
-        access_token = create_access_token(user_id)
-        refresh_token = create_refresh_token(user_id)
-
-        return access_token, refresh_token
+    def __create_tokens(self, user_id: PydanticObjectId) -> TokenPair:
+        return TokenPair(
+            access_token=create_access_token(user_id),
+            refresh_token=create_refresh_token(user_id),
+        )
 
     def __get_oauth_provider(self, provider: AuthProviderName) -> OAuthProvider:
         try:
             return self.__oauth_providers[provider]
         except KeyError:
+            logger.bind(provider=provider).warn("Requested authentication provider is not configured")
             raise GatewayConfigurationError(f"The '{provider}' authentication provider is not available.") from None
 
     async def __issue_login_tokens(self, user_id: PydanticObjectId, outcome: AuthOutcome) -> OAuthSignInResponse:
-        access_token, refresh_token = self.__create_tokens(user_id)
-        await self.__user_repo.push_refresh_token_by_id(user_id, refresh_token)
+        tokens = self.__create_tokens(user_id)
+        await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
 
-        return OAuthSignInResponse(outcome=outcome, access_token=access_token, refresh_token=refresh_token)
+        return OAuthSignInResponse(
+            outcome=outcome, access_token=tokens.access_token, refresh_token=tokens.refresh_token
+        )
 
     async def sign_in_with_provider(self, provider: AuthProviderName, credential: str) -> OAuthSignInResponse:
         log = logger.bind(provider=provider)
@@ -137,10 +148,10 @@ class AuthService:
 
         identity = await self.__get_oauth_provider(provider).verify(credential)
 
-        existing = await self.__user_repo.find_by_linked_provider(provider, identity.external_id)
-        if existing:
-            log.info("OAuth identity matched an existing linked account", user_id=str(existing.id))
-            return await self.__issue_login_tokens(PydanticObjectId(existing.id), AuthOutcome.LOGGED_IN)
+        existing_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
+        if existing_id:
+            log.info("OAuth identity matched an existing linked account", user_id=str(existing_id))
+            return await self.__issue_login_tokens(existing_id, AuthOutcome.LOGGED_IN)
 
         if await self.__user_repo.find_by_email(identity.email):
             log.info("OAuth identity's email matches an existing account with a different auth method")
@@ -165,12 +176,12 @@ class AuthService:
 
         identity = await self.__get_oauth_provider(provider).verify(credential)
 
-        existing = await self.__user_repo.find_by_linked_provider(provider, identity.external_id)
-        if existing and PydanticObjectId(existing.id) != user_id:
+        existing_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
+        if existing_id and existing_id != user_id:
             log.warn("Link rejected: credential already linked to a different account")
             raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
 
-        if existing:
+        if existing_id:
             log.info("Provider already linked to this account, nothing to do")
             return
 
@@ -186,9 +197,11 @@ class AuthService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
+            log.warn("Disconnect aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         if not any(linked.provider == provider for linked in user.linked_providers):
+            log.warn("Disconnect rejected: provider is not linked to this account")
             raise AuthProviderNotLinkedError(f"No linked '{provider}' account to disconnect.")
 
         remaining_providers = [linked for linked in user.linked_providers if linked.provider != provider]
@@ -200,8 +213,12 @@ class AuthService:
         log.info("Authentication provider disconnected successfully")
 
     async def list_connected_providers(self, user_id: PydanticObjectId) -> ConnectedProvidersResponse:
+        log = logger.bind(user_id=str(user_id))
+        log.info("Fetching connected authentication providers")
+
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
+            log.warn("Lookup aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         return ConnectedProvidersResponse.from_model(user)
