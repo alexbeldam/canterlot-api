@@ -8,9 +8,10 @@ from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
 from canterlot.app import create_app
-from canterlot.repositories import ClubRepository, UserRepository
+from canterlot.repositories import BookRepository, ClubRepository, UserRepository
 from canterlot.routers.dependencies import (
     get_auth_service,
+    get_book_repository,
     get_book_service,
     get_catalog_service,
     get_club_repository,
@@ -62,6 +63,11 @@ def user_repo() -> AsyncMock:
 
 
 @pytest.fixture
+def book_repo() -> AsyncMock:
+    return AsyncMock(spec=BookRepository)
+
+
+@pytest.fixture
 def current_user() -> SimpleNamespace:
     return SimpleNamespace(id=SOME_USER_ID, email="alice@example.com", username="alice_1")
 
@@ -75,6 +81,7 @@ def client(
     invite_service: AsyncMock,
     club_repo: AsyncMock,
     user_repo: AsyncMock,
+    book_repo: AsyncMock,
     current_user: SimpleNamespace,
 ) -> Iterator[TestClient]:
     app = create_app()
@@ -92,6 +99,7 @@ def client(
     app.dependency_overrides[get_invite_service] = lambda: invite_service
     app.dependency_overrides[get_club_repository] = lambda: club_repo
     app.dependency_overrides[get_user_repository] = lambda: user_repo
+    app.dependency_overrides[get_book_repository] = lambda: book_repo
     app.dependency_overrides[get_current_user_id] = lambda: current_user.id
     app.dependency_overrides[get_current_user] = lambda: current_user
     app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: (current_user.id, "old-refresh-token")

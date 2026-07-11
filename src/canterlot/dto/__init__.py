@@ -1,3 +1,5 @@
+from canterlot.pagination import Page, PageRequest, SortDirection
+
 from .auth import RegisterResponse, TokenResponse, UserRegisterRequest
 from .book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
 from .catalog import BookSuggestionRequest, SuggestionResponse, SuggestionStatus
@@ -21,8 +23,11 @@ __all__ = [
     "DirectInvitePayload",
     "InvitePreviewResponse",
     "InviteTokenResponse",
+    "Page",
+    "PageRequest",
     "PaginatedBooksResponse",
     "RegisterResponse",
+    "SortDirection",
     "SuggestionResponse",
     "SuggestionStatus",
     "TokenResponse",

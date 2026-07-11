@@ -22,6 +22,7 @@ from .club import (
 )
 from .gateway import GatewayConfigurationError
 from .invite import DirectInviteIdentityMismatchError, InvalidInviteTokenError, InviteLinkDeactivatedError
+from .user import UserDomainError, UserNotFoundError
 
 __all__ = [
     "AuthProviderAlreadyLinkedError",
@@ -48,5 +49,7 @@ __all__ = [
     "TokenExpiredError",
     "TokenMalformedError",
     "UnauthorizedClubMemberError",
+    "UserDomainError",
+    "UserNotFoundError",
     "UsernameAlreadyExistsError",
 ]

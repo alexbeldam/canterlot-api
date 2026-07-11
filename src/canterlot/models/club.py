@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from canterlot.utils.format import LanguageStr, NonEmptyStr
 
-from .enums import JoinPolicy, UserRole
+from .enums import JoinPolicy, MemberRole
 
 type ClubNameStr = Annotated[
     NonEmptyStr,
@@ -27,7 +27,7 @@ type ClubSlugStr = Annotated[
 
 class MemberSchema(BaseModel):
     user_id: PydanticObjectId
-    role: UserRole = UserRole.MEMBER
+    role: MemberRole = MemberRole.MEMBER
     joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

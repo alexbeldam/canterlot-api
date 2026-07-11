@@ -50,8 +50,8 @@ def describe_book_details():
 
 def describe_paginated_books_response():
     def it_accepts_an_empty_page():
-        response = PaginatedBooksResponse(books=[], total_pages=0, current_page=1, total_results=0)
-        assert response.books == []
+        response = PaginatedBooksResponse(items=[], total_items=0, current_page=1, page_size=20)
+        assert response.items == []
 
 
 def describe_book_response():

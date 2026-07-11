@@ -6,12 +6,18 @@ from starlette.testclient import TestClient
 
 from canterlot.dto.book import PaginatedBooksResponse
 from canterlot.dto.catalog import SuggestionResponse, SuggestionStatus
-from canterlot.exceptions import BookSearchCriteriaMissingError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
+from canterlot.exceptions import (
+    BookNotFoundError,
+    BookSearchCriteriaMissingError,
+    ClubSuggestionsClosedError,
+    UnauthorizedClubMemberError,
+)
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.models.enums import BookProviderName
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"
+SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
 def _suggestion_payload(**overrides) -> dict:
@@ -89,13 +95,13 @@ def describe_search_external_books_for_club():
         club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.return_value = PaginatedBooksResponse(
-            books=[], total_pages=0, current_page=1, total_results=0
+            items=[], total_items=0, current_page=1, page_size=5
         )
 
         response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
 
         assert response.status_code == 200
-        assert response.json()["total_results"] == 0
+        assert response.json()["total_items"] == 0
         book_service.search_external_books.assert_awaited_once()
 
     def it_allows_a_search_with_isbn_alone_and_no_title(
@@ -104,7 +110,7 @@ def describe_search_external_books_for_club():
         club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.return_value = PaginatedBooksResponse(
-            books=[], total_pages=0, current_page=1, total_results=0
+            items=[], total_items=0, current_page=1, page_size=5
         )
 
         response = client.get(
@@ -122,7 +128,7 @@ def describe_search_external_books_for_club():
         club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
         club_service.get_preferred_languages.return_value = ["en", "pt-BR"]
         book_service.search_external_books.return_value = PaginatedBooksResponse(
-            books=[], total_pages=0, current_page=1, total_results=0
+            items=[], total_items=0, current_page=1, page_size=5
         )
 
         client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
@@ -137,7 +143,7 @@ def describe_search_external_books_for_club():
         club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.return_value = PaginatedBooksResponse(
-            books=[], total_pages=0, current_page=2, total_results=0
+            items=[], total_items=0, current_page=2, page_size=5
         )
 
         client.get(
@@ -193,3 +199,62 @@ def describe_search_external_books_for_club():
 
         assert response.status_code == 500
         assert response.json()["error"]["error_code"] == "INTERNAL_SERVER_ERROR"
+
+
+def describe_remove_from_club():
+    def it_returns_204_on_success(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+
+        assert response.status_code == 204
+        catalog_service.remove_book_from_club.assert_awaited_once()
+
+    def it_returns_403_when_the_caller_is_not_privileged_or_the_suggester(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
+        catalog_service.remove_book_from_club.side_effect = UnauthorizedClubMemberError("not allowed")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_book_is_not_in_the_catalog(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
+        catalog_service.remove_book_from_club.side_effect = BookNotFoundError("not in catalog")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
+
+    def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        book_repo.find_id_by_identifier.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__missing")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
+        catalog_service.remove_book_from_club.assert_not_called()
+
+    def it_returns_404_when_the_club_slug_does_not_exist(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+
+        assert response.status_code == 404
+        catalog_service.remove_book_from_club.assert_not_called()

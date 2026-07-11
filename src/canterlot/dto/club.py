@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 
 from canterlot.models.club import ClubModel, ClubNameStr, ClubSlugStr
-from canterlot.models.enums import ClubOnboardingStatus, JoinPolicy, UserRole
+from canterlot.models.enums import ClubOnboardingStatus, JoinPolicy, MemberRole
 from canterlot.models.user import UsernameStr
 from canterlot.utils.format import LanguageStr
 
@@ -28,7 +28,7 @@ class ClubOnboarding:
 
 class ClubMemberDTO(BaseModel):
     username: UsernameStr
-    role: UserRole
+    role: MemberRole
     joined_at: datetime
 
 
@@ -53,6 +53,12 @@ class ClubResponse(BaseModel):
         club: ClubModel,
         user_usernames: dict[PydanticObjectId, UsernameStr],
     ) -> "ClubResponse":
+        role_order = list(MemberRole)
+        sorted_members = sorted(
+            club.members,
+            key=lambda member: (role_order.index(member.role), user_usernames[member.user_id]),
+        )
+
         return cls(
             slug=club.slug,
             name=club.name,
@@ -62,7 +68,7 @@ class ClubResponse(BaseModel):
             preferred_languages=club.preferred_languages,
             members=[
                 ClubMemberDTO(username=user_usernames[member.user_id], role=member.role, joined_at=member.joined_at)
-                for member in club.members
+                for member in sorted_members
             ],
             created_at=club.created_at,
         )
@@ -81,6 +87,7 @@ class ClubDetailResponse(ClubResponse):
         pending_usernames: dict[PydanticObjectId, UsernameStr],
     ) -> "ClubDetailResponse":
         base = ClubResponse.from_model(club, user_usernames)
+        sorted_pending = sorted(club.pending_approvals, key=lambda pending: pending.requested_at)
 
         return cls(
             **base.model_dump(),
@@ -89,6 +96,6 @@ class ClubDetailResponse(ClubResponse):
                     username=pending_usernames[pending.user_id],
                     requested_at=pending.requested_at,
                 )
-                for pending in club.pending_approvals
+                for pending in sorted_pending
             ],
         )

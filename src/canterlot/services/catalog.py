@@ -3,11 +3,11 @@ import asyncio
 from beanie import PydanticObjectId
 
 from canterlot.dto.catalog import BookSuggestionRequest, SuggestionResponse, SuggestionStatus
-from canterlot.exceptions import ClubSuggestionsClosedError, UnauthorizedClubMemberError
+from canterlot.exceptions import BookNotFoundError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
 from canterlot.models import BookModel, LinkCandidate
 from canterlot.models.book import AuthorList, SearchParams, TitleStr, UrlList
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.enums import ExtensionType
+from canterlot.models.enums import ExtensionType, MemberRole
 from canterlot.providers import LinkProvider
 from canterlot.repositories import BookRepository, ClubRepository
 from canterlot.utils import (
@@ -75,8 +75,9 @@ class CatalogService:
                 )
                 return SuggestionResponse(status=SuggestionStatus.ALREADY_EXISTS, book_external_id=external_id)
         else:
-            book_id, log = await self.__create_new_book(suggestion, log)
+            book_id = await self.__create_new_book(suggestion, log)
             external_id = suggestion.source_id
+            log = log.bind(book_id=str(book_id))
 
         entry = CatalogEntryModel(
             book_id=book_id,
@@ -87,6 +88,33 @@ class CatalogService:
 
         log.info("Book suggestion transaction completed successfully", status=SuggestionStatus.SUCCESS)
         return SuggestionResponse(status=SuggestionStatus.SUCCESS, book_external_id=external_id)
+
+    async def remove_book_from_club(
+        self,
+        club_id: PydanticObjectId,
+        book_id: PydanticObjectId,
+        current_user_id: PydanticObjectId,
+    ) -> None:
+        log = logger.bind(club_id=str(club_id), book_id=str(book_id), current_user_id=str(current_user_id))
+        log.info("Attempting to remove a book from the club catalog")
+
+        entry = await self.__club_repo.find_catalog_entry_by_club_id_and_book_id(club_id, book_id)
+        if entry is None:
+            log.warn("Removal rejected: book is not in this club's catalog")
+            raise BookNotFoundError(f"Book with ID '{book_id}' not found in this club's catalog")
+
+        role = await self.__club_repo.find_member_role_by_club_id_and_user_id(club_id, current_user_id)
+        is_privileged = role in (MemberRole.ADMIN, MemberRole.OWNER)
+        is_original_suggester = entry.suggested_by == current_user_id
+
+        if not is_privileged and not is_original_suggester:
+            log.warn("Removal rejected: caller is neither privileged nor the original suggester")
+            raise UnauthorizedClubMemberError(
+                "Only an OWNER, ADMIN, or the original suggester can remove a book from the catalog."
+            )
+
+        await self.__club_repo.remove_from_catalog(club_id, book_id)
+        log.info("Book removed from club catalog successfully")
 
     async def __ensure_suggestion_allowed(self, club_id: PydanticObjectId, user_id: PydanticObjectId, log) -> None:
         if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
@@ -138,7 +166,7 @@ class CatalogService:
                 fields=list(missing_fields.keys()),
             )
 
-    async def __create_new_book(self, suggestion: BookSuggestionRequest, log):
+    async def __create_new_book(self, suggestion: BookSuggestionRequest, log) -> PydanticObjectId:
         log.info("Book not found in global database, initiating scraping sequence")
         links = await self.__scrape_best_links(suggestion, list(ExtensionType))
         book_data = suggestion.model_dump(exclude={"source_id"})
@@ -147,10 +175,9 @@ class CatalogService:
 
         book = await self.__book_repo.save(new_book)
         book_id = PydanticObjectId(book.id)
-        log = log.bind(book_id=str(book_id))
-        log.info("Successfully scraped and persisted new global book reference")
+        log.bind(book_id=str(book_id)).info("Successfully scraped and persisted new global book reference")
 
-        return book_id, log
+        return book_id
 
     def __resolve_missing_fields(self, book: BookModel, suggestion: BookSuggestionRequest) -> dict[str, object]:
         updates: dict[str, object] = {}

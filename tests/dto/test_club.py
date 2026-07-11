@@ -1,11 +1,16 @@
+from datetime import UTC, datetime, timedelta
+
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import UserRole
+from canterlot.models.enums import MemberRole
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
+SOME_OTHER_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439013")
+SOME_ADMIN_ID = PydanticObjectId("507f1f77bcf86cd799439014")
+SOME_MEMBER_ID = PydanticObjectId("507f1f77bcf86cd799439015")
 
 
 def describe_club_create_request():
@@ -23,18 +28,45 @@ def describe_club_response_from_model():
         club = ClubModel(
             name="Book Club",
             slug="book-club",
-            members=[MemberSchema(user_id=SOME_OWNER_ID, role=UserRole.OWNER)],
+            members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
         )
 
         response = ClubResponse.from_model(club, user_usernames={SOME_OWNER_ID: "owner_1"})
 
         assert response.slug == "book-club"
         assert response.members[0].username == "owner_1"
-        assert response.members[0].role == UserRole.OWNER
+        assert response.members[0].role == MemberRole.OWNER
         assert not hasattr(response, "id")
         assert not hasattr(response, "banned_users")
         assert not hasattr(response, "pending_approvals")
         assert not hasattr(response, "catalog")
+
+    def it_sorts_members_by_role_then_by_username():
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[
+                MemberSchema(user_id=SOME_MEMBER_ID, role=MemberRole.MEMBER),
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_OTHER_PENDING_ID, role=MemberRole.ADMIN),
+                MemberSchema(user_id=SOME_ADMIN_ID, role=MemberRole.ADMIN),
+            ],
+        )
+        usernames = {
+            SOME_MEMBER_ID: "zoe",
+            SOME_OWNER_ID: "owner_1",
+            SOME_OTHER_PENDING_ID: "bob",
+            SOME_ADMIN_ID: "alice",
+        }
+
+        response = ClubResponse.from_model(club, user_usernames=usernames)
+
+        assert [(m.role, m.username) for m in response.members] == [
+            (MemberRole.OWNER, "owner_1"),
+            (MemberRole.ADMIN, "alice"),
+            (MemberRole.ADMIN, "bob"),
+            (MemberRole.MEMBER, "zoe"),
+        ]
 
 
 def describe_club_detail_response_from_model_with_pending():
@@ -42,7 +74,7 @@ def describe_club_detail_response_from_model_with_pending():
         club = ClubModel(
             name="Book Club",
             slug="book-club",
-            members=[MemberSchema(user_id=SOME_OWNER_ID, role=UserRole.OWNER)],
+            members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
             pending_approvals=[PendingApprovalSchema(user_id=SOME_PENDING_ID)],
         )
 
@@ -63,3 +95,23 @@ def describe_club_detail_response_from_model_with_pending():
 
         assert not hasattr(response, "banned_users")
         assert response.pending_approvals == []
+
+    def it_sorts_pending_approvals_by_requested_at_regardless_of_storage_order():
+        now = datetime.now(UTC)
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
+            pending_approvals=[
+                PendingApprovalSchema(user_id=SOME_PENDING_ID, requested_at=now),
+                PendingApprovalSchema(user_id=SOME_OTHER_PENDING_ID, requested_at=now - timedelta(days=1)),
+            ],
+        )
+
+        response = ClubDetailResponse.from_model_with_pending(
+            club,
+            user_usernames={SOME_OWNER_ID: "owner_1"},
+            pending_usernames={SOME_PENDING_ID: "pending_1", SOME_OTHER_PENDING_ID: "pending_2"},
+        )
+
+        assert [p.username for p in response.pending_approvals] == ["pending_2", "pending_1"]

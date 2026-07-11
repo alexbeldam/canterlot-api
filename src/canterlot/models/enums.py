@@ -11,7 +11,7 @@ class InviteType(StrEnum):
     DIRECT = "DIRECT"
 
 
-class UserRole(StrEnum):
+class MemberRole(StrEnum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"

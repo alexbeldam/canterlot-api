@@ -11,13 +11,14 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import UserRole
+from canterlot.models.enums import MemberRole
 from canterlot.services.club import ClubView
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")  # matches conftest's `current_user` fixture
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
+SOME_PENDING_USERNAME = "bob_2"
 
 
 def _found_club(club_id: PydanticObjectId = SOME_CLUB_ID) -> SimpleNamespace:
@@ -28,12 +29,12 @@ def _created_club() -> ClubModel:
     return ClubModel(
         name="Book Club",
         slug="book-club",
-        members=[MemberSchema(user_id=SOME_OWNER_ID, role=UserRole.OWNER)],
+        members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
     )
 
 
 def _club_view(
-    role: UserRole,
+    role: MemberRole,
     pending_usernames: dict[PydanticObjectId, str] | None = None,
     club: ClubModel | None = None,
 ) -> ClubView:
@@ -90,7 +91,7 @@ def describe_create_club():
 
 def describe_get_club():
     def it_returns_the_public_shape_for_a_plain_member(client: TestClient, club_service: AsyncMock):
-        club_service.get_club_view.return_value = _club_view(role=UserRole.MEMBER)
+        club_service.get_club_view.return_value = _club_view(role=MemberRole.MEMBER)
 
         response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
 
@@ -113,7 +114,7 @@ def describe_get_club():
         club = _created_club()
         club.pending_approvals = [PendingApprovalSchema(user_id=SOME_PENDING_ID)]
         club_service.get_club_view.return_value = _club_view(
-            role=UserRole.OWNER,
+            role=MemberRole.OWNER,
             pending_usernames={SOME_PENDING_ID: "bob_2"},
             club=club,
         )
@@ -126,7 +127,7 @@ def describe_get_club():
         assert "banned_users" not in body
 
     def it_includes_pending_approvals_for_an_admin(client: TestClient, club_service: AsyncMock):
-        club_service.get_club_view.return_value = _club_view(role=UserRole.ADMIN, pending_usernames={})
+        club_service.get_club_view.return_value = _club_view(role=MemberRole.ADMIN, pending_usernames={})
 
         response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
 
@@ -143,11 +144,14 @@ def describe_get_club():
 
 
 def describe_approve_pending_request():
-    def it_returns_204_when_approved(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+    def it_returns_204_when_approved(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
         club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_PENDING_ID
         club_service.review_pending_request.return_value = None
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/approve")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/approve")
 
         assert response.status_code == 204
         club_service.review_pending_request.assert_awaited_once_with(
@@ -155,22 +159,24 @@ def describe_approve_pending_request():
         )
 
     def it_returns_403_when_the_caller_is_not_owner_or_admin(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_PENDING_ID
         club_service.review_pending_request.side_effect = UnauthorizedClubMemberError("nope")
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/approve")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/approve")
 
         assert response.status_code == 403
 
     def it_returns_404_when_there_is_no_such_pending_request(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_PENDING_ID
         club_service.review_pending_request.side_effect = PendingRequestNotFoundError("not queued")
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/approve")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/approve")
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "PENDING_REQUEST_NOT_FOUND"
@@ -178,17 +184,29 @@ def describe_approve_pending_request():
     def it_returns_404_when_the_club_slug_does_not_exist(client: TestClient, club_repo: AsyncMock):
         club_repo.find_by_slug.return_value = None
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/approve")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/approve")
 
         assert response.status_code == 404
 
+    def it_returns_404_when_the_username_does_not_exist(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = None
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/approve")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
 
 def describe_reject_pending_request():
-    def it_returns_204_when_rejected(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+    def it_returns_204_when_rejected(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
         club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_PENDING_ID
         club_service.review_pending_request.return_value = None
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/reject")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/reject")
 
         assert response.status_code == 204
         club_service.review_pending_request.assert_awaited_once_with(
@@ -196,24 +214,35 @@ def describe_reject_pending_request():
         )
 
     def it_returns_403_when_the_caller_is_not_owner_or_admin(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_PENDING_ID
         club_service.review_pending_request.side_effect = UnauthorizedClubMemberError("nope")
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/reject")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/reject")
 
         assert response.status_code == 403
 
     def it_returns_404_when_there_is_no_such_pending_request(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_PENDING_ID
         club_service.review_pending_request.side_effect = PendingRequestNotFoundError("not queued")
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_ID}/reject")
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/reject")
 
         assert response.status_code == 404
+
+    def it_returns_404_when_the_username_does_not_exist(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = None
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}/reject")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
 
 
 def describe_rotate_public_admission_link():

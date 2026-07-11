@@ -1,9 +1,17 @@
 from beanie import PydanticObjectId
 from beanie.operators import Or, Set
+from pydantic import BaseModel, ConfigDict, Field
 
 from canterlot.models import BookModel
 from canterlot.models.book import BookProviderIdentifier, UrlList
 from canterlot.repositories import BookRepository
+from canterlot.utils.format import ISBNStr
+
+
+class IdProjection(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: PydanticObjectId = Field(alias="_id")
 
 
 class BeanieBookRepository(BookRepository):
@@ -24,6 +32,20 @@ class BeanieBookRepository(BookRepository):
 
     async def find_by_id(self, book_id: PydanticObjectId) -> BookModel | None:
         return await BookModel.get(book_id)
+
+    async def find_id_by_identifier(self, identifier: BookProviderIdentifier | ISBNStr) -> PydanticObjectId | None:
+        conditions = []
+        if isinstance(identifier, BookProviderIdentifier):
+            conditions.append(BookModel.external_id == identifier)
+        else:
+            conditions.append(BookModel.isbn_10 == identifier)
+            conditions.append(BookModel.isbn_13 == identifier)
+
+        projection = await BookModel.find_one(Or(*conditions)).project(IdProjection)
+
+        if not projection:
+            return None
+        return projection.id
 
     async def add_to_urls(self, book_id: PydanticObjectId, urls: UrlList) -> None:
         update_fields = {f"urls.{ext.value}": url for ext, url in urls.items()}

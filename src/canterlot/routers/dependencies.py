@@ -10,9 +10,13 @@ from fastapi.security import OAuth2PasswordBearer
 
 from canterlot.config import get_settings
 from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError
+from canterlot.exceptions.book import BookNotFoundError
+from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models import UserModel
+from canterlot.models.book import BookExternalId
 from canterlot.models.club import ClubSlugStr
 from canterlot.models.enums import AuthProviderName
+from canterlot.models.user import UsernameStr
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
 from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
 from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
@@ -25,6 +29,7 @@ from canterlot.repositories.beanie import (
 from canterlot.repositories.redis import RedisCacheRepository
 from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
 from canterlot.utils import decode_jwt_payload
+from canterlot.utils.format import ISBNStr
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -123,6 +128,26 @@ async def get_club_id_from_slug(
     if club is None:
         raise ClubNotFoundError(f"Club with slug '{club_slug}' not found")
     return PydanticObjectId(club.id)
+
+
+async def get_user_id_from_username(
+    username: UsernameStr,
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> PydanticObjectId:
+    user_id = await user_repo.find_id_by_username(username)
+    if user_id is None:
+        raise UserNotFoundError(f"User with username '{username}' not found")
+    return user_id
+
+
+async def get_book_id_from_identifier(
+    identifier: BookExternalId | ISBNStr,
+    book_repo: Annotated[BookRepository, Depends(get_book_repository)],
+) -> PydanticObjectId:
+    id = await book_repo.find_id_by_identifier(identifier)
+    if id is None:
+        raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
+    return id
 
 
 def _parse_subject_id(user_id: str) -> PydanticObjectId:
