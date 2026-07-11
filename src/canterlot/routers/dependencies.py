@@ -27,7 +27,7 @@ from canterlot.repositories.beanie import (
     BeanieUserRepository,
 )
 from canterlot.repositories.redis import RedisCacheRepository
-from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService, UserService
 from canterlot.utils import decode_jwt_payload
 from canterlot.utils.format import ISBNStr
 
@@ -118,6 +118,10 @@ async def get_invite_service(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
 ):
     return InviteService(invite_repo, club_repo, user_repo)
+
+
+async def get_user_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]):
+    return UserService(user_repo)
 
 
 async def get_club_id_from_slug(

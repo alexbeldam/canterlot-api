@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -56,6 +56,24 @@ def describe_book_provider_identifier():
         with pytest.raises(ValidationError):
             adapter.validate_python("not-a-provider__abc123")
 
+    def it_considers_identifiers_with_the_same_provider_and_id_equal():
+        first = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
+        second = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
+
+        assert first == second
+        assert hash(first) == hash(second)
+
+    def it_considers_identifiers_with_a_different_id_unequal():
+        first = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
+        second = BookProviderIdentifier(BookProviderName.GOOGLE, "different")
+
+        assert first != second
+
+    def it_is_not_equal_to_a_value_of_a_different_type():
+        identifier = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
+
+        assert identifier != "google-books__abc123"
+
 
 def describe_book_model():
     def it_requires_a_title():
@@ -80,6 +98,18 @@ def describe_book_model():
     def it_rejects_a_blank_description():
         with pytest.raises(ValidationError):
             BookModel.model_validate({"external_id": "google-books__abc123", "title": "A Title", "description": "   "})
+
+
+def describe_book_model_bson_encoding():
+    async def it_persists_and_queries_by_external_id():
+        external_id = BookProviderIdentifier(BookProviderName.GOOGLE, "TI1V0QEACAAJ")
+
+        await BookModel(external_id=external_id, title="Some Book", created_at=datetime.now(UTC)).insert()
+
+        found = await BookModel.find_one(BookModel.external_id == external_id)
+
+        assert found is not None
+        assert found.title == "Some Book"
 
 
 def describe_search_params_isbn_splitting():

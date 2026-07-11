@@ -1,11 +1,15 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
+from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
 from canterlot.dto.book import BookDetails, BookResponse
 from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError
+from canterlot.models.book import BookProviderIdentifier
 from canterlot.models.enums import BookProviderName
+
+SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
 def _book_response(**overrides) -> BookResponse:
@@ -62,7 +66,9 @@ def describe_get_book():
         assert body["title"] == "The Hobbit"
         assert body["external_id"] == "google-books__abc123"
         assert "id" not in body
-        book_service.get_by_identifier.assert_awaited_once_with("google-books__abc123")
+        book_service.get_by_identifier.assert_awaited_once_with(
+            BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
+        )
 
     def it_returns_a_book_by_isbn(client: TestClient, book_service: AsyncMock):
         book_service.get_by_identifier.return_value = _book_response(isbn_10="0261102214")
@@ -80,3 +86,32 @@ def describe_get_book():
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
+
+    def it_returns_422_for_an_identifier_that_is_neither_a_valid_external_id_nor_an_isbn(
+        client: TestClient, book_service: AsyncMock
+    ):
+        response = client.get("/api/v1/books/not-a-valid-identifier")
+
+        assert response.status_code == 422
+        book_service.get_by_identifier.assert_not_called()
+
+
+def describe_mark_read():
+    def it_returns_204_on_success(client: TestClient, user_service: AsyncMock, book_repo: AsyncMock):
+        book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
+
+        response = client.post("/api/v1/books/google-books__ext-1/read")
+
+        assert response.status_code == 204
+        user_service.mark_book_read.assert_awaited_once()
+
+    def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
+        client: TestClient, user_service: AsyncMock, book_repo: AsyncMock
+    ):
+        book_repo.find_id_by_identifier.return_value = None
+
+        response = client.post("/api/v1/books/google-books__missing/read")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
+        user_service.mark_book_read.assert_not_called()

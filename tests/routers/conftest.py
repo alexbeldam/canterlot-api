@@ -21,8 +21,9 @@ from canterlot.routers.dependencies import (
     get_invite_service,
     get_user_id_from_valid_refresh_token,
     get_user_repository,
+    get_user_service,
 )
-from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService, UserService
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 
@@ -53,6 +54,11 @@ def invite_service() -> AsyncMock:
 
 
 @pytest.fixture
+def user_service() -> AsyncMock:
+    return AsyncMock(spec=UserService)
+
+
+@pytest.fixture
 def club_repo() -> AsyncMock:
     return AsyncMock(spec=ClubRepository)
 
@@ -79,6 +85,7 @@ def client(
     catalog_service: AsyncMock,
     club_service: AsyncMock,
     invite_service: AsyncMock,
+    user_service: AsyncMock,
     club_repo: AsyncMock,
     user_repo: AsyncMock,
     book_repo: AsyncMock,
@@ -97,6 +104,7 @@ def client(
     app.dependency_overrides[get_catalog_service] = lambda: catalog_service
     app.dependency_overrides[get_club_service] = lambda: club_service
     app.dependency_overrides[get_invite_service] = lambda: invite_service
+    app.dependency_overrides[get_user_service] = lambda: user_service
     app.dependency_overrides[get_club_repository] = lambda: club_repo
     app.dependency_overrides[get_user_repository] = lambda: user_repo
     app.dependency_overrides[get_book_repository] = lambda: book_repo

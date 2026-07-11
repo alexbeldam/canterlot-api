@@ -2,11 +2,9 @@ import asyncio
 import json
 import math
 
-from pydantic import TypeAdapter, ValidationError
-
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
 from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
-from canterlot.models.book import BookProviderIdentifier, SearchParams, TitleStr, split_isbn
+from canterlot.models.book import BookExternalId, BookProviderIdentifier, SearchParams, TitleStr, split_isbn
 from canterlot.models.enums import BookProviderName
 from canterlot.providers import BookProvider, ProviderSearchResponse
 from canterlot.repositories import BookRepository, CacheRepository
@@ -51,10 +49,9 @@ class BookService:
         end_idx = start_idx + limit
 
         paginated_books = sorted_books[start_idx:end_idx]
-        total_pages = math.ceil(total_results / limit)
 
         return PaginatedBooksResponse(
-            books=paginated_books, total_pages=total_pages, current_page=page, total_results=total_results
+            items=paginated_books, total_items=total_results, current_page=page, page_size=limit
         )
 
     async def search_external_books(
@@ -66,21 +63,17 @@ class BookService:
         page: int,
         limit: int,
     ) -> PaginatedBooksResponse:
+        log = logger.bind(search_title=title, search_author=author, search_isbn=isbn, page=page, limit=limit)
+
         if not title and not author and not isbn:
+            log.warn("Search rejected: no search criteria provided")
             raise BookSearchCriteriaMissingError("At least one of title, author, or isbn must be provided.")
 
         provider_chunk_page = math.ceil((page * limit) / self.MAX_PROVIDER_CHUNK)
         start_index = (provider_chunk_page - 1) * self.MAX_PROVIDER_CHUNK
         cache_key = self.__build_cache_key(title, author, isbn, preferred_languages, provider_chunk_page)
 
-        log = logger.bind(
-            search_title=title,
-            search_author=author,
-            search_isbn=isbn,
-            page=page,
-            limit=limit,
-            chunk_page=provider_chunk_page,
-        )
+        log = log.bind(chunk_page=provider_chunk_page)
         log.info("Initiating external books catalog search request")
 
         cached_response = await self.__try_cache_hit(cache_key, page, limit, log)
@@ -105,7 +98,7 @@ class BookService:
 
         if not raw_books:
             log.info("Aggregated volume queries returned zero hits across all active providers")
-            return PaginatedBooksResponse(books=[], total_pages=0, current_page=page, total_results=0)
+            return PaginatedBooksResponse(items=[], total_items=0, current_page=page, page_size=limit)
 
         log.info("Sorting and heuristic scoring aggregated search records", items_to_score=len(raw_books))
         sorted_books = self.__score_and_sort_books(raw_books, title, author, isbn, preferred_languages)
@@ -292,27 +285,15 @@ class BookService:
         log.info("Successfully recovered third-party detailed book context")
         return details
 
-    async def get_by_identifier(self, identifier: str) -> BookResponse:
-        log = logger.bind(identifier=identifier)
+    async def get_by_identifier(self, identifier: BookExternalId | ISBNStr) -> BookResponse:
+        log = logger.bind(identifier=str(identifier))
         log.info("Fetching persistent book record by public identifier")
 
-        book = None
-
-        try:
-            external_id = TypeAdapter(BookProviderIdentifier).validate_python(identifier)
-        except ValidationError:
-            external_id = None
-
-        if external_id is not None:
-            book = await self.__repo.find_by_external_id(external_id)
+        if isinstance(identifier, BookProviderIdentifier):
+            book = await self.__repo.find_by_external_id(identifier)
         else:
-            try:
-                isbn_10, isbn_13 = split_isbn(identifier)
-            except ValidationError:
-                isbn_10, isbn_13 = None, None
-
-            if isbn_10 or isbn_13:
-                book = await self.__repo.find_by_isbn(isbn_10, isbn_13)
+            isbn_10, isbn_13 = split_isbn(identifier)
+            book = await self.__repo.find_by_isbn(isbn_10, isbn_13)
 
         if book is None:
             log.warn("Query mismatch: requested book identifier not found")

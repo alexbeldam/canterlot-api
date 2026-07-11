@@ -6,7 +6,7 @@ import pytest
 
 from canterlot.dto.book import BookDetails, BookSearchResult
 from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
-from canterlot.models.book import BookModel
+from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.models.enums import BookProviderName
 from canterlot.services.book import BookService
 
@@ -51,7 +51,7 @@ def describe_search_external_books_validation():
             title=None, author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
+        assert len(result.items) == 1
 
     async def it_ranks_by_author_alone_when_title_is_not_given(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -66,7 +66,7 @@ def describe_search_external_books_validation():
             title=None, author="J.R.R. Tolkien", isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert result.books[0].id.book_id == "matching"
+        assert result.items[0].id.book_id == "matching"
 
 
 def describe_search_external_books_cache_behavior():
@@ -80,8 +80,8 @@ def describe_search_external_books_cache_behavior():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
-        assert result.total_results == 1
+        assert len(result.items) == 1
+        assert result.total_items == 1
         book_provider.fetch_volumes.assert_not_called()
 
     async def it_falls_back_to_a_live_fetch_when_the_cache_entry_is_corrupt(
@@ -95,7 +95,7 @@ def describe_search_external_books_cache_behavior():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
+        assert len(result.items) == 1
         book_provider.fetch_volumes.assert_awaited_once()
 
     async def it_falls_back_to_a_live_fetch_when_the_cache_entry_is_missing_expected_keys(
@@ -109,7 +109,7 @@ def describe_search_external_books_cache_behavior():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
+        assert len(result.items) == 1
         book_provider.fetch_volumes.assert_awaited_once()
 
     async def it_saves_a_json_serializable_payload_to_the_cache_on_a_miss(
@@ -139,7 +139,7 @@ def describe_search_external_books_provider_aggregation():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert result.books == []
+        assert result.items == []
         assert result.total_pages == 0
 
     async def it_skips_a_provider_returning_an_unexpected_payload_shape(
@@ -153,7 +153,7 @@ def describe_search_external_books_provider_aggregation():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert result.books == []
+        assert result.items == []
 
     async def it_skips_a_malformed_book_payload_but_keeps_the_valid_ones(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -167,7 +167,7 @@ def describe_search_external_books_provider_aggregation():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
+        assert len(result.items) == 1
 
     async def it_leaves_the_cover_url_unset_when_no_provider_supplied_one(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -181,8 +181,8 @@ def describe_search_external_books_provider_aggregation():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
-        assert result.books[0].cover_url is None
+        assert len(result.items) == 1
+        assert result.items[0].cover_url is None
 
     async def it_accepts_a_provider_returning_an_already_built_book_search_result(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -196,8 +196,8 @@ def describe_search_external_books_provider_aggregation():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert len(result.books) == 1
-        assert result.books[0].id.provider == BookProviderName.GOOGLE
+        assert len(result.items) == 1
+        assert result.items[0].id.provider == BookProviderName.GOOGLE
 
 
 def describe_search_external_books_scoring():
@@ -214,7 +214,7 @@ def describe_search_external_books_scoring():
             title="The Hobbit", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert [b.id.book_id for b in result.books] == ["close", "far"]
+        assert [b.id.book_id for b in result.items] == ["close", "far"]
 
     async def it_boosts_books_matching_a_preferred_language(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -229,7 +229,7 @@ def describe_search_external_books_scoring():
             title="A Tale", author=None, isbn=None, preferred_languages=["en"], page=1, limit=10
         )
 
-        assert result.books[0].id.book_id == "en-book"
+        assert result.items[0].id.book_id == "en-book"
 
     async def it_ranks_an_exact_language_match_above_a_same_base_language_match(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -244,7 +244,7 @@ def describe_search_external_books_scoring():
             title="A Tale", author=None, isbn=None, preferred_languages=["pt-BR"], page=1, limit=10
         )
 
-        assert [b.id.book_id for b in result.books] == ["pt-br-book", "pt-pt-book"]
+        assert [b.id.book_id for b in result.items] == ["pt-br-book", "pt-pt-book"]
 
     async def it_boosts_a_same_base_language_match_above_no_language_match(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -259,7 +259,7 @@ def describe_search_external_books_scoring():
             title="A Tale", author=None, isbn=None, preferred_languages=["pt-BR"], page=1, limit=10
         )
 
-        assert [b.id.book_id for b in result.books] == ["pt-pt-book", "es-book"]
+        assert [b.id.book_id for b in result.items] == ["pt-pt-book", "es-book"]
 
     async def it_boosts_books_matching_the_searched_author(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -274,7 +274,7 @@ def describe_search_external_books_scoring():
             title="A Tale", author="J.R.R. Tolkien", isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert result.books[0].id.book_id == "matching"
+        assert result.items[0].id.book_id == "matching"
 
     async def it_ranks_a_more_complete_entry_above_an_equally_relevant_sparse_one(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -296,7 +296,7 @@ def describe_search_external_books_scoring():
             title="A Tale", author=None, isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert [b.id.book_id for b in result.books] == ["complete", "sparse"]
+        assert [b.id.book_id for b in result.items] == ["complete", "sparse"]
 
     async def it_ranks_an_isbn_match_above_a_much_better_title_match(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -313,7 +313,7 @@ def describe_search_external_books_scoring():
             title="The Hobbit", author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
         )
 
-        assert result.books[0].id.book_id == "isbn-match"
+        assert result.items[0].id.book_id == "isbn-match"
 
     async def it_falls_back_to_normal_ranking_when_no_result_matches_the_searched_isbn(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -328,7 +328,7 @@ def describe_search_external_books_scoring():
             title="The Hobbit", author=None, isbn="0261102214", preferred_languages=[], page=1, limit=10
         )
 
-        assert [b.id.book_id for b in result.books] == ["close", "far"]
+        assert [b.id.book_id for b in result.items] == ["close", "far"]
 
     async def it_prefers_a_verified_author_match_over_a_book_missing_author_data(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -343,7 +343,7 @@ def describe_search_external_books_scoring():
             title="A Tale", author="J.R.R. Tolkien", isbn=None, preferred_languages=[], page=1, limit=10
         )
 
-        assert result.books[0].id.book_id == "verified-author"
+        assert result.items[0].id.book_id == "verified-author"
 
 
 def describe_get_external_book_details():
@@ -390,7 +390,7 @@ def describe_get_by_identifier():
         book_repo.find_by_external_id.return_value = _book_document()
         service = _service(cache_repo, book_repo, book_provider)
 
-        result = await service.get_by_identifier("google-books__abc123")
+        result = await service.get_by_identifier(BookProviderIdentifier(BookProviderName.GOOGLE, "abc123"))
 
         assert result.title == "The Hobbit"
         book_repo.find_by_external_id.assert_awaited_once()
@@ -415,7 +415,7 @@ def describe_get_by_identifier():
         service = _service(cache_repo, book_repo, book_provider)
 
         with pytest.raises(BookNotFoundError):
-            await service.get_by_identifier("google-books__missing")
+            await service.get_by_identifier(BookProviderIdentifier(BookProviderName.GOOGLE, "missing"))
 
     async def it_raises_when_the_isbn_does_not_match_any_book(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
@@ -425,14 +425,3 @@ def describe_get_by_identifier():
 
         with pytest.raises(BookNotFoundError):
             await service.get_by_identifier("9780345339683")
-
-    async def it_raises_for_an_identifier_that_is_neither_a_valid_external_id_nor_an_isbn(
-        cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
-    ):
-        service = _service(cache_repo, book_repo, book_provider)
-
-        with pytest.raises(BookNotFoundError):
-            await service.get_by_identifier("not-a-valid-identifier")
-
-        book_repo.find_by_external_id.assert_not_called()
-        book_repo.find_by_isbn.assert_not_called()
