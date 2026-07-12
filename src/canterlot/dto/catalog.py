@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from canterlot.dto.book import BookResponse
 from canterlot.models.book import AuthorList, BookExternalId, BookModel, PageCount, PublishedYear, TitleStr
 from canterlot.models.user import UsernameStr
-from canterlot.pagination import PageRequest
+from canterlot.pagination import Page, PageRequest
 from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
 
 
@@ -67,3 +67,6 @@ class CatalogSortField(StrEnum):
 class CatalogFilters(PageRequest):
     sort_by: CatalogSortField | None = Query(default=None)  # noqa: RUF009 -- FastAPI sentinel, not mutable state
     suggested_by: UsernameStr | None = Query(default=None)  # noqa: RUF009 -- FastAPI sentinel, not mutable state
+
+
+PaginatedCatalogResponse = Page[CatalogEntryResponse]

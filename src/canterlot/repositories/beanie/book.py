@@ -1,5 +1,5 @@
 from beanie import PydanticObjectId
-from beanie.operators import Or, Set
+from beanie.operators import In, Or, Set
 from pydantic import BaseModel, ConfigDict, Field
 
 from canterlot.models import BookModel
@@ -32,6 +32,14 @@ class BeanieBookRepository(BookRepository):
 
     async def find_by_id(self, book_id: PydanticObjectId) -> BookModel | None:
         return await BookModel.get(book_id)
+
+    async def find_by_ids(self, book_ids: list[PydanticObjectId]) -> dict[PydanticObjectId, BookModel]:
+        if not book_ids:
+            return {}
+
+        books = await BookModel.find(In(BookModel.id, book_ids)).to_list()
+
+        return {PydanticObjectId(book.id): book for book in books}
 
     async def find_id_by_identifier(self, identifier: BookProviderIdentifier | ISBNStr) -> PydanticObjectId | None:
         conditions = []

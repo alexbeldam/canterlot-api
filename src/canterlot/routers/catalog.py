@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Query, status
 
 from canterlot.dto.book import PaginatedBooksResponse
-from canterlot.dto.catalog import BookSuggestionRequest, SuggestionResponse
+from canterlot.dto.catalog import BookSuggestionRequest, CatalogFilters, PaginatedCatalogResponse, SuggestionResponse
 from canterlot.exceptions import (
     BookNotFoundError,
     BookSearchCriteriaMissingError,
@@ -90,6 +90,50 @@ async def suggest_book_to_club(
         club_id=club_id,
         user_id=current_user_id,
         suggestion=suggestion,
+    )
+
+
+@router.get(
+    "/",
+    response_model=PaginatedCatalogResponse,
+    responses={
+        status.HTTP_200_OK: {"description": "Successfully retrieved a paginated page of the club's catalog."},
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The requesting user is not a member of this club.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. The club_slug path parameter or query parameters are invalid."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def get_club_catalog(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
+    filters: Annotated[CatalogFilters, Depends()],
+):
+    return await catalog_service.get_catalog_page(
+        club_id=club_id,
+        current_user_id=current_user_id,
+        page=filters.page,
+        limit=filters.limit,
+        sort_by=filters.sort_by,
+        sort_direction=filters.sort_direction,
+        suggested_by=filters.suggested_by,
     )
 
 

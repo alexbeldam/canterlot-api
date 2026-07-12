@@ -84,6 +84,20 @@ def describe_find_by_id():
         assert await repo.find_by_id(PydanticObjectId()) is None
 
 
+def describe_find_by_ids():
+    async def it_maps_ids_to_books():
+        first = await _book(external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "find-by-ids-1"))
+        second = await _book(external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "find-by-ids-2"))
+
+        found = await repo.find_by_ids([_id(first), _id(second)])
+
+        assert found.keys() == {_id(first), _id(second)}
+        assert found[_id(first)].title == "A Book"
+
+    async def it_returns_an_empty_dict_for_an_empty_list():
+        assert await repo.find_by_ids([]) == {}
+
+
 def describe_find_id_by_identifier():
     async def it_resolves_by_external_id():
         external_id = BookProviderIdentifier(BookProviderName.GOOGLE, "resolve-by-external")
