@@ -94,16 +94,49 @@ def describe_get_preview_metadata():
         assert preview.invited_by_username == "inviter_1"
         user_repo.find_username_by_id.assert_awaited_once_with(SOME_INVITER_ID)
 
+    async def it_resolves_the_inviter_username_from_invited_by_for_a_public_invite(
+        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        invite_repo.find_by_id.return_value = _invite()
+        club_repo.find_by_id.return_value = _club()
+        user_repo.exists_by_username.return_value = True
+        service = InviteService(invite_repo, club_repo, user_repo)
+
+        preview = await service.get_preview_metadata("some-id", invited_by="referrer_1")
+
+        assert preview.invited_by_username == "referrer_1"
+
+    async def it_ignores_invited_by_when_the_referrer_does_not_exist(
+        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        invite_repo.find_by_id.return_value = _invite()
+        club_repo.find_by_id.return_value = _club()
+        user_repo.exists_by_username.return_value = False
+        service = InviteService(invite_repo, club_repo, user_repo)
+
+        preview = await service.get_preview_metadata("some-id", invited_by="ghost")
+
+        assert preview.invited_by_username is None
+
 
 def describe_validate_incoming_invite():
-    async def it_raises_for_a_missing_or_inactive_invite(
+    async def it_raises_when_the_invite_does_not_exist(
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = None
         service = InviteService(invite_repo, club_repo, user_repo)
 
-        with pytest.raises(InviteLinkDeactivatedError):
+        with pytest.raises(InvalidInviteTokenError):
             await service.validate_incoming_invite("bad-id")
+
+    async def it_raises_when_the_invite_is_deactivated(
+        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        invite_repo.find_by_id.return_value = _invite(is_active=False)
+        service = InviteService(invite_repo, club_repo, user_repo)
+
+        with pytest.raises(InviteLinkDeactivatedError):
+            await service.validate_incoming_invite("some-id")
 
     async def it_raises_for_an_expired_invite(invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock):
         invite_repo.find_by_id.return_value = _invite(expires_at=datetime.now(UTC) - timedelta(days=1))
