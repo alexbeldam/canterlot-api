@@ -55,6 +55,14 @@ class ChangeMemberRoleRequest(BaseModel):
     role: Literal[MemberRole.ADMIN, MemberRole.MEMBER]
 
 
+class OwnershipTransferRequest(BaseModel):
+    new_owner_username: UsernameStr
+
+
+class OwnershipTransferResponse(BaseModel):
+    reclaim_deadline: datetime
+
+
 class PendingApprovalDTO(BaseModel):
     username: UsernameStr
     requested_at: datetime

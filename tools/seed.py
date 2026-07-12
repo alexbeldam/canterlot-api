@@ -264,11 +264,11 @@ async def _build_club_b(
     await club_service.admit_user(club_id, user_ids["rainbowdash"], is_direct=True)
     await club_service.admit_user(club_id, user_ids["twilightsparkle"], is_direct=False)
     # pinkiepie is intentionally left out of the roster so the public invite above stays usable
-    # for testing POST /invites/{invite_id}/accept end to end (PENDING_APPROVAL outcome, since this
+    # for testing PATCH /invites/{invite_id} end to end (PENDING_APPROVAL outcome, since this
     # club is RESTRICTED).
 
     # Leaves rarity as protected former-OWNER (ADMIN) with an active 24h reclaim window, for CLUB-10.
-    await club_service.transfer_ownership(club_id, user_ids["rarity"], user_ids["applejack"])
+    await club_service.transfer_ownership(club_id, user_ids["rarity"], "applejack")
 
     book_ids = await _insert_books(book_repo, CLUB_B_BOOKS, "seed-b")
     suggesters = [user_ids["rarity"], user_ids["applejack"], user_ids["rainbowdash"]]
@@ -338,10 +338,13 @@ def _print_summary(summary: SeedSummary) -> None:
     print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=title&sort_direction=ASC")
     print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=year&sort_direction=DESC")
     print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=suggested_at&page=2")
-    print(f"  POST /api/v1/clubs/{summary.club_b.slug}/pending-approvals/twilightsparkle/approve (as applejack)")
-    print(f"  POST /api/v1/clubs/{summary.club_b.slug}/transfer-ownership/reclaim (as rarity, within 24h)")
-    print(f"  POST /api/v1/invites/{summary.club_b.public_invite_id}/accept (as pinkiepie -> PENDING_APPROVAL)")
-    print(f"  POST /api/v1/auth/register?invite_id={summary.direct_invite_id} (email={DIRECT_INVITE_EMAIL} -> JOINED)")
+    print(f"  PATCH /api/v1/clubs/{summary.club_b.slug}/pending-approvals/twilightsparkle (as applejack -> approve)")
+    print(f"  DELETE /api/v1/clubs/{summary.club_b.slug}/ownership-transfers/current (as rarity, within 24h)")
+    print(f"  PATCH /api/v1/invites/{summary.club_b.public_invite_id} (as pinkiepie -> 202 PENDING_APPROVAL)")
+    print(
+        f'  POST /api/v1/auth/register -d \'{{"invite_id": "{summary.direct_invite_id}", ...}}\' '
+        f"(email={DIRECT_INVITE_EMAIL} -> JOINED)"
+    )
     print(f"  POST /api/v1/clubs/{summary.club_c.slug}/catalog/ (as pinkiepie -> 403 ClubSuggestionsClosedError)")
     print(f"  PUT /api/v1/clubs/{summary.club_b.slug}/members/rainbowdash/role (as applejack -> promote to ADMIN)")
     print(f"  DELETE /api/v1/clubs/{summary.club_a.slug}/members/me (as pinkiepie -> leaves voluntarily)")

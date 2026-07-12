@@ -1,14 +1,17 @@
-from dataclasses import dataclass
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Response, status
 
-from canterlot.dto.book import PaginatedBooksResponse
-from canterlot.dto.catalog import BookSuggestionRequest, CatalogFilters, PaginatedCatalogResponse, SuggestionResponse
+from canterlot.dto.catalog import (
+    BookSuggestionRequest,
+    CatalogFilters,
+    PaginatedCatalogResponse,
+    SuggestionResponse,
+    SuggestionStatus,
+)
 from canterlot.exceptions import (
     BookNotFoundError,
-    BookSearchCriteriaMissingError,
     ClubNotFoundError,
     ClubSuggestionsClosedError,
     InvalidCredentialsError,
@@ -17,29 +20,17 @@ from canterlot.exceptions import (
 )
 from canterlot.exceptions.auth import TokenMalformedError
 from canterlot.models import ErrorResponseModel
-from canterlot.models.book import TitleStr
+from canterlot.models.club import ClubSlugStr
 from canterlot.routers.dependencies import (
     get_book_id_from_identifier,
-    get_book_service,
     get_catalog_service,
     get_club_id_from_slug,
-    get_club_service,
     get_current_user_id,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import BookService, CatalogService, ClubService
-from canterlot.utils.format import ISBNStr
+from canterlot.services import CatalogService
 
 router = APIRouter(prefix="/clubs/{club_slug}/catalog", tags=["Club Catalogs"])
-
-
-@dataclass
-class ExternalBookSearchFilters:
-    title: TitleStr | None = None
-    author: str | None = None
-    isbn: ISBNStr | None = None
-    page: int = Query(default=1, ge=1)
-    limit: int = Query(default=5, ge=1, le=40)
 
 
 @router.post(
@@ -47,8 +38,9 @@ class ExternalBookSearchFilters:
     response_model=SuggestionResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
-        status.HTTP_201_CREATED: {
-            "description": "Book suggestion successfully added to the club catalog or identified as already existing."
+        status.HTTP_201_CREATED: {"description": "Book suggestion newly added to the club catalog."},
+        status.HTTP_200_OK: {
+            "description": "This book already exists in the club's catalog; the existing entry is returned."
         },
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
@@ -81,16 +73,25 @@ class ExternalBookSearchFilters:
     },
 )
 async def suggest_book_to_club(
+    club_slug: ClubSlugStr,
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
     suggestion: BookSuggestionRequest,
     catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
-):
-    return await catalog_service.suggest_book_to_club(
+    response: Response,
+) -> SuggestionResponse:
+    result = await catalog_service.suggest_book_to_club(
         club_id=club_id,
         user_id=current_user_id,
         suggestion=suggestion,
     )
+
+    if result.status == SuggestionStatus.ALREADY_EXISTS:
+        response.status_code = status.HTTP_200_OK
+    else:
+        response.headers["Location"] = f"/api/v1/clubs/{club_slug}/catalog/{result.book_external_id}"
+
+    return result
 
 
 @router.get(
@@ -134,58 +135,6 @@ async def get_club_catalog(
         sort_by=filters.sort_by,
         sort_direction=filters.sort_direction,
         suggested_by=filters.suggested_by,
-    )
-
-
-@router.get(
-    "/search/external",
-    response_model=PaginatedBooksResponse,
-    responses={
-        status.HTTP_200_OK: {
-            "description": "Successfully retrieved paginated list of external books matching criteria."
-        },
-        status.HTTP_400_BAD_REQUEST: {
-            "model": ErrorResponseModel,
-            "description": "BookSearchCriteriaMissingError: None of title, author, or isbn were provided.",
-            "content": error_example(BookSearchCriteriaMissingError),
-        },
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
-            ),
-            "content": error_example(InvalidCredentialsError, TokenExpiredError),
-        },
-        status.HTTP_403_FORBIDDEN: {
-            "model": ErrorResponseModel,
-            "description": "UnauthorizedClubMemberError: The requesting user is not a member of this club.",
-            "content": error_example(UnauthorizedClubMemberError),
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": "Validation error. The club_id path parameter or query parameters are invalid."
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected backend error, cache layer failure, or upstream timeout.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
-)
-async def search_external_books_for_club(
-    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
-    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
-    club_service: Annotated[ClubService, Depends(get_club_service)],
-    search_service: Annotated[BookService, Depends(get_book_service)],
-    filters: Annotated[ExternalBookSearchFilters, Depends()],
-):
-    preferred_languages = await club_service.get_preferred_languages(club_id, current_user_id)
-    return await search_service.search_external_books(
-        title=filters.title,
-        author=filters.author,
-        isbn=filters.isbn,
-        preferred_languages=preferred_languages,
-        page=filters.page,
-        limit=filters.limit,
     )
 
 

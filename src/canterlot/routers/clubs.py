@@ -1,7 +1,7 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from canterlot.dto.club import (
     ChangeMemberRoleRequest,
@@ -9,8 +9,10 @@ from canterlot.dto.club import (
     ClubDetailResponse,
     ClubResponse,
     ClubSettingsUpdateRequest,
+    OwnershipTransferRequest,
+    OwnershipTransferResponse,
 )
-from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
+from canterlot.dto.invite import CreateInviteRequest, InviteTokenResponse
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
@@ -32,6 +34,7 @@ from canterlot.exceptions import (
 from canterlot.exceptions.club import ClubMemberNotFoundError, ClubNotFoundError
 from canterlot.models import ErrorResponseModel
 from canterlot.models.club import ClubSlugStr
+from canterlot.models.enums import InviteType
 from canterlot.routers.dependencies import (
     get_club_id_from_slug,
     get_club_service,
@@ -42,6 +45,7 @@ from canterlot.routers.dependencies import (
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
+from canterlot.utils.format import NormalizedEmailStr
 
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
 
@@ -88,6 +92,7 @@ _CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY = Depends(rate_limit_club_owner_act
 )
 async def create_club(
     payload: ClubCreateRequest,
+    response: Response,
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
@@ -97,6 +102,8 @@ async def create_club(
     await invite_service.rotate_public_link(club_id=PydanticObjectId(res.id), user_id=current_user_id)
 
     member_usernames = await club_service.resolve_member_usernames(res.members)
+
+    response.headers["Location"] = f"/api/v1/clubs/{res.slug}"
 
     return ClubResponse.from_model(res, user_usernames=member_usernames)
 
@@ -203,8 +210,8 @@ async def get_club(
     return ClubResponse.from_model(view.club, view.member_usernames)
 
 
-@router.post(
-    "/{club_slug}/pending-approvals/{username}/approve",
+@router.patch(
+    "/{club_slug}/pending-approvals/{username}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -252,8 +259,8 @@ async def approve_pending_request(
     await club_service.review_pending_request(club_id, current_user_id, target_user_id, approve=True)
 
 
-@router.post(
-    "/{club_slug}/pending-approvals/{username}/reject",
+@router.delete(
+    "/{club_slug}/pending-approvals/{username}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -304,12 +311,15 @@ async def reject_pending_request(
 
 
 @router.post(
-    "/{club_slug}/invites/rotate",
+    "/{club_slug}/invites",
     status_code=status.HTTP_201_CREATED,
     response_model=InviteTokenResponse,
     responses={
         status.HTTP_201_CREATED: {
-            "description": "Public invite link successfully rotated. Returns the new cryptographic token."
+            "description": (
+                "Invite created. A `public`-type request rotates (replaces) the club's active public link; a "
+                "`direct`-type request generates a single-use, email-bound invitation."
+            )
         },
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
@@ -335,75 +345,36 @@ async def reject_pending_request(
             "description": "ClubNotFoundError: No club exists with the given slug.",
             "content": error_example(ClubNotFoundError),
         },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Internal database write error while saving the mutated invite token slot.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
-)
-async def rotate_public_admission_link(
-    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
-    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
-    invite_service: Annotated[InviteService, Depends(get_invite_service)],
-):
-    new_token = await invite_service.rotate_public_link(club_id, current_user_id)
-
-    return InviteTokenResponse(invite_token=new_token)
-
-
-@router.post(
-    "/{club_slug}/invites/direct",
-    response_model=InviteTokenResponse,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_201_CREATED: {
-            "description": "Cryptographically secure direct identity invitation token generated successfully."
-        },
-        status.HTTP_400_BAD_REQUEST: {
-            "model": ErrorResponseModel,
-            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
-            "content": error_example(TokenMalformedError),
-        },
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
-            ),
-            "content": error_example(InvalidCredentialsError, TokenExpiredError),
-        },
-        status.HTTP_403_FORBIDDEN: {
-            "model": ErrorResponseModel,
-            "description": (
-                "UnauthorizedClubMemberError: Requesting user lacks Administrative or Owner permissions for this club."
-            ),
-            "content": error_example(UnauthorizedClubMemberError),
-        },
-        status.HTTP_404_NOT_FOUND: {
-            "model": ErrorResponseModel,
-            "description": "ClubNotFoundError: No club exists with the given slug.",
-        },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": "Validation error. Target payload does not conform to a valid email address requirement.",
+            "description": (
+                "Validation error. `email` is required for a `direct` invite and forbidden for a `public` one, "
+                "or `email` does not conform to a valid email address requirement."
+            ),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
-            "description": "Unexpected engine error encountered during token serialization signature routines.",
+            "description": "Unexpected engine error encountered during token serialization or persistence.",
             "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
     },
 )
-async def create_direct_invite(
+async def create_invite(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
-    payload: DirectInvitePayload,
+    payload: CreateInviteRequest,
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
-):
-    token = await invite_service.create_direct_invite(
-        club_id=club_id,
-        issuer_id=current_user_id,
-        target_email=payload.email,
-    )
+    response: Response,
+) -> InviteTokenResponse:
+    if payload.type is InviteType.PUBLIC:
+        token = await invite_service.rotate_public_link(club_id, current_user_id)
+    else:
+        token = await invite_service.create_direct_invite(
+            club_id=club_id,
+            issuer_id=current_user_id,
+            target_email=cast(NormalizedEmailStr, payload.email),
+        )
+
+    response.headers["Location"] = f"/api/v1/invites/{token}/preview"
 
     return InviteTokenResponse(invite_token=token)
 
@@ -590,14 +561,16 @@ async def change_club_member_role(
 
 
 @router.post(
-    "/{club_slug}/members/{username}/transfer-ownership",
-    status_code=status.HTTP_204_NO_CONTENT,
+    "/{club_slug}/ownership-transfers",
+    status_code=status.HTTP_201_CREATED,
+    response_model=OwnershipTransferResponse,
     dependencies=[_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY],
     responses={
-        status.HTTP_204_NO_CONTENT: {
+        status.HTTP_201_CREATED: {
             "description": (
                 "Ownership transferred. The caller is now ADMIN and protected from removal for 30 days; "
-                "the target is now OWNER and cannot initiate another transfer for 30 days."
+                "the target is now OWNER and cannot initiate another transfer for 30 days. Returns the "
+                "deadline by which the caller can still reclaim ownership."
             )
         },
         status.HTTP_400_BAD_REQUEST: {
@@ -650,17 +623,19 @@ async def change_club_member_role(
         },
     },
 )
-async def transfer_club_ownership(
+async def create_ownership_transfer(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
-    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
+    payload: OwnershipTransferRequest,
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
-) -> None:
-    await club_service.transfer_ownership(club_id, current_user_id, target_user_id)
+) -> OwnershipTransferResponse:
+    reclaim_deadline = await club_service.transfer_ownership(club_id, current_user_id, payload.new_owner_username)
+
+    return OwnershipTransferResponse(reclaim_deadline=reclaim_deadline)
 
 
-@router.post(
-    "/{club_slug}/transfer-ownership/reclaim",
+@router.delete(
+    "/{club_slug}/ownership-transfers/current",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY],
     responses={
@@ -722,13 +697,14 @@ async def reclaim_club_ownership(
 
 @router.get(
     "/{club_slug}/invites/public",
-    response_model=str,
+    response_model=InviteTokenResponse,
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_200_OK: {"description": "Currently active public invite token for the club returned."},
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponseModel,
             "description": "ClubNotFoundError: No club exists with the given slug.",
+            "content": error_example(ClubNotFoundError),
         },
         status.HTTP_410_GONE: {
             "model": ErrorResponseModel,
@@ -745,5 +721,5 @@ async def reclaim_club_ownership(
 async def get_public_invite(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
-):
-    return await invite_service.get_public_link(club_id)
+) -> InviteTokenResponse:
+    return InviteTokenResponse(invite_token=await invite_service.get_public_link(club_id))

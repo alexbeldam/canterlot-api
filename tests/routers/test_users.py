@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
+from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
 from canterlot.dto.auth import ConnectedProvidersResponse, LinkedProviderDTO
@@ -12,6 +13,8 @@ from canterlot.exceptions import (
     LastAuthenticationMethodError,
 )
 from canterlot.models.enums import AuthProviderName
+
+SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
 def describe_get_connected_providers():
@@ -89,3 +92,24 @@ def describe_disconnect_provider():
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "LAST_AUTHENTICATION_METHOD"
+
+
+def describe_mark_book_read():
+    def it_returns_204_on_success(client: TestClient, user_service: AsyncMock, book_repo: AsyncMock):
+        book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
+
+        response = client.put("/api/v1/users/me/read-books/google-books__ext-1")
+
+        assert response.status_code == 204
+        user_service.mark_book_read.assert_awaited_once()
+
+    def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
+        client: TestClient, user_service: AsyncMock, book_repo: AsyncMock
+    ):
+        book_repo.find_id_by_identifier.return_value = None
+
+        response = client.put("/api/v1/users/me/read-books/google-books__missing")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
+        user_service.mark_book_read.assert_not_called()

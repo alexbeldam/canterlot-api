@@ -7,6 +7,7 @@ from canterlot.dto.auth import ConnectedProvidersResponse, LinkProviderRequest
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
+    BookNotFoundError,
     GatewayConfigurationError,
     InvalidCredentialsError,
     InvalidOAuthCredentialError,
@@ -16,14 +17,20 @@ from canterlot.exceptions import (
 )
 from canterlot.models import ErrorResponseModel
 from canterlot.models.enums import AuthProviderName
-from canterlot.routers.dependencies import get_auth_service, get_current_user_id
+from canterlot.routers.dependencies import (
+    get_auth_service,
+    get_book_id_from_identifier,
+    get_current_user_id,
+    get_user_service,
+)
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import AuthService
+from canterlot.services import AuthService, UserService
 
-router = APIRouter(prefix="/users/me/auth-providers", tags=["Users"])
+auth_providers_router = APIRouter(prefix="/users/me/auth-providers", tags=["Users"])
+read_books_router = APIRouter(prefix="/users/me/read-books", tags=["Users"])
 
 
-@router.get(
+@auth_providers_router.get(
     "",
     response_model=ConnectedProvidersResponse,
     responses={
@@ -56,7 +63,7 @@ async def get_connected_providers(
     return await auth_service.list_connected_providers(current_user_id)
 
 
-@router.post(
+@auth_providers_router.post(
     "/{provider}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
@@ -105,7 +112,7 @@ async def link_provider(
     await auth_service.link_provider(current_user_id, provider, payload.credential)
 
 
-@router.delete(
+@auth_providers_router.delete(
     "/{provider}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
@@ -151,3 +158,44 @@ async def disconnect_provider(
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> None:
     await auth_service.disconnect_provider(current_user_id, provider)
+
+
+@read_books_router.put(
+    "/{identifier}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {"description": "Book successfully recorded in the user's reading history."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "BookNotFoundError: No book matches the given identifier, whether it was an ISBN-10, "
+                "an ISBN-13, or a provider external ID."
+            ),
+            "content": error_example(BookNotFoundError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error. The identifier is invalid."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def mark_book_read(
+    book_id: Annotated[PydanticObjectId, Depends(get_book_id_from_identifier)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> None:
+    await user_service.mark_book_read(user_id=current_user_id, book_id=book_id)
