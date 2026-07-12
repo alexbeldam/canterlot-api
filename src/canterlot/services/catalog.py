@@ -101,7 +101,7 @@ class CatalogService:
         entry = await self.__club_repo.find_catalog_entry_by_club_id_and_book_id(club_id, book_id)
         if entry is None:
             log.warn("Removal rejected: book is not in this club's catalog")
-            raise BookNotFoundError(f"Book with ID '{book_id}' not found in this club's catalog")
+            raise BookNotFoundError("This book is not in this club's catalog.")
 
         role = await self.__club_repo.find_member_role_by_club_id_and_user_id(club_id, current_user_id)
         is_privileged = role in (MemberRole.ADMIN, MemberRole.OWNER)

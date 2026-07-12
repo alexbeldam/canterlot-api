@@ -55,7 +55,7 @@ class BeanieClubRepository(ClubRepository):
         projection = await query.project(PreferredLanguagesProjection)
 
         if not projection:
-            raise ClubNotFoundError(f"Club with ID '{club_id}' not found")
+            raise ClubNotFoundError("This club no longer exists.")
 
         return projection.preferred_languages
 
