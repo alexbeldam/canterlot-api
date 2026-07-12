@@ -67,7 +67,7 @@ class ClubService:
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
             log.warn("Admission aborted: requested club node does not exist")
-            raise ClubNotFoundError(f"Club with ID '{club_id}' not found")
+            raise ClubNotFoundError("This club no longer exists.")
 
         log = log.bind(club_name=club.name, club_join_policy=str(club.join_policy))
         status = None
@@ -161,7 +161,7 @@ class ClubService:
 
         if not await self.__club_repo.exists_by_club_id_and_pending_user_id(club_id, target_user_id):
             log.warn("Review rejected: target user has no pending request in this club")
-            raise PendingRequestNotFoundError(f"No pending join request for user '{target_user_id}' in this club.")
+            raise PendingRequestNotFoundError("This user has no pending join request for this club.")
 
         if approve:
             await self.__club_repo.add_member(club_id, MemberSchema(user_id=target_user_id, role=MemberRole.MEMBER))

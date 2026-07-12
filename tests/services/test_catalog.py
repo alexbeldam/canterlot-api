@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -9,9 +10,10 @@ from canterlot.exceptions import (
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.book import LinkCandidate
+from canterlot.models.book import BookModel, LinkCandidate
 from canterlot.models.club import CatalogEntryModel
 from canterlot.models.enums import ExtensionType, LinkProviderName, MemberRole
+from canterlot.pagination import Page, SortDirection
 from canterlot.services.catalog import CatalogService
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -60,9 +62,14 @@ def _existing_book(urls: dict | None = None, **overrides) -> AsyncMock:
     return book
 
 
-def _service(book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock) -> CatalogService:
+def _service(
+    book_repo: AsyncMock,
+    club_repo: AsyncMock,
+    link_provider: AsyncMock,
+    user_repo: AsyncMock | None = None,
+) -> CatalogService:
     link_provider.name = LinkProviderName.ANNAS
-    return CatalogService(book_repo, club_repo, [link_provider])
+    return CatalogService(book_repo, club_repo, user_repo or AsyncMock(), [link_provider])
 
 
 def describe_membership_and_suggestion_gating():
@@ -289,6 +296,79 @@ def describe_removing_a_book_from_the_catalog():
 
         club_repo.find_member_role_by_club_id_and_user_id.assert_not_called()
         club_repo.remove_from_catalog.assert_not_called()
+
+
+def describe_get_catalog_page():
+    def _book(**overrides) -> BookModel:
+        defaults = {"external_id": "google-books__abc123", "title": "The Hobbit"}
+        return BookModel(**{**defaults, **overrides})
+
+    def _page(entries: list[CatalogEntryModel]) -> Page[CatalogEntryModel]:
+        return Page(items=entries, total_items=len(entries), current_page=1, page_size=20)
+
+    async def it_rejects_a_non_member(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = False
+        service = _service(book_repo, club_repo, link_provider, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC)
+
+        club_repo.find_catalog_page_by_club_id.assert_not_called()
+
+    async def it_resolves_the_book_and_suggesters_username_for_each_entry(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        entry = CatalogEntryModel(book_id=SOME_BOOK_ID, suggested_by=SOME_USER_ID, suggested_at=datetime.now(UTC))
+        club_repo.find_catalog_page_by_club_id.return_value = _page([entry])
+        book_repo.find_by_ids.return_value = {SOME_BOOK_ID: _book()}
+        user_repo.find_usernames_by_ids.return_value = {SOME_USER_ID: "alice_1"}
+        service = _service(book_repo, club_repo, link_provider, user_repo)
+
+        page = await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC)
+
+        assert str(page.items[0].external_id) == "google-books__abc123"
+        assert page.items[0].suggested_by == "alice_1"
+        book_repo.find_by_ids.assert_awaited_once_with([SOME_BOOK_ID])
+        user_repo.find_usernames_by_ids.assert_awaited_once_with([SOME_USER_ID])
+
+    async def it_resolves_a_suggested_by_username_filter_before_querying_the_catalog(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        user_repo.find_id_by_username.return_value = SOME_USER_ID
+        club_repo.find_catalog_page_by_club_id.return_value = _page([])
+        service = _service(book_repo, club_repo, link_provider, user_repo)
+
+        await service.get_catalog_page(
+            SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC, suggested_by="alice_1"
+        )
+
+        club_repo.find_catalog_page_by_club_id.assert_awaited_once_with(
+            club_id=SOME_CLUB_ID,
+            page=1,
+            limit=20,
+            sort_by=None,
+            sort_direction=SortDirection.DESC,
+            suggested_by=SOME_USER_ID,
+        )
+
+    async def it_returns_an_empty_page_when_the_suggested_by_filter_does_not_resolve(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        user_repo.find_id_by_username.return_value = None
+        service = _service(book_repo, club_repo, link_provider, user_repo)
+
+        page = await service.get_catalog_page(
+            SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC, suggested_by="ghost"
+        )
+
+        assert page.items == []
+        assert page.total_items == 0
+        club_repo.find_catalog_page_by_club_id.assert_not_called()
 
 
 def describe_backfilling_missing_metadata():

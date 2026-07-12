@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -5,7 +6,7 @@ from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
 from canterlot.dto.book import PaginatedBooksResponse
-from canterlot.dto.catalog import SuggestionResponse, SuggestionStatus
+from canterlot.dto.catalog import CatalogEntryResponse, PaginatedCatalogResponse, SuggestionResponse, SuggestionStatus
 from canterlot.exceptions import (
     BookNotFoundError,
     BookSearchCriteriaMissingError,
@@ -86,6 +87,83 @@ def describe_suggest_book_to_club():
 
         assert response.status_code == 404
         catalog_service.suggest_book_to_club.assert_not_called()
+
+
+def describe_get_club_catalog():
+    def _entry_response(**overrides) -> CatalogEntryResponse:
+        defaults = {
+            "external_id": "google-books__ext-1",
+            "title": "The Hobbit",
+            "created_at": datetime.now(UTC),
+            "suggested_by": "alice_1",
+            "suggested_at": datetime.now(UTC),
+        }
+        return CatalogEntryResponse.model_validate({**defaults, **overrides})
+
+    def it_returns_a_paginated_page_of_the_catalog(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
+            items=[_entry_response()], total_items=1, current_page=1, page_size=20
+        )
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_items"] == 1
+        assert body["items"][0]["suggested_by"] == "alice_1"
+
+    def it_returns_403_when_the_caller_is_not_a_club_member(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        catalog_service.get_catalog_page.side_effect = UnauthorizedClubMemberError("not a member")
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_club_slug_does_not_exist(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = None
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
+
+        assert response.status_code == 404
+        catalog_service.get_catalog_page.assert_not_called()
+
+    def it_passes_sort_and_filter_query_params_through(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
+            items=[], total_items=0, current_page=1, page_size=20
+        )
+
+        response = client.get(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/",
+            params={"sort_by": "title", "suggested_by": "alice_1", "page": 2, "limit": 10},
+        )
+
+        assert response.status_code == 200
+        catalog_service.get_catalog_page.assert_awaited_once()
+        _, kwargs = catalog_service.get_catalog_page.call_args
+        assert kwargs["sort_by"] == "title"
+        assert kwargs["suggested_by"] == "alice_1"
+        assert kwargs["page"] == 2
+        assert kwargs["limit"] == 10
+
+    def it_returns_422_for_an_invalid_sort_field(client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+
+        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", params={"sort_by": "not-a-real-field"})
+
+        assert response.status_code == 422
+        catalog_service.get_catalog_page.assert_not_called()
 
 
 def describe_search_external_books_for_club():

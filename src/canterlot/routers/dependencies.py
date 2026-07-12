@@ -90,9 +90,10 @@ async def get_book_service(
 async def get_catalog_service(
     book_repo: Annotated[BookRepository, Depends(get_book_repository)],
     club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
     link_providers: Annotated[list[LinkProvider], Depends(get_link_providers)],
 ) -> CatalogService:
-    return CatalogService(book_repo=book_repo, club_repo=club_repo, link_providers=link_providers)
+    return CatalogService(book_repo=book_repo, club_repo=club_repo, user_repo=user_repo, link_providers=link_providers)
 
 
 def get_oauth_providers() -> dict[AuthProviderName, OAuthProvider]:

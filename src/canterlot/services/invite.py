@@ -163,7 +163,7 @@ class InviteService:
         invite = await self.__invite_repo.find_one_active_public_by_club_id(club_id)
         if not invite:
             log.warn("Public link lookup failed: no active token mapped for this club")
-            raise InviteLinkDeactivatedError(f"Club with ID {club_id} has no active public link.")
+            raise InviteLinkDeactivatedError("This club has no active public link.")
 
         return invite.id
 

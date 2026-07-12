@@ -199,6 +199,7 @@ def describe_service_factories():
         service = await get_catalog_service(
             book_repo=AsyncMock(spec=BookRepository),
             club_repo=AsyncMock(spec=ClubRepository),
+            user_repo=AsyncMock(spec=UserRepository),
             link_providers=[AsyncMock(spec=LinkProvider)],
         )
         assert isinstance(service, CatalogService)
