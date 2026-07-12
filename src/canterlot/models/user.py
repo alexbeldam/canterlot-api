@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from pymongo import ASCENDING, IndexModel
 
 from canterlot.utils.format import NonEmptyStr, NormalizedEmailStr
 
@@ -40,6 +41,19 @@ class UserModel(Document):
 
     class Settings:
         name = "users"
+        indexes: ClassVar[list[IndexModel]] = [
+            IndexModel(
+                [("linked_providers.provider", ASCENDING), ("linked_providers.external_id", ASCENDING)],
+                unique=True,
+                name="unique_linked_provider_identity",
+                # An empty linked_providers array still produces one index entry with both
+                # fields null (Mongo's multikey behavior for an empty array), so without this
+                # filter every password-only account would collide on that single null entry.
+                # partialFilterExpression only supports a small operator set (no $ne), so
+                # "array is non-empty" is expressed as "index 0 exists" instead.
+                partialFilterExpression={"linked_providers.0": {"$exists": True}},
+            )
+        ]
 
     @field_validator("username", mode="before")
     @classmethod

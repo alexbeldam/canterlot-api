@@ -10,6 +10,7 @@ from canterlot.exceptions import (
     GatewayConfigurationError,
     InvalidCredentialsError,
     LastAuthenticationMethodError,
+    OAuthAccountCreationConflictError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models import AuthOutcome, AuthProviderName, LinkedProviderSchema, UserModel
@@ -165,7 +166,14 @@ class AuthService:
             email=identity.email,
             linked_providers=[LinkedProviderSchema(provider=provider, external_id=identity.external_id)],
         )
-        saved_user = await self.__user_repo.save(user)
+        saved_user = await self.__user_repo.save_new_oauth_account(user)
+        if saved_user is None:
+            log.info("Lost a concurrent account-creation race for this identity, logging into the winning account")
+            winner_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
+            if winner_id is None:
+                log.error("Account-creation conflict left no matching account behind")
+                raise OAuthAccountCreationConflictError("Something went wrong signing you in; please try again.")
+            return await self.__issue_login_tokens(winner_id, AuthOutcome.LOGGED_IN)
 
         log.info("New account created from OAuth identity", user_id=str(saved_user.id))
         return await self.__issue_login_tokens(PydanticObjectId(saved_user.id), AuthOutcome.CREATED)
@@ -185,10 +193,14 @@ class AuthService:
             log.info("Provider already linked to this account, nothing to do")
             return
 
-        await self.__user_repo.add_linked_provider(
+        linked = await self.__user_repo.add_linked_provider(
             user_id,
             LinkedProviderSchema(provider=provider, external_id=identity.external_id),
         )
+        if not linked:
+            log.warn("Link rejected: a concurrent request linked this credential to a different account first")
+            raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
+
         log.info("Authentication provider linked successfully")
 
     async def disconnect_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:

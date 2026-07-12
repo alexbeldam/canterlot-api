@@ -54,7 +54,7 @@ dev = [
     "mongomock-motor>=0.0.36",
     "httpx2>=2.5.0",
     "pytest-github-actions-annotate-failures>=0.4.2",
-    "testcontainers[mongodb]>=4.14.2",
+    "testcontainers[mongodb,redis]>=4.14.2",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -72,6 +72,7 @@ markers = [
 filterwarnings = [
     "ignore::curl_cffi.utils.CurlCffiWarning",
     "ignore:The wait_for_logs function with string or callable predicates is deprecated:DeprecationWarning:testcontainers.mongodb",
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.redis",
 ]
 
 [tool.coverage.run]
@@ -82,7 +83,6 @@ omit = [
     "*/canterlot/config/database.py",
     "*/canterlot/utils/logger.py",
     "*/canterlot/exceptions/*",
-    "*/canterlot/repositories/redis/*",
 ]
 branch = true
 
