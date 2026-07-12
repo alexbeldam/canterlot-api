@@ -50,3 +50,8 @@ class OwnershipReclaimWindowExpiredError(ClubDomainError):
 class OwnershipTransferConflictError(ClubDomainError):
     error_code = ErrorCode.OWNERSHIP_TRANSFER_CONFLICT
     status_code = status.HTTP_409_CONFLICT
+
+
+class FormerOwnerProtectedError(ClubDomainError):
+    error_code = ErrorCode.FORMER_OWNER_PROTECTED
+    status_code = status.HTTP_409_CONFLICT

@@ -7,6 +7,7 @@ from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubRespon
 from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
 from canterlot.exceptions import (
     CannotTransferOwnershipToSelfError,
+    FormerOwnerProtectedError,
     InvalidCredentialsError,
     InviteLinkDeactivatedError,
     OwnershipReclaimWindowExpiredError,
@@ -347,6 +348,69 @@ async def create_direct_invite(
     )
 
     return InviteTokenResponse(invite_token=token)
+
+
+@router.delete(
+    "/{club_slug}/members/{username}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Member removed and banned from the club in the same operation — an admin-initiated removal is "
+                "always a ban. The user can only rejoin via a direct invite; public links won't admit them."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": (
+                "UnauthorizedClubMemberError: The caller does not hold OWNER/ADMIN standing, or does not strictly "
+                "outrank the target (an ADMIN can never remove another ADMIN or the OWNER)."
+            ),
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError: No club exists with the given slug. "
+                "UserNotFoundError: No user exists with the given username. "
+                "ClubMemberNotFoundError: The target user is not a member of this club."
+            ),
+            "content": error_example(ClubNotFoundError, UserNotFoundError, ClubMemberNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "FormerOwnerProtectedError: The target transferred ownership away less than 30 days ago and is "
+                "still protected from removal by the current OWNER."
+            ),
+            "content": error_example(FormerOwnerProtectedError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def remove_club_member(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.remove_member(club_id, current_user_id, target_user_id)
 
 
 @router.post(
