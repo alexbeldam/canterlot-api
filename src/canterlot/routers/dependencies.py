@@ -10,7 +10,7 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 
 from canterlot.config import get_settings
-from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError
+from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError, RateLimitExceededError
 from canterlot.exceptions.book import BookNotFoundError
 from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models import UserModel
@@ -211,3 +211,28 @@ async def get_current_user(
     if user is None:
         raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
     return user
+
+
+async def _enforce_rate_limit(redis_client: aioredis.Redis, key: str, limit: int, window_seconds: int) -> None:
+    count = await redis_client.incr(key)
+    await redis_client.expire(key, window_seconds, nx=True)
+    if count > limit:
+        ttl = await redis_client.ttl(key)
+        raise RateLimitExceededError(ttl if ttl > 0 else window_seconds)
+
+
+def rate_limit_club_owner_action(scope: str):
+    async def dependency(
+        club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+        current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+        redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+    ) -> None:
+        settings = get_settings()
+        await _enforce_rate_limit(
+            redis_client,
+            key=f"ratelimit:{scope}:{club_id}:{current_user_id}",
+            limit=settings.club_ownership_action_rate_limit,
+            window_seconds=settings.club_ownership_action_rate_limit_window_seconds,
+        )
+
+    return dependency

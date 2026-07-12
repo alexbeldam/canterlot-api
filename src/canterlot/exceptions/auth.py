@@ -1,5 +1,3 @@
-from typing import ClassVar
-
 from fastapi import status
 
 from .base import BusinessError, ErrorCode
@@ -22,7 +20,10 @@ class EmailAlreadyExistsError(AuthenticationError):
 class InvalidCredentialsError(AuthenticationError):
     error_code = ErrorCode.INVALID_CREDENTIALS
     status_code = status.HTTP_401_UNAUTHORIZED
-    headers: ClassVar[dict[str, str]] = {"WWW-Authenticate": "Bearer"}
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message)
+        self.headers = {"WWW-Authenticate": "Bearer"}
 
 
 class TokenError(BusinessError):

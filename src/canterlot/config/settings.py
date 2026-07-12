@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     mongodb_url: str
     mongodb_db_name: str
     redis_url: str
+    club_ownership_action_rate_limit: int = 10
+    club_ownership_action_rate_limit_window_seconds: int = 3600
 
     model_config = SettingsConfigDict(
         env_file=".env",

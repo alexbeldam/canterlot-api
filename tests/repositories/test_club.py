@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from beanie import PydanticObjectId
+from pymongo.errors import OperationFailure
 
 from canterlot.exceptions import ClubNotFoundError
 from canterlot.models.book import BookModel, BookProviderIdentifier
@@ -397,6 +398,83 @@ def describe_remove_from_catalog():
         found = await repo.find_by_id(_id(club))
         assert found is not None
         assert found.catalog == []
+
+
+def describe_transfer_ownership():
+    async def it_swaps_roles_and_records_transfer_bookkeeping():
+        old_owner_id = PydanticObjectId()
+        new_owner_id = PydanticObjectId()
+        club = await _club(
+            members=[
+                MemberSchema(user_id=old_owner_id, role=MemberRole.OWNER),
+                MemberSchema(user_id=new_owner_id, role=MemberRole.MEMBER),
+            ]
+        )
+        transferred_at = datetime.now(UTC)
+
+        matched = await repo.transfer_ownership(_id(club), old_owner_id, new_owner_id, transferred_at)
+
+        assert matched is True
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert next(m.role for m in found.members if m.user_id == old_owner_id) == MemberRole.ADMIN
+        assert next(m.role for m in found.members if m.user_id == new_owner_id) == MemberRole.OWNER
+        assert found.ownership_transferred_at is not None
+        assert abs((found.ownership_transferred_at.replace(tzinfo=UTC) - transferred_at).total_seconds()) < 0.001
+        assert found.protected_former_owner_id == old_owner_id
+
+    async def it_returns_false_when_the_caller_is_no_longer_the_owner():
+        old_owner_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=old_owner_id, role=MemberRole.MEMBER)])
+
+        matched = await repo.transfer_ownership(_id(club), old_owner_id, PydanticObjectId(), datetime.now(UTC))
+
+        assert matched is False
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.ownership_transferred_at is None
+
+    async def it_raises_when_the_target_is_the_same_as_the_current_owner():
+        owner_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=owner_id, role=MemberRole.OWNER)])
+
+        with pytest.raises(OperationFailure):
+            await repo.transfer_ownership(_id(club), owner_id, owner_id, datetime.now(UTC))
+
+
+def describe_reclaim_ownership():
+    async def it_reverses_roles_and_clears_transfer_bookkeeping():
+        former_owner_id = PydanticObjectId()
+        current_owner_id = PydanticObjectId()
+        club = await _club(
+            members=[
+                MemberSchema(user_id=former_owner_id, role=MemberRole.ADMIN),
+                MemberSchema(user_id=current_owner_id, role=MemberRole.OWNER),
+            ],
+            ownership_transferred_at=datetime.now(UTC),
+            protected_former_owner_id=former_owner_id,
+        )
+
+        matched = await repo.reclaim_ownership(_id(club), former_owner_id, current_owner_id)
+
+        assert matched is True
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert next(m.role for m in found.members if m.user_id == former_owner_id) == MemberRole.OWNER
+        assert next(m.role for m in found.members if m.user_id == current_owner_id) == MemberRole.ADMIN
+        assert found.ownership_transferred_at is None
+        assert found.protected_former_owner_id is None
+
+    async def it_returns_false_when_the_stored_former_owner_no_longer_matches():
+        club = await _club(
+            members=[MemberSchema(user_id=PydanticObjectId(), role=MemberRole.OWNER)],
+            ownership_transferred_at=datetime.now(UTC),
+            protected_former_owner_id=PydanticObjectId(),
+        )
+
+        matched = await repo.reclaim_ownership(_id(club), PydanticObjectId(), PydanticObjectId())
+
+        assert matched is False
 
 
 def describe_save():

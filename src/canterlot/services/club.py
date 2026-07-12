@@ -1,9 +1,19 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest, ClubOnboarding
-from canterlot.exceptions import ClubNotFoundError, PendingRequestNotFoundError, UnauthorizedClubMemberError
+from canterlot.exceptions import (
+    CannotTransferOwnershipToSelfError,
+    ClubMemberNotFoundError,
+    ClubNotFoundError,
+    OwnershipReclaimWindowExpiredError,
+    OwnershipTransferConflictError,
+    OwnershipTransferCooldownError,
+    PendingRequestNotFoundError,
+    UnauthorizedClubMemberError,
+)
 from canterlot.models import (
     ClubModel,
     ClubOnboardingStatus,
@@ -18,6 +28,17 @@ from canterlot.utils import get_logger, make_slug
 from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
+
+_OWNERSHIP_TRANSFER_COOLDOWN = timedelta(days=30)
+_OWNERSHIP_RECLAIM_WINDOW = timedelta(hours=24)
+
+
+def _find_member(members: list[MemberSchema], user_id: PydanticObjectId) -> MemberSchema | None:
+    return next((m for m in members if m.user_id == user_id), None)
+
+
+def _find_owner(members: list[MemberSchema]) -> MemberSchema | None:
+    return next((m for m in members if m.role == MemberRole.OWNER), None)
 
 
 @dataclass
@@ -168,3 +189,99 @@ class ClubService:
 
         await self.__club_repo.remove_from_pending_approvals(club_id, target_user_id)
         log.info("Pending join request reviewed successfully", outcome="approved" if approve else "rejected")
+
+    async def transfer_ownership(
+        self,
+        club_id: PydanticObjectId,
+        current_owner_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+    ) -> None:
+        log = logger.bind(
+            club_id=str(club_id),
+            current_owner_id=str(current_owner_id),
+            target_user_id=str(target_user_id),
+        )
+        log.info("Initiating club ownership transfer")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Transfer rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        now = datetime.now(UTC)
+        self.__ensure_transfer_is_allowed(club, current_owner_id, target_user_id, now, log)
+
+        transferred = await self.__club_repo.transfer_ownership(club_id, current_owner_id, target_user_id, now)
+        if not transferred:
+            log.warn("Transfer rejected: club membership changed before the transfer could complete")
+            raise OwnershipTransferConflictError(
+                "This club's membership changed before the transfer could complete; please retry."
+            )
+
+        log.info("Club ownership transferred successfully")
+
+    def __ensure_transfer_is_allowed(
+        self,
+        club: ClubModel,
+        current_owner_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+        now: datetime,
+        log,
+    ) -> None:
+        if target_user_id == current_owner_id:
+            log.warn("Transfer rejected: cannot transfer ownership to yourself")
+            raise CannotTransferOwnershipToSelfError("You cannot transfer ownership to yourself.")
+
+        caller = _find_member(club.members, current_owner_id)
+        if caller is None or caller.role != MemberRole.OWNER:
+            log.warn("Transfer rejected: caller is not the club OWNER")
+            raise UnauthorizedClubMemberError("Only the club OWNER can transfer ownership.")
+
+        if _find_member(club.members, target_user_id) is None:
+            log.warn("Transfer rejected: target user is not a member of this club")
+            raise ClubMemberNotFoundError("This user is not a member of this club.")
+
+        if target_user_id == club.protected_former_owner_id:
+            return
+
+        last_transfer = club.ownership_transferred_at
+        if last_transfer is not None and now - last_transfer < _OWNERSHIP_TRANSFER_COOLDOWN:
+            log.warn("Transfer rejected: new-owner cooldown is still active")
+            raise OwnershipTransferCooldownError(
+                "You must wait 30 days after receiving ownership before transferring it again."
+            )
+
+    async def reclaim_ownership(self, club_id: PydanticObjectId, caller_id: PydanticObjectId) -> None:
+        log = logger.bind(club_id=str(club_id), caller_id=str(caller_id))
+        log.info("Initiating ownership transfer reclaim")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Reclaim rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        if club.protected_former_owner_id != caller_id:
+            log.warn("Reclaim rejected: caller is not the recorded former owner")
+            raise UnauthorizedClubMemberError("You are not the recorded former owner of this club.")
+
+        transferred_at = club.ownership_transferred_at
+        current_owner = _find_owner(club.members)
+        if transferred_at is None or current_owner is None:
+            log.warn("Reclaim rejected: club ownership state is inconsistent")
+            raise OwnershipTransferConflictError("This club's ownership state is inconsistent; please retry.")
+
+        now = datetime.now(UTC)
+        if now - transferred_at > _OWNERSHIP_RECLAIM_WINDOW:
+            log.warn("Reclaim rejected: the 24-hour reclaim window has elapsed")
+            raise OwnershipReclaimWindowExpiredError(
+                "The 24-hour reclaim window has passed; ask the current owner to transfer it back."
+            )
+
+        reclaimed = await self.__club_repo.reclaim_ownership(club_id, caller_id, current_owner.user_id)
+        if not reclaimed:
+            log.warn("Reclaim rejected: club membership changed before the reclaim could complete")
+            raise OwnershipTransferConflictError(
+                "This club's membership changed before the reclaim could complete; please retry."
+            )
+
+        log.info("Ownership transfer reclaimed successfully")

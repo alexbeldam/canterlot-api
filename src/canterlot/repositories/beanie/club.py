@@ -1,6 +1,10 @@
+from datetime import datetime
+from typing import cast
+
 from beanie import PydanticObjectId
 from beanie.operators import Pull, Push
 from pydantic import BaseModel
+from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
 from canterlot.models import BookModel, ClubModel, MemberRole, MemberSchema, PendingApprovalSchema
@@ -211,6 +215,61 @@ class BeanieClubRepository(ClubRepository):
 
     async def remove_from_catalog(self, club_id: PydanticObjectId, book_id: PydanticObjectId) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Pull({ClubModel.catalog: {"book_id": book_id}}))
+
+    async def transfer_ownership(
+        self,
+        club_id: PydanticObjectId,
+        current_owner_id: PydanticObjectId,
+        new_owner_id: PydanticObjectId,
+        transferred_at: datetime,
+    ) -> bool:
+        # current_owner_id's OWNER role is part of the top-level filter, not just the array
+        # filter, so a stale caller races to matched_count == 0 instead of silently no-opping.
+        result = await ClubModel.find_one(
+            ClubModel.id == club_id,
+            {"members": {"$elemMatch": {"user_id": current_owner_id, "role": MemberRole.OWNER}}},
+        ).update_one(
+            {
+                "$set": {
+                    "members.$[oldOwner].role": MemberRole.ADMIN,
+                    "members.$[newOwner].role": MemberRole.OWNER,
+                    "ownership_transferred_at": transferred_at,
+                    "protected_former_owner_id": current_owner_id,
+                }
+            },
+            array_filters=[
+                {"oldOwner.user_id": current_owner_id},
+                {"newOwner.user_id": new_owner_id},
+            ],
+        )
+
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def reclaim_ownership(
+        self,
+        club_id: PydanticObjectId,
+        former_owner_id: PydanticObjectId,
+        current_owner_id: PydanticObjectId,
+    ) -> bool:
+        result = await ClubModel.find_one(
+            ClubModel.id == club_id,
+            ClubModel.protected_former_owner_id == former_owner_id,
+        ).update_one(
+            {
+                "$set": {
+                    "members.$[formerOwner].role": MemberRole.OWNER,
+                    "members.$[currentOwner].role": MemberRole.ADMIN,
+                    "ownership_transferred_at": None,
+                    "protected_former_owner_id": None,
+                }
+            },
+            array_filters=[
+                {"formerOwner.user_id": former_owner_id},
+                {"currentOwner.user_id": current_owner_id},
+            ],
+        )
+
+        return cast(UpdateResult, result).matched_count > 0
 
     async def save(self, club: ClubModel) -> ClubModel:
         return await club.save()
