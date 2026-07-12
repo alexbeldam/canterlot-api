@@ -44,6 +44,11 @@ setup: check-deps
 clean:
     @uv run python -m tools.clean
 
+# Seeds MongoDB with demo clubs/users/books for manually exercising the API end to end.
+seed:
+    @echo "{{ info }}Seeding catalog demo data...{{ reset }}"
+    @uv run python -m tools.seed
+
 # --- Docker Infrastructure Control ---
 
 # Bring up services. Usage: `just up` or `just up mongodb` or `just up mongodb redis`
