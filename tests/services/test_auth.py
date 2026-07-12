@@ -12,6 +12,7 @@ from canterlot.exceptions import (
     GatewayConfigurationError,
     InvalidCredentialsError,
     LastAuthenticationMethodError,
+    OAuthAccountCreationConflictError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models.enums import AuthOutcome, AuthProviderName
@@ -140,7 +141,7 @@ def describe_sign_in_with_provider():
         assert result.outcome == AuthOutcome.LOGGED_IN
         assert result.access_token
         assert result.refresh_token
-        user_repo.save.assert_not_called()
+        user_repo.save_new_oauth_account.assert_not_called()
 
     async def it_requires_linking_when_the_email_already_belongs_to_a_different_account(user_repo: AsyncMock):
         google = _google_provider()
@@ -154,7 +155,7 @@ def describe_sign_in_with_provider():
         assert result.outcome == AuthOutcome.LINK_REQUIRED
         assert result.access_token is None
         assert result.refresh_token is None
-        user_repo.save.assert_not_called()
+        user_repo.save_new_oauth_account.assert_not_called()
 
     async def it_creates_a_new_account_when_no_match_exists(user_repo: AsyncMock):
         google = _google_provider()
@@ -162,14 +163,14 @@ def describe_sign_in_with_provider():
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         result = await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
 
         assert result.outcome == AuthOutcome.CREATED
         assert result.access_token
-        saved_user = user_repo.save.call_args.args[0]
+        saved_user = user_repo.save_new_oauth_account.call_args.args[0]
         assert saved_user.username == "alice"
         assert saved_user.hashed_password is None
         assert len(saved_user.linked_providers) == 1
@@ -182,13 +183,39 @@ def describe_sign_in_with_provider():
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
 
-        saved_user = user_repo.save.call_args.args[0]
+        saved_user = user_repo.save_new_oauth_account.call_args.args[0]
         assert saved_user.name == "alice"
+
+    async def it_logs_into_the_winning_account_when_a_concurrent_sign_up_wins_the_race(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
+        user_repo.find_id_by_linked_provider.side_effect = [None, SOME_OTHER_USER_ID]
+        user_repo.find_by_email.return_value = None
+        user_repo.exists_by_username.return_value = False
+        user_repo.save_new_oauth_account.return_value = None
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        result = await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        assert result.outcome == AuthOutcome.LOGGED_IN
+        assert result.access_token
+
+    async def it_raises_when_a_create_conflict_leaves_no_matching_account_behind(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
+        user_repo.find_id_by_linked_provider.side_effect = [None, None]
+        user_repo.find_by_email.return_value = None
+        user_repo.exists_by_username.return_value = False
+        user_repo.save_new_oauth_account.return_value = None
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        with pytest.raises(OAuthAccountCreationConflictError):
+            await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
 
 
 def describe_link_provider():
@@ -202,6 +229,7 @@ def describe_link_provider():
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com")
         user_repo.find_id_by_linked_provider.return_value = None
+        user_repo.add_linked_provider.return_value = True
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
@@ -211,6 +239,16 @@ def describe_link_provider():
         assert called_user_id == SOME_USER_ID
         assert called_entry.provider == AuthProviderName.GOOGLE
         assert called_entry.external_id == "sub-1"
+
+    async def it_rejects_linking_when_a_concurrent_request_wins_the_race(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com")
+        user_repo.find_id_by_linked_provider.return_value = None
+        user_repo.add_linked_provider.return_value = False
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        with pytest.raises(AuthProviderAlreadyLinkedError):
+            await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
 
     async def it_is_idempotent_when_already_linked_to_the_same_account(user_repo: AsyncMock):
         google = _google_provider()

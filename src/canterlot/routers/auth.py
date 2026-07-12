@@ -19,6 +19,7 @@ from canterlot.exceptions import (
     InvalidInviteTokenError,
     InvalidOAuthCredentialError,
     InviteLinkDeactivatedError,
+    OAuthAccountCreationConflictError,
     TokenExpiredError,
     TokenMalformedError,
     UsernameAlreadyExistsError,
@@ -223,6 +224,14 @@ async def refresh_token_rotation(
             "model": ErrorResponseModel,
             "description": "InvalidOAuthCredentialError: The provided credential failed cryptographic verification.",
             "content": error_example(InvalidOAuthCredentialError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "OAuthAccountCreationConflictError: A concurrent sign-in for this same identity left this "
+                "request unable to resolve to an account. Extremely rare; retrying the request resolves it."
+            ),
+            "content": error_example(OAuthAccountCreationConflictError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Validation error. `provider` is not a recognized authentication provider."

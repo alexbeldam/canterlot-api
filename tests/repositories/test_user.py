@@ -209,13 +209,57 @@ def describe_add_linked_provider():
         user = await _user()
         entry = LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="new-google-id")
 
-        await repo.add_linked_provider(_id(user), entry)
+        assert await repo.add_linked_provider(_id(user), entry) is True
 
         found = await repo.find_by_id(_id(user))
         assert found is not None
         assert [(p.provider, p.external_id) for p in found.linked_providers] == [
             (AuthProviderName.GOOGLE, "new-google-id")
         ]
+
+    async def it_returns_false_when_another_user_already_claimed_the_identity():
+        await _user(linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="claimed-id")])
+        challenger = await _user()
+
+        result = await repo.add_linked_provider(
+            _id(challenger),
+            LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="claimed-id"),
+        )
+
+        assert result is False
+        found = await repo.find_by_id(_id(challenger))
+        assert found is not None
+        assert found.linked_providers == []
+
+
+def describe_save_new_oauth_account():
+    async def it_persists_a_brand_new_account():
+        user = UserModel(
+            name="Rarity",
+            username="rarity_oauth_account",
+            email="rarity-oauth@example.com",
+            linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="rarity-google-id")],
+        )
+
+        saved = await repo.save_new_oauth_account(user)
+
+        assert saved is not None
+        found = await repo.find_by_id(_id(saved))
+        assert found is not None
+        assert found.username == "rarity_oauth_account"
+
+    async def it_returns_none_when_the_identity_is_already_claimed():
+        await _user(
+            linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="already-claimed")]
+        )
+        conflicting_user = UserModel(
+            name="Applejack",
+            username="applejack_oauth_conflict",
+            email="applejack-oauth-conflict@example.com",
+            linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="already-claimed")],
+        )
+
+        assert await repo.save_new_oauth_account(conflicting_user) is None
 
 
 def describe_remove_linked_provider():

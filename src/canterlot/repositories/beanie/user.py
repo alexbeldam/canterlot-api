@@ -1,6 +1,7 @@
 from beanie import PydanticObjectId
 from beanie.operators import ElemMatch, In, Pull, Push
 from pydantic import BaseModel, ConfigDict, Field
+from pymongo.errors import DuplicateKeyError
 
 from canterlot.models import AuthProviderName, LinkedProviderSchema, UserModel
 from canterlot.models.user import UsernameStr
@@ -79,6 +80,12 @@ class BeanieUserRepository(UserRepository):
     async def save(self, user: UserModel) -> UserModel:
         return await user.save()
 
+    async def save_new_oauth_account(self, user: UserModel) -> UserModel | None:
+        try:
+            return await user.save()
+        except DuplicateKeyError:
+            return None
+
     async def increment_referral_count_by_username(self, username: UsernameStr) -> None:
         await UserModel.find_one(UserModel.username == username).inc({UserModel.referral_count: 1})
 
@@ -91,8 +98,12 @@ class BeanieUserRepository(UserRepository):
     async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(Pull({UserModel.refresh_tokens: token}))
 
-    async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> None:
-        await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.linked_providers: entry}))
+    async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> bool:
+        try:
+            await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.linked_providers: entry}))
+            return True
+        except DuplicateKeyError:
+            return False
 
     async def remove_linked_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(
