@@ -7,10 +7,13 @@ from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest
 from canterlot.exceptions import (
+    CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    ClubOwnerCannotLeaveError,
     FormerOwnerProtectedError,
+    MemberRoleChangeConflictError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -27,8 +30,18 @@ SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 SOME_TARGET_ID = PydanticObjectId("507f1f77bcf86cd799439015")
 
 
-def _club(join_policy: JoinPolicy = JoinPolicy.PUBLIC) -> SimpleNamespace:
-    return SimpleNamespace(id=SOME_CLUB_ID, name="Book Club", join_policy=join_policy)
+def _club(
+    join_policy: JoinPolicy = JoinPolicy.PUBLIC,
+    members: list[MemberSchema] | None = None,
+    banned_users: list[PydanticObjectId] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=SOME_CLUB_ID,
+        name="Book Club",
+        join_policy=join_policy,
+        members=members or [],
+        banned_users=banned_users or [],
+    )
 
 
 def describe_create_new_club():
@@ -56,8 +69,7 @@ def describe_admit_user():
             await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
 
     async def it_short_circuits_when_the_user_is_already_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
-        club_repo.find_by_id.return_value = _club()
-        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        club_repo.find_by_id.return_value = _club(members=[MemberSchema(user_id=SOME_USER_ID)])
         service = ClubService(club_repo, user_repo)
 
         result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
@@ -68,7 +80,6 @@ def describe_admit_user():
 
     async def it_admits_directly_when_the_join_policy_is_public(club_repo: AsyncMock, user_repo: AsyncMock):
         club_repo.find_by_id.return_value = _club(join_policy=JoinPolicy.PUBLIC)
-        club_repo.exists_by_club_id_and_member_user_id.return_value = False
         service = ClubService(club_repo, user_repo)
 
         result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
@@ -81,7 +92,6 @@ def describe_admit_user():
         club_repo: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.find_by_id.return_value = _club(join_policy=JoinPolicy.RESTRICTED)
-        club_repo.exists_by_club_id_and_member_user_id.return_value = False
         service = ClubService(club_repo, user_repo)
 
         result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID, is_direct=True)
@@ -91,7 +101,6 @@ def describe_admit_user():
 
     async def it_queues_for_approval_when_the_join_policy_is_restricted(club_repo: AsyncMock, user_repo: AsyncMock):
         club_repo.find_by_id.return_value = _club(join_policy=JoinPolicy.RESTRICTED)
-        club_repo.exists_by_club_id_and_member_user_id.return_value = False
         service = ClubService(club_repo, user_repo)
 
         result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
@@ -99,6 +108,41 @@ def describe_admit_user():
         assert result.status == ClubOnboardingStatus.PENDING_APPROVAL
         club_repo.add_to_pending_approvals.assert_awaited_once_with(SOME_CLUB_ID, SOME_USER_ID)
         club_repo.add_member.assert_not_called()
+
+    async def it_rejects_a_banned_user_joining_via_a_public_link_into_a_public_club(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_id.return_value = _club(join_policy=JoinPolicy.PUBLIC, banned_users=[SOME_USER_ID])
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
+
+        assert result.status == ClubOnboardingStatus.BANNED
+        club_repo.add_member.assert_not_called()
+        club_repo.add_to_pending_approvals.assert_not_called()
+        club_repo.remove_from_banned_users.assert_not_called()
+
+    async def it_rejects_a_banned_user_joining_via_a_public_link_into_a_restricted_club(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_id.return_value = _club(join_policy=JoinPolicy.RESTRICTED, banned_users=[SOME_USER_ID])
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID)
+
+        assert result.status == ClubOnboardingStatus.BANNED
+        club_repo.add_member.assert_not_called()
+        club_repo.add_to_pending_approvals.assert_not_called()
+
+    async def it_unbans_and_admits_a_banned_user_via_a_direct_invite(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(join_policy=JoinPolicy.RESTRICTED, banned_users=[SOME_USER_ID])
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.admit_user(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID, is_direct=True)
+
+        assert result.status == ClubOnboardingStatus.JOINED
+        club_repo.remove_from_banned_users.assert_awaited_once_with(SOME_CLUB_ID, SOME_USER_ID)
+        club_repo.add_member.assert_awaited_once()
 
 
 def describe_get_preferred_languages():
@@ -638,3 +682,202 @@ def describe_remove_member():
         await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
 
         club_repo.remove_and_ban_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID)
+
+
+def describe_change_member_role():
+    SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439019")
+
+    def _club(
+        members: list[MemberSchema],
+        ownership_transferred_at: datetime | None = None,
+        protected_former_owner_id: PydanticObjectId | None = None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            members=members,
+            ownership_transferred_at=ownership_transferred_at,
+            protected_former_owner_id=protected_former_owner_id,
+        )
+
+    async def it_raises_when_the_club_does_not_exist(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+    async def it_raises_when_the_caller_is_not_a_member_at_all(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+        club_repo.change_member_role.assert_not_called()
+
+    async def it_raises_when_the_caller_is_an_admin_not_the_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.ADMIN),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+    async def it_raises_when_the_target_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubMemberNotFoundError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+    async def it_raises_when_the_target_is_the_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.OWNER),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(CannotChangeOwnerRoleError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.MEMBER)
+
+        club_repo.change_member_role.assert_not_called()
+
+    async def it_raises_when_the_target_is_a_protected_former_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=29),
+            protected_former_owner_id=SOME_TARGET_ID,
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(FormerOwnerProtectedError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.MEMBER)
+
+        club_repo.change_member_role.assert_not_called()
+
+    async def it_allows_demotion_of_the_former_owner_once_the_window_elapses(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=31),
+            protected_former_owner_id=SOME_TARGET_ID,
+        )
+        club_repo.change_member_role.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.MEMBER)
+
+        club_repo.change_member_role.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID, MemberRole.MEMBER)
+
+    async def it_raises_when_the_repository_reports_a_conflict(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER),
+            ]
+        )
+        club_repo.change_member_role.return_value = False
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(MemberRoleChangeConflictError):
+            await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+    async def it_changes_the_role_when_the_owner_promotes_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER),
+            ]
+        )
+        club_repo.change_member_role.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+        club_repo.change_member_role.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+
+def describe_leave_club():
+    def _club(
+        members: list[MemberSchema],
+        ownership_transferred_at: datetime | None = None,
+        protected_former_owner_id: PydanticObjectId | None = None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            members=members,
+            ownership_transferred_at=ownership_transferred_at,
+            protected_former_owner_id=protected_former_owner_id,
+        )
+
+    async def it_raises_when_the_club_does_not_exist(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.leave_club(SOME_CLUB_ID, SOME_USER_ID)
+
+    async def it_raises_when_the_caller_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.leave_club(SOME_CLUB_ID, SOME_USER_ID)
+
+        club_repo.remove_member.assert_not_called()
+
+    async def it_raises_when_the_caller_is_the_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubOwnerCannotLeaveError):
+            await service.leave_club(SOME_CLUB_ID, SOME_USER_ID)
+
+        club_repo.remove_member.assert_not_called()
+
+    async def it_raises_when_the_caller_is_a_protected_former_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [MemberSchema(user_id=SOME_USER_ID, role=MemberRole.ADMIN)],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=29),
+            protected_former_owner_id=SOME_USER_ID,
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(FormerOwnerProtectedError):
+            await service.leave_club(SOME_CLUB_ID, SOME_USER_ID)
+
+        club_repo.remove_member.assert_not_called()
+
+    async def it_allows_leaving_once_the_former_owner_protection_window_elapses(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_id.return_value = _club(
+            [MemberSchema(user_id=SOME_USER_ID, role=MemberRole.ADMIN)],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=31),
+            protected_former_owner_id=SOME_USER_ID,
+        )
+        service = ClubService(club_repo, user_repo)
+
+        await service.leave_club(SOME_CLUB_ID, SOME_USER_ID)
+
+        club_repo.remove_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_USER_ID)
+
+    async def it_removes_a_plain_member_who_leaves_voluntarily(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        await service.leave_club(SOME_CLUB_ID, SOME_USER_ID)
+
+        club_repo.remove_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_USER_ID)
+        club_repo.remove_and_ban_member.assert_not_called()

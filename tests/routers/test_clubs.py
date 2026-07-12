@@ -5,11 +5,14 @@ from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
 from canterlot.exceptions import (
+    CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    ClubOwnerCannotLeaveError,
     FormerOwnerProtectedError,
     InviteLinkDeactivatedError,
+    MemberRoleChangeConflictError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -253,6 +256,56 @@ def describe_reject_pending_request():
         assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
 
 
+def describe_leave_club():
+    def it_returns_204_when_left(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.leave_club.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/me")
+
+        assert response.status_code == 204
+        club_service.leave_club.assert_awaited_once_with(SOME_CLUB_ID, SOME_OWNER_ID)
+
+    def it_returns_403_when_the_caller_is_not_a_member(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.leave_club.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/me")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_club_does_not_exist(client: TestClient, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/me")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
+
+    def it_returns_409_when_the_caller_is_the_owner(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.leave_club.side_effect = ClubOwnerCannotLeaveError("nope")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/me")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "CLUB_OWNER_CANNOT_LEAVE"
+
+    def it_returns_409_when_the_caller_is_a_protected_former_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.leave_club.side_effect = FormerOwnerProtectedError("protected")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/me")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "FORMER_OWNER_PROTECTED"
+
+
 def describe_remove_club_member():
     def it_returns_204_when_removed(
         client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
@@ -310,6 +363,115 @@ def describe_remove_club_member():
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "FORMER_OWNER_PROTECTED"
+
+
+def describe_change_club_member_role():
+    def it_returns_204_when_changed(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.change_member_role.return_value = None
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "ADMIN"}
+        )
+
+        assert response.status_code == 204
+        club_service.change_member_role.assert_awaited_once_with(
+            SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN
+        )
+
+    def it_returns_400_when_the_target_is_the_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.change_member_role.side_effect = CannotChangeOwnerRoleError("nope")
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "MEMBER"}
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["error_code"] == "CANNOT_CHANGE_OWNER_ROLE"
+
+    def it_returns_403_when_the_caller_is_not_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.change_member_role.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "ADMIN"}
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_target_is_not_a_member(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.change_member_role.side_effect = ClubMemberNotFoundError("not a member")
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "ADMIN"}
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
+
+    def it_returns_404_when_the_username_does_not_exist(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = None
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "ADMIN"}
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+    def it_returns_409_when_the_target_is_a_protected_former_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.change_member_role.side_effect = FormerOwnerProtectedError("protected")
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "MEMBER"}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "FORMER_OWNER_PROTECTED"
+
+    def it_returns_409_when_the_repository_reports_a_conflict(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.change_member_role.side_effect = MemberRoleChangeConflictError("stale")
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "ADMIN"}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "MEMBER_ROLE_CHANGE_CONFLICT"
+
+    def it_returns_422_when_the_requested_role_is_owner(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+
+        response = client.put(
+            f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "OWNER"}
+        )
+
+        assert response.status_code == 422
 
 
 def describe_transfer_club_ownership():

@@ -5,10 +5,13 @@ from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest, ClubOnboarding
 from canterlot.exceptions import (
+    CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    ClubOwnerCannotLeaveError,
     FormerOwnerProtectedError,
+    MemberRoleChangeConflictError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -101,16 +104,25 @@ class ClubService:
         log = log.bind(club_name=club.name, club_join_policy=str(club.join_policy))
         status = None
 
-        if await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
+        if _find_member(club.members, user_id) is not None:
             log.info(
                 "Admission short-circuited: user already holds a seat in this roster",
                 status=ClubOnboardingStatus.ALREADY_MEMBER,
             )
             status = ClubOnboardingStatus.ALREADY_MEMBER
-        elif is_direct or club.join_policy == JoinPolicy.PUBLIC:
+        elif is_direct:
+            if user_id in club.banned_users:
+                await self.__club_repo.remove_from_banned_users(club_id, user_id)
+                log.info("Direct invite cleared an existing ban for this user")
             status = ClubOnboardingStatus.JOINED
-            new_member = MemberSchema(user_id=user_id, role=MemberRole.MEMBER)
-            await self.__club_repo.add_member(club_id, new_member)
+            await self.__club_repo.add_member(club_id, MemberSchema(user_id=user_id, role=MemberRole.MEMBER))
+            log.info("User successfully admitted into the club roster", status=status)
+        elif user_id in club.banned_users:
+            status = ClubOnboardingStatus.BANNED
+            log.warn("Admission rejected: user is banned from this club", status=status)
+        elif club.join_policy == JoinPolicy.PUBLIC:
+            status = ClubOnboardingStatus.JOINED
+            await self.__club_repo.add_member(club_id, MemberSchema(user_id=user_id, role=MemberRole.MEMBER))
             log.info("User successfully admitted into the club roster", status=status)
         else:
             status = ClubOnboardingStatus.PENDING_APPROVAL
@@ -243,6 +255,94 @@ class ClubService:
 
         await self.__club_repo.remove_and_ban_member(club_id, target_user_id)
         log.info("Member removed and banned successfully")
+
+    async def change_member_role(
+        self,
+        club_id: PydanticObjectId,
+        caller_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+        new_role: MemberRole,
+    ) -> None:
+        log = logger.bind(
+            club_id=str(club_id),
+            caller_id=str(caller_id),
+            target_user_id=str(target_user_id),
+            new_role=str(new_role),
+        )
+        log.info("Initiating club member role change")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Role change rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        caller = _find_member(club.members, caller_id)
+        if caller is None or caller.role != MemberRole.OWNER:
+            log.warn("Role change rejected: caller is not the club OWNER")
+            raise UnauthorizedClubMemberError("Only the club OWNER can change a member's role.")
+
+        target = _find_member(club.members, target_user_id)
+        if target is None:
+            log.warn("Role change rejected: target user is not a member of this club")
+            raise ClubMemberNotFoundError("This user is not a member of this club.")
+
+        if target.role == MemberRole.OWNER:
+            log.warn("Role change rejected: target is the club OWNER")
+            raise CannotChangeOwnerRoleError("Ownership can only be changed via the transfer-ownership action.")
+
+        now = datetime.now(UTC)
+        if (
+            target_user_id == club.protected_former_owner_id
+            and club.ownership_transferred_at is not None
+            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+        ):
+            log.warn("Role change rejected: target is a protected former owner")
+            raise FormerOwnerProtectedError(
+                "This user transferred ownership away within the last 30 days and cannot be demoted further yet."
+            )
+
+        changed = await self.__club_repo.change_member_role(club_id, target_user_id, new_role)
+        if not changed:
+            log.warn("Role change rejected: club membership changed before the update could complete")
+            raise MemberRoleChangeConflictError(
+                "This club's membership changed before the role update could complete; please retry."
+            )
+
+        log.info("Member role changed successfully")
+
+    async def leave_club(self, club_id: PydanticObjectId, caller_id: PydanticObjectId) -> None:
+        log = logger.bind(club_id=str(club_id), caller_id=str(caller_id))
+        log.info("Initiating voluntary club departure")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Leave rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        caller = _find_member(club.members, caller_id)
+        if caller is None:
+            log.warn("Leave rejected: caller is not a member of this club")
+            raise UnauthorizedClubMemberError("Only members of this club can leave it.")
+
+        if caller.role == MemberRole.OWNER:
+            log.warn("Leave rejected: the OWNER can never leave directly")
+            raise ClubOwnerCannotLeaveError(
+                "The OWNER cannot leave directly; transfer ownership or dissolve the club instead."
+            )
+
+        now = datetime.now(UTC)
+        if (
+            caller_id == club.protected_former_owner_id
+            and club.ownership_transferred_at is not None
+            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+        ):
+            log.warn("Leave rejected: caller is a protected former owner")
+            raise FormerOwnerProtectedError(
+                "You transferred ownership away within the last 30 days and cannot leave yet."
+            )
+
+        await self.__club_repo.remove_member(club_id, caller_id)
+        log.info("Member left the club successfully")
 
     async def transfer_ownership(
         self,

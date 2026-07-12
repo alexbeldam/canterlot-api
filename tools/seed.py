@@ -13,7 +13,7 @@ from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
 from canterlot.config.enums import Environment
 from canterlot.dto.club import ClubCreateRequest
-from canterlot.models import BookModel, ClubModel, InviteModel, JoinPolicy, MemberRole, MemberSchema, UserModel
+from canterlot.models import BookModel, ClubModel, InviteModel, JoinPolicy, MemberRole, UserModel
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.models.club import CatalogEntryModel
 from canterlot.models.enums import AuthProviderName, BookProviderName
@@ -31,9 +31,9 @@ from canterlot.utils.security import hash_password
 # seeded club ends up in exactly the state a club created through the API would be in (e.g. it
 # already has an active public invite, because create_club always rotates one on the way out).
 #
-# Two states below have no matching endpoint yet (promoting a member to ADMIN, and closing a club's
-# suggestions queue), so those fall back to the repository layer directly -- the same call a future
-# admin-promotion/settings endpoint would make, not a raw Document poke.
+# One state below has no matching endpoint yet (closing a club's suggestions queue), so that falls
+# back to the repository layer directly -- the same call a future settings endpoint would make, not
+# a raw Document poke.
 
 SEED_PASSWORD = "Password123!"
 SEED_EMAIL_DOMAIN = "seed.canterlot.dev"
@@ -263,7 +263,8 @@ async def _build_club_b(
         user_ids["rarity"],
     )
 
-    await club_repo.add_member(club_id, MemberSchema(user_id=user_ids["applejack"], role=MemberRole.ADMIN))
+    await club_service.admit_user(club_id, user_ids["applejack"], is_direct=True)
+    await club_service.change_member_role(club_id, user_ids["rarity"], user_ids["applejack"], MemberRole.ADMIN)
     await club_service.admit_user(club_id, user_ids["rainbowdash"], is_direct=True)
     await club_service.admit_user(club_id, user_ids["twilightsparkle"], is_direct=False)
     # pinkiepie is intentionally left out of the roster so the public invite above stays usable
@@ -349,6 +350,8 @@ def _print_summary(summary: SeedSummary) -> None:
     print(f"  POST /api/v1/invites/{summary.club_b.public_invite_id}/accept (as pinkiepie -> PENDING_APPROVAL)")
     print(f"  POST /api/v1/auth/register?invite_id={summary.direct_invite_id} (email={DIRECT_INVITE_EMAIL} -> JOINED)")
     print(f"  POST /api/v1/clubs/{summary.club_c.slug}/catalog/ (as pinkiepie -> 403 ClubSuggestionsClosedError)")
+    print(f"  PUT /api/v1/clubs/{summary.club_b.slug}/members/rainbowdash/role (as applejack -> promote to ADMIN)")
+    print(f"  DELETE /api/v1/clubs/{summary.club_a.slug}/members/me (as pinkiepie -> leaves voluntarily)")
 
 
 async def seed() -> None:

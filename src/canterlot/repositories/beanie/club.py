@@ -222,6 +222,22 @@ class BeanieClubRepository(ClubRepository):
     async def remove_from_catalog(self, club_id: PydanticObjectId, book_id: PydanticObjectId) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Pull({ClubModel.catalog: {"book_id": book_id}}))
 
+    async def change_member_role(
+        self,
+        club_id: PydanticObjectId,
+        member_id: PydanticObjectId,
+        new_role: MemberRole,
+    ) -> bool:
+        result = await ClubModel.find_one(
+            ClubModel.id == club_id,
+            {"members": {"$elemMatch": {"user_id": member_id, "role": {"$ne": MemberRole.OWNER}}}},
+        ).update_one(
+            {"$set": {"members.$[target].role": new_role}},
+            array_filters=[{"target.user_id": member_id}],
+        )
+
+        return cast(UpdateResult, result).matched_count > 0
+
     async def transfer_ownership(
         self,
         club_id: PydanticObjectId,

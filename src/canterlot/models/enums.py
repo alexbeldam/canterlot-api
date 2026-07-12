@@ -21,6 +21,7 @@ class ClubOnboardingStatus(StrEnum):
     JOINED = "JOINED"
     PENDING_APPROVAL = "PENDING_APPROVAL"
     ALREADY_MEMBER = "ALREADY_MEMBER"
+    BANNED = "BANNED"
 
 
 class AuthProviderName(StrEnum):
