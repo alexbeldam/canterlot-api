@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     google_oauth_client_id: str | None = None
     jwt_secret_key: str
     jwt_algorithm: str
+    access_token_expiry_minutes: int = 15
     mongodb_url: str
     mongodb_db_name: str
     redis_url: str

@@ -33,7 +33,8 @@ def create_jwt_token(data: dict, expires_delta: timedelta) -> str:
 
 
 def create_access_token(user_id: PydanticObjectId) -> str:
-    return create_jwt_token({"sub": str(user_id), "type": "access"}, timedelta(weeks=2))
+    expiry = timedelta(minutes=get_settings().access_token_expiry_minutes)
+    return create_jwt_token({"sub": str(user_id), "type": "access"}, expiry)
 
 
 def create_refresh_token(user_id: PydanticObjectId) -> str:
