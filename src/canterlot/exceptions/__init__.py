@@ -14,14 +14,20 @@ from .auth import (
 from .base import BusinessError
 from .book import BookDetailsNotFoundError, BookDomainError, BookNotFoundError, BookSearchCriteriaMissingError
 from .club import (
+    CannotTransferOwnershipToSelfError,
     ClubDomainError,
+    ClubMemberNotFoundError,
     ClubNotFoundError,
     ClubSuggestionsClosedError,
+    OwnershipReclaimWindowExpiredError,
+    OwnershipTransferConflictError,
+    OwnershipTransferCooldownError,
     PendingRequestNotFoundError,
     UnauthorizedClubMemberError,
 )
 from .gateway import GatewayConfigurationError
 from .invite import DirectInviteIdentityMismatchError, InvalidInviteTokenError, InviteLinkDeactivatedError
+from .rate_limit import RateLimitExceededError
 from .user import UserDomainError, UserNotFoundError
 
 __all__ = [
@@ -33,7 +39,9 @@ __all__ = [
     "BookNotFoundError",
     "BookSearchCriteriaMissingError",
     "BusinessError",
+    "CannotTransferOwnershipToSelfError",
     "ClubDomainError",
+    "ClubMemberNotFoundError",
     "ClubNotFoundError",
     "ClubSuggestionsClosedError",
     "DirectInviteIdentityMismatchError",
@@ -44,7 +52,11 @@ __all__ = [
     "InvalidOAuthCredentialError",
     "InviteLinkDeactivatedError",
     "LastAuthenticationMethodError",
+    "OwnershipReclaimWindowExpiredError",
+    "OwnershipTransferConflictError",
+    "OwnershipTransferCooldownError",
     "PendingRequestNotFoundError",
+    "RateLimitExceededError",
     "TokenError",
     "TokenExpiredError",
     "TokenMalformedError",

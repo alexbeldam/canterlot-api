@@ -54,6 +54,8 @@ class ClubModel(Document):
     pending_approvals: list[PendingApprovalSchema] = Field(default_factory=list)
     catalog: list[CatalogEntryModel] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    ownership_transferred_at: datetime | None = None
+    protected_former_owner_id: PydanticObjectId | None = None
 
     class Settings:
         name = "clubs"

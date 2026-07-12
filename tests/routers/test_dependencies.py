@@ -7,7 +7,7 @@ from beanie import PydanticObjectId
 from curl_cffi.requests import AsyncSession
 
 from canterlot.config import get_settings
-from canterlot.exceptions import InvalidCredentialsError, TokenExpiredError, TokenMalformedError
+from canterlot.exceptions import InvalidCredentialsError, RateLimitExceededError, TokenExpiredError, TokenMalformedError
 from canterlot.models.enums import AuthProviderName
 from canterlot.providers import BookProvider, GoogleBookProvider, LinkProvider
 from canterlot.providers.annas import AnnaLinkProvider
@@ -22,6 +22,7 @@ from canterlot.repositories.beanie import (
 from canterlot.repositories.redis import RedisCacheRepository
 from canterlot.routers.dependencies import (
     RefreshTokenContext,
+    _enforce_rate_limit,
     _parse_subject_id,
     get_auth_service,
     get_book_providers,
@@ -41,11 +42,13 @@ from canterlot.routers.dependencies import (
     get_redis_client,
     get_user_id_from_valid_refresh_token,
     get_user_repository,
+    rate_limit_club_owner_action,
 )
 from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
 from canterlot.utils.security import create_access_token, create_jwt_token, create_refresh_token
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
+SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 
 
 @pytest.fixture
@@ -153,6 +156,59 @@ def describe_infrastructure_factories():
             assert isinstance(session, AsyncSession)
         finally:
             await session_gen.aclose()
+
+
+def describe_enforce_rate_limit():
+    async def it_allows_the_request_when_under_the_limit():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 1
+
+        await _enforce_rate_limit(redis_client, key="ratelimit:test:1", limit=5, window_seconds=60)
+
+        redis_client.incr.assert_awaited_once_with("ratelimit:test:1")
+        redis_client.expire.assert_awaited_once_with("ratelimit:test:1", 60, nx=True)
+        redis_client.ttl.assert_not_called()
+
+    async def it_raises_with_the_remaining_ttl_once_the_limit_is_exceeded():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 6
+        redis_client.ttl.return_value = 42
+
+        with pytest.raises(RateLimitExceededError) as exc_info:
+            await _enforce_rate_limit(redis_client, key="ratelimit:test:1", limit=5, window_seconds=60)
+
+        assert exc_info.value.headers == {"Retry-After": "42"}
+
+    async def it_falls_back_to_the_window_when_the_ttl_is_unavailable():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 6
+        redis_client.ttl.return_value = -1
+
+        with pytest.raises(RateLimitExceededError) as exc_info:
+            await _enforce_rate_limit(redis_client, key="ratelimit:test:1", limit=5, window_seconds=60)
+
+        assert exc_info.value.headers == {"Retry-After": "60"}
+
+
+def describe_rate_limit_club_owner_action():
+    async def it_keys_the_counter_by_scope_club_and_caller():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 1
+        dependency = rate_limit_club_owner_action("club-ownership-action")
+
+        await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, redis_client=redis_client)
+
+        expected_key = f"ratelimit:club-ownership-action:{SOME_CLUB_ID}:{SOME_USER_ID}"
+        redis_client.incr.assert_awaited_once_with(expected_key)
+
+    async def it_raises_once_the_configured_limit_is_exceeded():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 999
+        redis_client.ttl.return_value = 10
+        dependency = rate_limit_club_owner_action("club-ownership-action")
+
+        with pytest.raises(RateLimitExceededError):
+            await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, redis_client=redis_client)
 
     def it_builds_a_redis_backed_cache_repository():
         assert isinstance(get_cache_repository(AsyncMock()), RedisCacheRepository)

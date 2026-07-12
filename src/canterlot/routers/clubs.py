@@ -6,15 +6,20 @@ from fastapi import APIRouter, Depends, status
 from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse
 from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
 from canterlot.exceptions import (
+    CannotTransferOwnershipToSelfError,
     InvalidCredentialsError,
     InviteLinkDeactivatedError,
+    OwnershipReclaimWindowExpiredError,
+    OwnershipTransferConflictError,
+    OwnershipTransferCooldownError,
     PendingRequestNotFoundError,
+    RateLimitExceededError,
     TokenExpiredError,
     TokenMalformedError,
     UnauthorizedClubMemberError,
     UserNotFoundError,
 )
-from canterlot.exceptions.club import ClubNotFoundError
+from canterlot.exceptions.club import ClubMemberNotFoundError, ClubNotFoundError
 from canterlot.models import ErrorResponseModel
 from canterlot.models.club import ClubSlugStr
 from canterlot.routers.dependencies import (
@@ -23,11 +28,14 @@ from canterlot.routers.dependencies import (
     get_current_user_id,
     get_invite_service,
     get_user_id_from_username,
+    rate_limit_club_owner_action,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
 
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
+
+_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY = Depends(rate_limit_club_owner_action("club-ownership-action"))
 
 
 @router.post(
@@ -339,6 +347,137 @@ async def create_direct_invite(
     )
 
     return InviteTokenResponse(invite_token=token)
+
+
+@router.post(
+    "/{club_slug}/members/{username}/transfer-ownership",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY],
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Ownership transferred. The caller is now ADMIN and protected from removal for 30 days; "
+                "the target is now OWNER and cannot initiate another transfer for 30 days."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": (
+                "TokenMalformedError: The bearer token is corrupt, malformed, or altered. "
+                "CannotTransferOwnershipToSelfError: The target username is the caller's own account."
+            ),
+            "content": error_example(TokenMalformedError, CannotTransferOwnershipToSelfError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller does not hold OWNER standing.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError: No club exists with the given slug. "
+                "UserNotFoundError: No user exists with the given username. "
+                "ClubMemberNotFoundError: The target user is not a member of this club."
+            ),
+            "content": error_example(ClubNotFoundError, UserNotFoundError, ClubMemberNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "OwnershipTransferCooldownError: The caller received ownership less than 30 days ago "
+                "and the target is not this club's recorded former owner. "
+                "OwnershipTransferConflictError: This club's membership changed before the transfer could complete."
+            ),
+            "content": error_example(OwnershipTransferCooldownError, OwnershipTransferConflictError),
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": "RateLimitExceededError: Too many ownership actions on this club by this caller.",
+            "content": error_example(RateLimitExceededError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def transfer_club_ownership(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.transfer_ownership(club_id, current_user_id, target_user_id)
+
+
+@router.post(
+    "/{club_slug}/transfer-ownership/reclaim",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY],
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Transfer reversed. The caller is OWNER again; the reverted new-Owner is back to ADMIN. "
+                "No cooldowns or protections carry over from the reversed transfer."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller is not this club's recorded former owner.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: No club exists with the given slug.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "OwnershipReclaimWindowExpiredError: More than 24 hours have passed since the transfer. "
+                "OwnershipTransferConflictError: This club's membership changed before the reclaim could complete."
+            ),
+            "content": error_example(OwnershipReclaimWindowExpiredError, OwnershipTransferConflictError),
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": "RateLimitExceededError: Too many ownership actions on this club by this caller.",
+            "content": error_example(RateLimitExceededError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def reclaim_club_ownership(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.reclaim_ownership(club_id, current_user_id)
 
 
 @router.get(

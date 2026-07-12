@@ -5,8 +5,13 @@ from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
 from canterlot.exceptions import (
+    CannotTransferOwnershipToSelfError,
+    ClubMemberNotFoundError,
     ClubNotFoundError,
     InviteLinkDeactivatedError,
+    OwnershipReclaimWindowExpiredError,
+    OwnershipTransferConflictError,
+    OwnershipTransferCooldownError,
     PendingRequestNotFoundError,
     UnauthorizedClubMemberError,
 )
@@ -19,6 +24,8 @@ SOME_CLUB_SLUG = "book-club"
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")  # matches conftest's `current_user` fixture
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 SOME_PENDING_USERNAME = "bob_2"
+SOME_TARGET_ID = PydanticObjectId("507f1f77bcf86cd799439013")
+SOME_TARGET_USERNAME = "carol_3"
 
 
 def _found_club(club_id: PydanticObjectId = SOME_CLUB_ID) -> SimpleNamespace:
@@ -243,6 +250,165 @@ def describe_reject_pending_request():
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+
+def describe_transfer_club_ownership():
+    def it_returns_204_when_transferred(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.transfer_ownership.return_value = None
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 204
+        club_service.transfer_ownership.assert_awaited_once_with(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID)
+
+    def it_returns_400_when_the_target_is_the_caller(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.transfer_ownership.side_effect = CannotTransferOwnershipToSelfError("nope")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 400
+        assert response.json()["error"]["error_code"] == "CANNOT_TRANSFER_OWNERSHIP_TO_SELF"
+
+    def it_returns_403_when_the_caller_is_not_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.transfer_ownership.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 403
+
+    def it_returns_404_when_the_target_is_not_a_member(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.transfer_ownership.side_effect = ClubMemberNotFoundError("not a member")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
+
+    def it_returns_404_when_the_username_does_not_exist(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = None
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+    def it_returns_409_when_the_new_owner_cooldown_is_active(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.transfer_ownership.side_effect = OwnershipTransferCooldownError("too soon")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "OWNERSHIP_TRANSFER_COOLDOWN"
+
+    def it_returns_409_when_the_repository_reports_a_conflict(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.transfer_ownership.side_effect = OwnershipTransferConflictError("stale")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "OWNERSHIP_TRANSFER_CONFLICT"
+
+    def it_returns_429_once_the_rate_limit_is_exceeded(
+        client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock, redis_client: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        redis_client.incr.return_value = 999
+        redis_client.ttl.return_value = 30
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/transfer-ownership")
+
+        assert response.status_code == 429
+        assert response.json()["error"]["error_code"] == "RATE_LIMIT_EXCEEDED"
+        assert response.headers["Retry-After"] == "30"
+
+
+def describe_reclaim_club_ownership():
+    def it_returns_204_when_reclaimed(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.reclaim_ownership.return_value = None
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/transfer-ownership/reclaim")
+
+        assert response.status_code == 204
+        club_service.reclaim_ownership.assert_awaited_once_with(SOME_CLUB_ID, SOME_OWNER_ID)
+
+    def it_returns_403_when_the_caller_is_not_the_recorded_former_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.reclaim_ownership.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/transfer-ownership/reclaim")
+
+        assert response.status_code == 403
+
+    def it_returns_404_when_the_club_slug_does_not_exist(client: TestClient, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = None
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/transfer-ownership/reclaim")
+
+        assert response.status_code == 404
+
+    def it_returns_409_when_the_reclaim_window_has_expired(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.reclaim_ownership.side_effect = OwnershipReclaimWindowExpiredError("too late")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/transfer-ownership/reclaim")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "OWNERSHIP_RECLAIM_WINDOW_EXPIRED"
+
+    def it_returns_409_when_the_repository_reports_a_conflict(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.reclaim_ownership.side_effect = OwnershipTransferConflictError("stale")
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/transfer-ownership/reclaim")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "OWNERSHIP_TRANSFER_CONFLICT"
+
+    def it_returns_429_once_the_rate_limit_is_exceeded(
+        client: TestClient, club_repo: AsyncMock, redis_client: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        redis_client.incr.return_value = 999
+        redis_client.ttl.return_value = 15
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/transfer-ownership/reclaim")
+
+        assert response.status_code == 429
+        assert response.json()["error"]["error_code"] == "RATE_LIMIT_EXCEEDED"
+        assert response.headers["Retry-After"] == "15"
 
 
 def describe_rotate_public_admission_link():

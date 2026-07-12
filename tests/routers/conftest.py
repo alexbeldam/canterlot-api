@@ -20,6 +20,7 @@ from canterlot.routers.dependencies import (
     get_current_user,
     get_current_user_id,
     get_invite_service,
+    get_redis_client,
     get_user_id_from_valid_refresh_token,
     get_user_repository,
     get_user_service,
@@ -80,6 +81,14 @@ def current_user() -> SimpleNamespace:
 
 
 @pytest.fixture
+def redis_client() -> AsyncMock:
+    mock = AsyncMock()
+    mock.incr.return_value = 1
+    mock.ttl.return_value = -1
+    return mock
+
+
+@pytest.fixture
 def client(
     auth_service: AsyncMock,
     book_service: AsyncMock,
@@ -91,6 +100,7 @@ def client(
     user_repo: AsyncMock,
     book_repo: AsyncMock,
     current_user: SimpleNamespace,
+    redis_client: AsyncMock,
 ) -> Iterator[TestClient]:
     app = create_app()
 
@@ -111,6 +121,7 @@ def client(
     app.dependency_overrides[get_book_repository] = lambda: book_repo
     app.dependency_overrides[get_current_user_id] = lambda: current_user.id
     app.dependency_overrides[get_current_user] = lambda: current_user
+    app.dependency_overrides[get_redis_client] = lambda: redis_client
     app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: RefreshTokenContext(
         user_id=current_user.id, token="old-refresh-token"
     )

@@ -270,6 +270,9 @@ async def _build_club_b(
     # for testing POST /invites/{invite_id}/accept end to end (PENDING_APPROVAL outcome, since this
     # club is RESTRICTED).
 
+    # Leaves rarity as protected former-OWNER (ADMIN) with an active 24h reclaim window, for CLUB-10.
+    await club_service.transfer_ownership(club_id, user_ids["rarity"], user_ids["applejack"])
+
     book_ids = await _insert_books(book_repo, CLUB_B_BOOKS, "seed-b")
     suggesters = [user_ids["rarity"], user_ids["applejack"], user_ids["rainbowdash"]]
     await _populate_catalog(club_repo, club_id, book_ids, suggesters)
@@ -302,7 +305,8 @@ async def _build_club_c(
         await club_service.admit_user(club_id, user_ids[username], is_direct=False)
 
     club = await club_repo.find_by_id(club_id)
-    assert club is not None
+    if club is None:
+        raise RuntimeError(f"Seed failure: club '{CLUB_C_NAME}' vanished immediately after creation.")
     club.allow_suggestions = False
     await club_repo.save(club)
 
@@ -329,7 +333,10 @@ def _print_summary(summary: SeedSummary) -> None:
 
     print("Club roster highlights:")
     print(f"  {CLUB_A_NAME}: twilightsparkle OWNER; applejack/rarity/rainbowdash/pinkiepie MEMBER")
-    print(f"  {CLUB_B_NAME}: rarity OWNER; applejack ADMIN; rainbowdash MEMBER; twilightsparkle PENDING")
+    print(
+        f"  {CLUB_B_NAME}: applejack OWNER; rarity ADMIN (protected former owner); "
+        "rainbowdash MEMBER; twilightsparkle PENDING"
+    )
     print(f"  {CLUB_C_NAME}: pinkiepie OWNER; twilightsparkle/rarity MEMBER; suggestions closed")
     print()
 
@@ -337,7 +344,8 @@ def _print_summary(summary: SeedSummary) -> None:
     print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=title&sort_direction=ASC")
     print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=year&sort_direction=DESC")
     print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=suggested_at&page=2")
-    print(f"  POST /api/v1/clubs/{summary.club_b.slug}/pending-approvals/twilightsparkle/approve (as rarity)")
+    print(f"  POST /api/v1/clubs/{summary.club_b.slug}/pending-approvals/twilightsparkle/approve (as applejack)")
+    print(f"  POST /api/v1/clubs/{summary.club_b.slug}/transfer-ownership/reclaim (as rarity, within 24h)")
     print(f"  POST /api/v1/invites/{summary.club_b.public_invite_id}/accept (as pinkiepie -> PENDING_APPROVAL)")
     print(f"  POST /api/v1/auth/register?invite_id={summary.direct_invite_id} (email={DIRECT_INVITE_EMAIL} -> JOINED)")
     print(f"  POST /api/v1/clubs/{summary.club_c.slug}/catalog/ (as pinkiepie -> 403 ClubSuggestionsClosedError)")

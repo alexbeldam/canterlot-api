@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -46,6 +46,14 @@ def describe_jwt_tokens():
         payload = decode_jwt_payload(token)
         assert payload["sub"] == str(user_id)
         assert payload["type"] == "access"
+
+    def it_expires_after_the_configured_number_of_minutes():
+        token = create_access_token(PydanticObjectId())
+        payload = decode_jwt_payload(token)
+
+        expected_expiry = datetime.now(UTC) + timedelta(minutes=get_settings().access_token_expiry_minutes)
+        actual_expiry = datetime.fromtimestamp(payload["exp"], tz=UTC)
+        assert abs((actual_expiry - expected_expiry).total_seconds()) < 5
 
     def it_creates_a_refresh_token_with_the_expected_claims():
         user_id = PydanticObjectId()

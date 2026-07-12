@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Protocol
 
 from beanie import PydanticObjectId
@@ -83,6 +84,19 @@ class ClubRepository(Protocol):
     async def remove_from_banned_users(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None: ...
     async def add_to_catalog(self, club_id: PydanticObjectId, entry: CatalogEntryModel) -> None: ...
     async def remove_from_catalog(self, club_id: PydanticObjectId, book_id: PydanticObjectId) -> None: ...
+    async def transfer_ownership(
+        self,
+        club_id: PydanticObjectId,
+        current_owner_id: PydanticObjectId,
+        new_owner_id: PydanticObjectId,
+        transferred_at: datetime,
+    ) -> bool: ...
+    async def reclaim_ownership(
+        self,
+        club_id: PydanticObjectId,
+        former_owner_id: PydanticObjectId,
+        current_owner_id: PydanticObjectId,
+    ) -> bool: ...
     async def save(self, club: ClubModel) -> ClubModel: ...
 
 

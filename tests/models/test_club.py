@@ -25,6 +25,8 @@ def describe_club_defaults():
         assert club.allow_suggestions is True
         assert club.members == []
         assert club.catalog == []
+        assert club.ownership_transferred_at is None
+        assert club.protected_former_owner_id is None
 
 
 def describe_membership_state_exclusivity():
