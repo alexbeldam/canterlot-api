@@ -1,15 +1,12 @@
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
-from canterlot.dto.book import PaginatedBooksResponse
 from canterlot.dto.catalog import CatalogEntryResponse, PaginatedCatalogResponse, SuggestionResponse, SuggestionStatus
 from canterlot.exceptions import (
     BookNotFoundError,
-    BookSearchCriteriaMissingError,
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
@@ -35,7 +32,7 @@ def describe_suggest_book_to_club():
     def it_returns_the_suggestion_result_on_success(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.return_value = SuggestionResponse(
             status=SuggestionStatus.SUCCESS,
             book_external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "ext-1"),
@@ -45,11 +42,27 @@ def describe_suggest_book_to_club():
 
         assert response.status_code == 201
         assert response.json()["status"] == "SUCCESS"
+        assert response.headers["Location"] == f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1"
+
+    def it_returns_200_when_the_book_already_exists_in_the_catalog(
+        client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        catalog_service.suggest_book_to_club.return_value = SuggestionResponse(
+            status=SuggestionStatus.ALREADY_EXISTS,
+            book_external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "ext-1"),
+        )
+
+        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ALREADY_EXISTS"
+        assert "Location" not in response.headers
 
     def it_returns_403_when_the_user_is_not_a_club_member(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.side_effect = UnauthorizedClubMemberError("not a member")
 
         response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
@@ -60,7 +73,7 @@ def describe_suggest_book_to_club():
     def it_returns_403_when_suggestions_are_closed(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.side_effect = ClubSuggestionsClosedError("closed")
 
         response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
@@ -71,7 +84,7 @@ def describe_suggest_book_to_club():
     def it_returns_422_when_the_payload_is_missing_required_fields(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
 
         response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json={"source_id": "google-books__ext-1"})
 
@@ -81,7 +94,7 @@ def describe_suggest_book_to_club():
     def it_returns_404_when_the_club_slug_does_not_exist(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = None
+        club_repo.find_id_by_slug.return_value = None
 
         response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
 
@@ -103,7 +116,7 @@ def describe_get_club_catalog():
     def it_returns_a_paginated_page_of_the_catalog(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
             items=[_entry_response()], total_items=1, current_page=1, page_size=20
         )
@@ -118,7 +131,7 @@ def describe_get_club_catalog():
     def it_returns_403_when_the_caller_is_not_a_club_member(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.side_effect = UnauthorizedClubMemberError("not a member")
 
         response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
@@ -129,7 +142,7 @@ def describe_get_club_catalog():
     def it_returns_404_when_the_club_slug_does_not_exist(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = None
+        club_repo.find_id_by_slug.return_value = None
 
         response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
 
@@ -139,7 +152,7 @@ def describe_get_club_catalog():
     def it_passes_sort_and_filter_query_params_through(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
             items=[], total_items=0, current_page=1, page_size=20
         )
@@ -158,7 +171,7 @@ def describe_get_club_catalog():
         assert kwargs["limit"] == 10
 
     def it_returns_422_for_an_invalid_sort_field(client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
 
         response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", params={"sort_by": "not-a-real-field"})
 
@@ -166,124 +179,11 @@ def describe_get_club_catalog():
         catalog_service.get_catalog_page.assert_not_called()
 
 
-def describe_search_external_books_for_club():
-    def it_returns_paginated_results_from_the_book_service(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.return_value = []
-        book_service.search_external_books.return_value = PaginatedBooksResponse(
-            items=[], total_items=0, current_page=1, page_size=5
-        )
-
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
-
-        assert response.status_code == 200
-        assert response.json()["total_items"] == 0
-        book_service.search_external_books.assert_awaited_once()
-
-    def it_allows_a_search_with_isbn_alone_and_no_title(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.return_value = []
-        book_service.search_external_books.return_value = PaginatedBooksResponse(
-            items=[], total_items=0, current_page=1, page_size=5
-        )
-
-        response = client.get(
-            f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"isbn": "9780345339683"}
-        )
-
-        assert response.status_code == 200
-        call_kwargs = book_service.search_external_books.call_args.kwargs
-        assert call_kwargs["title"] is None
-        assert call_kwargs["isbn"] == "9780345339683"
-
-    def it_resolves_preferred_languages_from_the_club_instead_of_the_query(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.return_value = ["en", "pt-BR"]
-        book_service.search_external_books.return_value = PaginatedBooksResponse(
-            items=[], total_items=0, current_page=1, page_size=5
-        )
-
-        client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
-
-        club_service.get_preferred_languages.assert_awaited_once()
-        call_kwargs = book_service.search_external_books.call_args.kwargs
-        assert call_kwargs["preferred_languages"] == ["en", "pt-BR"]
-
-    def it_propagates_search_limit_and_page_query_params(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.return_value = []
-        book_service.search_external_books.return_value = PaginatedBooksResponse(
-            items=[], total_items=0, current_page=2, page_size=5
-        )
-
-        client.get(
-            f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external",
-            params={"title": "The Hobbit", "page": 2, "limit": 20},
-        )
-
-        call_kwargs = book_service.search_external_books.call_args.kwargs
-        assert call_kwargs["page"] == 2
-        assert call_kwargs["limit"] == 20
-
-    def it_returns_403_when_the_user_is_not_a_club_member(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.side_effect = UnauthorizedClubMemberError("not a member")
-
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
-
-        assert response.status_code == 403
-        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
-
-    def it_returns_400_when_no_search_criteria_are_given(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.return_value = []
-        book_service.search_external_books.side_effect = BookSearchCriteriaMissingError("missing criteria")
-
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external")
-
-        assert response.status_code == 400
-        assert response.json()["error"]["error_code"] == "BOOK_SEARCH_CRITERIA_MISSING"
-
-    def it_returns_404_when_the_club_slug_does_not_exist(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = None
-
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
-
-        assert response.status_code == 404
-        club_service.get_preferred_languages.assert_not_called()
-        book_service.search_external_books.assert_not_called()
-
-    def it_returns_500_with_the_error_envelope_on_an_unexpected_failure(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
-        club_service.get_preferred_languages.side_effect = RuntimeError("cache is on fire")
-
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/search/external", params={"title": "The Hobbit"})
-
-        assert response.status_code == 500
-        assert response.json()["error"]["error_code"] == "INTERNAL_SERVER_ERROR"
-
-
 def describe_remove_from_club():
     def it_returns_204_on_success(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
 
         response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
@@ -294,7 +194,7 @@ def describe_remove_from_club():
     def it_returns_403_when_the_caller_is_not_privileged_or_the_suggester(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
         catalog_service.remove_book_from_club.side_effect = UnauthorizedClubMemberError("not allowed")
 
@@ -306,7 +206,7 @@ def describe_remove_from_club():
     def it_returns_404_when_the_book_is_not_in_the_catalog(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
         catalog_service.remove_book_from_club.side_effect = BookNotFoundError("not in catalog")
 
@@ -318,7 +218,7 @@ def describe_remove_from_club():
     def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock, book_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = SimpleNamespace(id=SOME_CLUB_ID)
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         book_repo.find_id_by_identifier.return_value = None
 
         response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__missing")
@@ -330,7 +230,7 @@ def describe_remove_from_club():
     def it_returns_404_when_the_club_slug_does_not_exist(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
     ):
-        club_repo.find_by_slug.return_value = None
+        club_repo.find_id_by_slug.return_value = None
 
         response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
 

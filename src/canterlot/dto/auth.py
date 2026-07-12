@@ -13,6 +13,8 @@ class UserRegisterRequest(BaseModel):
     username: UsernameStr
     email: NormalizedEmailStr
     password: str = Field(..., min_length=6, examples=["super_secret_password_123"])
+    invite_id: str | None = None
+    invited_by: UsernameStr | None = None
 
     @field_validator("username", mode="before")
     @classmethod

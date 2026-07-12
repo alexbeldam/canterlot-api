@@ -1,30 +1,42 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
-from canterlot.dto.book import BookDetails, BookResponse
+from canterlot.dto.book import BookDetails, BookResponse, PaginatedBooksResponse
 from canterlot.exceptions import (
     BookDetailsNotFoundError,
     BookNotFoundError,
     BookProviderUnavailableError,
+    BookSearchCriteriaMissingError,
+    ClubNotFoundError,
     InvalidCredentialsError,
     TokenExpiredError,
+    UnauthorizedClubMemberError,
 )
-from canterlot.exceptions.auth import TokenMalformedError
 from canterlot.models import ErrorResponseModel
-from canterlot.models.book import BookExternalId
+from canterlot.models.book import BookExternalId, TitleStr
 from canterlot.routers.dependencies import (
-    get_book_id_from_identifier,
     get_book_service,
+    get_club_id_from_slug,
+    get_club_service,
     get_current_user_id,
-    get_user_service,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import BookService, UserService
+from canterlot.services import BookService, ClubService
 from canterlot.utils.format import ISBNStr
 
 router = APIRouter(prefix="/books", tags=["Books"])
+
+
+@dataclass
+class ExternalBookSearchFilters:
+    title: TitleStr | None = None
+    author: str | None = None
+    isbn: ISBNStr | None = None
+    page: int = Query(default=1, ge=1)
+    limit: int = Query(default=5, ge=1, le=40)
 
 
 @router.get(
@@ -69,6 +81,61 @@ async def get_external_book_details(
 
 
 @router.get(
+    "/external",
+    response_model=PaginatedBooksResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Successfully retrieved paginated list of external books matching criteria."
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "BookSearchCriteriaMissingError: None of title, author, or isbn were provided.",
+            "content": error_example(BookSearchCriteriaMissingError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The requesting user is not a member of club_slug.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: No club exists with the given club_slug.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error. The query parameters are invalid."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected backend error, cache layer failure, or upstream timeout.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def search_external_books(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+    search_service: Annotated[BookService, Depends(get_book_service)],
+    filters: Annotated[ExternalBookSearchFilters, Depends()],
+):
+    preferred_languages = await club_service.get_preferred_languages(club_id, current_user_id)
+    return await search_service.search_external_books(
+        title=filters.title,
+        author=filters.author,
+        isbn=filters.isbn,
+        preferred_languages=preferred_languages,
+        page=filters.page,
+        limit=filters.limit,
+    )
+
+
+@router.get(
     "/{identifier}",
     response_model=BookResponse,
     responses={
@@ -93,44 +160,3 @@ async def get_book(
     book_service: Annotated[BookService, Depends(get_book_service)],
 ):
     return await book_service.get_by_identifier(identifier)
-
-
-@router.post(
-    "/{identifier}/read",
-    status_code=status.HTTP_204_NO_CONTENT,
-    responses={
-        status.HTTP_204_NO_CONTENT: {"description": "Book successfully recorded in the user's reading history."},
-        status.HTTP_400_BAD_REQUEST: {
-            "model": ErrorResponseModel,
-            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
-            "content": error_example(TokenMalformedError),
-        },
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
-            ),
-            "content": error_example(InvalidCredentialsError, TokenExpiredError),
-        },
-        status.HTTP_404_NOT_FOUND: {
-            "model": ErrorResponseModel,
-            "description": (
-                "BookNotFoundError: No book matches the given identifier, whether it was an ISBN-10, "
-                "an ISBN-13, or a provider external ID."
-            ),
-            "content": error_example(BookNotFoundError),
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error. The identifier is invalid."},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected database connectivity failure.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
-)
-async def mark_read(
-    book_id: Annotated[PydanticObjectId, Depends(get_book_id_from_identifier)],
-    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
-    user_service: Annotated[UserService, Depends(get_user_service)],
-):
-    await user_service.mark_book_read(user_id=current_user_id, book_id=book_id)

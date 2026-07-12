@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from canterlot.dto.club import ClubOnboarding
 from canterlot.dto.invite import InvitePreviewResponse
@@ -11,6 +11,7 @@ from canterlot.exceptions import (
     InvalidCredentialsError,
     InvalidInviteTokenError,
     InviteLinkDeactivatedError,
+    MemberBannedError,
     TokenExpiredError,
     TokenMalformedError,
 )
@@ -61,12 +62,16 @@ async def preview_invitation(
     return await invite_service.get_preview_metadata(invite_id, invited_by=invited_by)
 
 
-@router.post(
-    "/{invite_id}/accept",
+@router.patch(
+    "/{invite_id}",
     response_model=ClubOnboarding,
-    status_code=status.HTTP_200_OK,
     responses={
-        status.HTTP_200_OK: {"description": "Invitation accepted; club onboarding outcome returned."},
+        status.HTTP_200_OK: {
+            "description": "Invitation accepted; the caller either joined outright or was already a member."
+        },
+        status.HTTP_202_ACCEPTED: {
+            "description": "Invitation accepted; the caller was queued in the club's pending-approval list."
+        },
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponseModel,
             "description": (
@@ -85,9 +90,10 @@ async def preview_invitation(
         status.HTTP_403_FORBIDDEN: {
             "model": ErrorResponseModel,
             "description": (
-                "DirectInviteIdentityMismatchError: This direct invitation is bound to a different user's email."
+                "DirectInviteIdentityMismatchError: This direct invitation is bound to a different user's email. "
+                "MemberBannedError: The caller is banned from this club; only a new direct invite lifts a ban."
             ),
-            "content": error_example(DirectInviteIdentityMismatchError),
+            "content": error_example(DirectInviteIdentityMismatchError, MemberBannedError),
         },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponseModel,
@@ -111,7 +117,8 @@ async def accept_invitation(
     current_user: Annotated[UserModel, Depends(get_current_user)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
-):
+    response: Response,
+) -> ClubOnboarding:
     validated_invite = await invite_service.validate_incoming_invite(
         invite_id=invite_id,
         user_email=current_user.email,
@@ -123,7 +130,13 @@ async def accept_invitation(
         is_direct=validated_invite.is_direct,
     )
 
-    if onboarding and onboarding.status in [ClubOnboardingStatus.JOINED, ClubOnboardingStatus.PENDING_APPROVAL]:
+    if onboarding.status == ClubOnboardingStatus.BANNED:
+        raise MemberBannedError("This user is banned from this club.")
+
+    if onboarding.status in [ClubOnboardingStatus.JOINED, ClubOnboardingStatus.PENDING_APPROVAL]:
         await invite_service.register_invite_usage(invite_id)
+
+    if onboarding.status == ClubOnboardingStatus.PENDING_APPROVAL:
+        response.status_code = status.HTTP_202_ACCEPTED
 
     return onboarding

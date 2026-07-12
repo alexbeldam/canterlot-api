@@ -70,3 +70,8 @@ class MemberRoleChangeConflictError(ClubDomainError):
 class ClubOwnerCannotLeaveError(ClubDomainError):
     error_code = ErrorCode.CLUB_OWNER_CANNOT_LEAVE
     status_code = status.HTTP_409_CONFLICT
+
+
+class MemberBannedError(ClubDomainError):
+    error_code = ErrorCode.MEMBER_BANNED
+    status_code = status.HTTP_403_FORBIDDEN

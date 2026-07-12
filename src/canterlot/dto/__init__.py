@@ -9,7 +9,7 @@ from .club import (
     ClubOnboarding,
     ClubResponse,
 )
-from .invite import DirectInvitePayload, InvitePreviewResponse, InviteTokenResponse
+from .invite import CreateInviteRequest, InvitePreviewResponse, InviteTokenResponse
 
 __all__ = [
     "BookDetails",
@@ -20,7 +20,7 @@ __all__ = [
     "ClubMemberDTO",
     "ClubOnboarding",
     "ClubResponse",
-    "DirectInvitePayload",
+    "CreateInviteRequest",
     "InvitePreviewResponse",
     "InviteTokenResponse",
     "Page",

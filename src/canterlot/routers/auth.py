@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from canterlot.dto.auth import (
@@ -25,8 +25,7 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
-from canterlot.models.user import UsernameStr
+from canterlot.models.enums import AuthOutcome, AuthProviderName, ClubOnboardingStatus
 from canterlot.routers.dependencies import (
     RefreshTokenContext,
     get_auth_service,
@@ -100,20 +99,18 @@ async def register(
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
-    invite_id: str | None = None,
-    invited_by: UsernameStr | None = None,
 ):
     validated_invite = None
-    inviter_username = invited_by
+    inviter_username = payload.invited_by
 
-    if invite_id:
+    if payload.invite_id:
         validated_invite = await invite_service.validate_incoming_invite(
-            invite_id,
+            payload.invite_id,
             payload.email,
-            invited_by,
+            payload.invited_by,
         )
 
-        inviter_username = validated_invite.invited_by or invited_by
+        inviter_username = validated_invite.invited_by or payload.invited_by
 
     res = await auth_service.register_user(payload, inviter_username)
     onboarding = None
@@ -128,9 +125,9 @@ async def register(
         if (
             onboarding
             and onboarding.status in [ClubOnboardingStatus.JOINED, ClubOnboardingStatus.PENDING_APPROVAL]
-            and invite_id
+            and payload.invite_id
         ):
-            await invite_service.register_invite_usage(invite_id)
+            await invite_service.register_invite_usage(payload.invite_id)
 
     return RegisterResponse(
         access_token=res.access_token,
@@ -212,13 +209,9 @@ async def refresh_token_rotation(
     "/{provider}",
     response_model=OAuthSignInResponse,
     responses={
-        status.HTTP_200_OK: {
-            "description": (
-                "Provider credential verified. `outcome` discriminates the result: LOGGED_IN or CREATED carry a "
-                "token pair; LINK_REQUIRED carries none and means an account with this email already exists "
-                "under a different authentication method -- the frontend should prompt the user to log in with "
-                "that method and link this provider from there (see POST /users/me/auth-providers/{provider})."
-            )
+        status.HTTP_200_OK: {"description": "Provider credential verified against an existing, linked account."},
+        status.HTTP_201_CREATED: {
+            "description": "Provider credential verified and a new user account was created from this identity."
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
@@ -229,7 +222,11 @@ async def refresh_token_rotation(
             "model": ErrorResponseModel,
             "description": (
                 "OAuthAccountCreationConflictError: A concurrent sign-in for this same identity left this "
-                "request unable to resolve to an account. Extremely rare; retrying the request resolves it."
+                "request unable to resolve to an account. Extremely rare; retrying the request resolves it. "
+                "This status is also returned (still carrying an OAuthSignInResponse body, not an error envelope) "
+                "when `outcome` is LINK_REQUIRED: an account with this email already exists under a different "
+                "authentication method -- the frontend should prompt the user to log in with that method and "
+                "link this provider from there (see POST /users/me/auth-providers/{provider})."
             ),
             "content": error_example(OAuthAccountCreationConflictError),
         },
@@ -251,6 +248,14 @@ async def refresh_token_rotation(
 async def sign_in_with_provider(
     provider: AuthProviderName,
     payload: OAuthSignInRequest,
+    response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> OAuthSignInResponse:
-    return await auth_service.sign_in_with_provider(provider, payload.credential)
+    result = await auth_service.sign_in_with_provider(provider, payload.credential)
+
+    if result.outcome == AuthOutcome.CREATED:
+        response.status_code = status.HTTP_201_CREATED
+    elif result.outcome == AuthOutcome.LINK_REQUIRED:
+        response.status_code = status.HTTP_409_CONFLICT
+
+    return result

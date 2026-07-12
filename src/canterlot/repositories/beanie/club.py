@@ -3,7 +3,7 @@ from typing import cast
 
 from beanie import PydanticObjectId
 from beanie.operators import Pull, Push
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
@@ -36,6 +36,12 @@ class PreferredLanguagesProjection(BaseModel):
 
 class NameProjection(BaseModel):
     name: ClubNameStr
+
+
+class IdProjection(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: PydanticObjectId = Field(alias="_id")
 
 
 class CatalogProjection(BaseModel):
@@ -81,6 +87,13 @@ class BeanieClubRepository(ClubRepository):
 
     async def find_by_slug(self, slug: ClubSlugStr) -> ClubModel | None:
         return await ClubModel.find_one(ClubModel.slug == slug)
+
+    async def find_id_by_slug(self, slug: ClubSlugStr) -> PydanticObjectId | None:
+        projection = await ClubModel.find_one(ClubModel.slug == slug).project(IdProjection)
+
+        if not projection:
+            return None
+        return projection.id
 
     async def exists_by_club_slug(self, slug: ClubSlugStr) -> bool:
         count = await ClubModel.find(ClubModel.slug == slug).count()

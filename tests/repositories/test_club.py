@@ -225,6 +225,18 @@ def describe_find_by_slug():
         assert await repo.find_by_slug("no-such-slug") is None
 
 
+def describe_find_id_by_slug():
+    async def it_finds_a_clubs_id_by_slug():
+        club = await _club(slug="the-canterlot-archives")
+
+        found_id = await repo.find_id_by_slug("the-canterlot-archives")
+
+        assert found_id == _id(club)
+
+    async def it_returns_none_when_the_slug_does_not_exist():
+        assert await repo.find_id_by_slug("no-such-slug") is None
+
+
 def describe_exists_by_club_slug():
     async def it_returns_true_when_the_slug_exists():
         await _club(slug="existing-slug")

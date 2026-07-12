@@ -130,10 +130,10 @@ async def get_club_id_from_slug(
     club_slug: ClubSlugStr,
     club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
 ) -> PydanticObjectId:
-    club = await club_repo.find_by_slug(club_slug)
-    if club is None:
+    club_id = await club_repo.find_id_by_slug(club_slug)
+    if club_id is None:
         raise ClubNotFoundError(f"Club with slug '{club_slug}' not found")
-    return PydanticObjectId(club.id)
+    return club_id
 
 
 async def get_user_id_from_username(

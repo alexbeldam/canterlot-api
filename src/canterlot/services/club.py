@@ -17,6 +17,7 @@ from canterlot.exceptions import (
     OwnershipTransferCooldownError,
     PendingRequestNotFoundError,
     UnauthorizedClubMemberError,
+    UserNotFoundError,
 )
 from canterlot.models import (
     ClubModel,
@@ -397,14 +398,21 @@ class ClubService:
         self,
         club_id: PydanticObjectId,
         current_owner_id: PydanticObjectId,
-        target_user_id: PydanticObjectId,
-    ) -> None:
+        target_username: UsernameStr,
+    ) -> datetime:
         log = logger.bind(
             club_id=str(club_id),
             current_owner_id=str(current_owner_id),
-            target_user_id=str(target_user_id),
+            target_username=target_username,
         )
         log.info("Initiating club ownership transfer")
+
+        target_user_id = await self.__user_repo.find_id_by_username(target_username)
+        if target_user_id is None:
+            log.warn("Transfer rejected: target username does not resolve to any user")
+            raise UserNotFoundError("No user exists with this username.")
+
+        log = log.bind(target_user_id=str(target_user_id))
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
@@ -422,6 +430,7 @@ class ClubService:
             )
 
         log.info("Club ownership transferred successfully")
+        return now + _OWNERSHIP_RECLAIM_WINDOW
 
     def __ensure_transfer_is_allowed(
         self,

@@ -19,6 +19,7 @@ from canterlot.exceptions import (
     OwnershipTransferCooldownError,
     PendingRequestNotFoundError,
     UnauthorizedClubMemberError,
+    UserNotFoundError,
 )
 from canterlot.models import ClubOnboardingStatus, JoinPolicy, MemberRole
 from canterlot.models.club import MemberSchema, PendingApprovalSchema
@@ -28,6 +29,7 @@ SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 SOME_TARGET_ID = PydanticObjectId("507f1f77bcf86cd799439015")
+SOME_TARGET_USERNAME = "carol_3"
 
 
 def _club(
@@ -350,30 +352,45 @@ def describe_transfer_ownership():
             protected_former_owner_id=protected_former_owner_id,
         )
 
+    async def it_raises_when_the_target_username_does_not_resolve_to_any_user(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        user_repo.find_id_by_username.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UserNotFoundError):
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
+
+        club_repo.find_by_id.assert_not_called()
+
     async def it_raises_when_the_club_does_not_exist(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = None
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(ClubNotFoundError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
     async def it_raises_when_the_target_is_the_caller(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_USER_ID
         club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(CannotTransferOwnershipToSelfError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_USER_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
         club_repo.transfer_ownership.assert_not_called()
 
     async def it_raises_when_the_caller_is_not_a_member_at_all(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER)])
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
     async def it_raises_when_the_caller_is_not_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club(
             [
                 MemberSchema(user_id=SOME_USER_ID, role=MemberRole.ADMIN),
@@ -383,16 +400,18 @@ def describe_transfer_ownership():
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
     async def it_raises_when_the_target_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(ClubMemberNotFoundError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
     async def it_raises_when_the_new_owner_cooldown_is_still_active(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club(
             [
                 MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER),
@@ -403,13 +422,14 @@ def describe_transfer_ownership():
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(OwnershipTransferCooldownError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
         club_repo.transfer_ownership.assert_not_called()
 
     async def it_exempts_a_transfer_back_to_the_recorded_former_owner_from_the_cooldown(
         club_repo: AsyncMock, user_repo: AsyncMock
     ):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club(
             [
                 MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER),
@@ -421,11 +441,12 @@ def describe_transfer_ownership():
         club_repo.transfer_ownership.return_value = True
         service = ClubService(club_repo, user_repo)
 
-        await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+        await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
         club_repo.transfer_ownership.assert_awaited_once()
 
     async def it_allows_a_transfer_once_the_cooldown_has_elapsed(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club(
             [
                 MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER),
@@ -436,11 +457,12 @@ def describe_transfer_ownership():
         club_repo.transfer_ownership.return_value = True
         service = ClubService(club_repo, user_repo)
 
-        await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+        await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
         club_repo.transfer_ownership.assert_awaited_once()
 
     async def it_raises_a_conflict_when_the_repository_reports_no_match(club_repo: AsyncMock, user_repo: AsyncMock):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club(
             [
                 MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER),
@@ -451,9 +473,12 @@ def describe_transfer_ownership():
         service = ClubService(club_repo, user_repo)
 
         with pytest.raises(OwnershipTransferConflictError):
-            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+            await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
-    async def it_transfers_ownership_successfully(club_repo: AsyncMock, user_repo: AsyncMock):
+    async def it_transfers_ownership_successfully_and_returns_the_reclaim_deadline(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
         club_repo.find_by_id.return_value = _club(
             [
                 MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER),
@@ -463,9 +488,11 @@ def describe_transfer_ownership():
         club_repo.transfer_ownership.return_value = True
         service = ClubService(club_repo, user_repo)
 
-        await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID)
+        before = datetime.now(UTC)
+        reclaim_deadline = await service.transfer_ownership(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USERNAME)
 
         club_repo.transfer_ownership.assert_awaited_once_with(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_ID, ANY)
+        assert timedelta(hours=23) < reclaim_deadline - before < timedelta(hours=25)
 
 
 def describe_reclaim_ownership():

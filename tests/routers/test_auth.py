@@ -52,9 +52,7 @@ def describe_register():
         )
         club_service.admit_user.return_value = ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED)
 
-        response = client.post(
-            "/api/v1/auth/register", params={"invite_id": "some-invite-id"}, json=_register_payload()
-        )
+        response = client.post("/api/v1/auth/register", json=_register_payload(invite_id="some-invite-id"))
 
         assert response.status_code == 201
         assert response.json()["onboarding"]["status"] == "JOINED"
@@ -127,7 +125,7 @@ def describe_sign_in_with_provider():
 
         response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         assert response.json()["outcome"] == "CREATED"
 
     def it_returns_link_required_with_no_tokens(client: TestClient, auth_service: AsyncMock):
@@ -135,7 +133,7 @@ def describe_sign_in_with_provider():
 
         response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
 
-        assert response.status_code == 200
+        assert response.status_code == 409
         body = response.json()
         assert body["outcome"] == "LINK_REQUIRED"
         assert body["access_token"] is None
