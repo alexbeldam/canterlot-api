@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 from curl_cffi.requests import AsyncSession
 
+from canterlot.exceptions import BookProviderUnavailableError
 from canterlot.models.book import SearchParams
 from canterlot.models.enums import BookProviderName
 from canterlot.providers.google import GoogleBookProvider
@@ -180,10 +181,18 @@ def describe_fetch_volumes():
 
 
 def describe_fetch_volume_details():
-    async def it_returns_none_on_a_non_200_response(provider: GoogleBookProvider, session: AsyncMock):
+    async def it_returns_none_on_a_404_response(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(status_code=404, text="not found")
 
         assert await provider.fetch_volume_details("abc123") is None
+
+    async def it_raises_when_the_provider_returns_an_unexpected_status(
+        provider: GoogleBookProvider, session: AsyncMock
+    ):
+        session.get.return_value = _response(status_code=503, text="Service temporarily unavailable.")
+
+        with pytest.raises(BookProviderUnavailableError):
+            await provider.fetch_volume_details("abc123")
 
     async def it_returns_book_details_on_success(provider: GoogleBookProvider, session: AsyncMock):
         session.get.return_value = _response(

@@ -20,3 +20,8 @@ class BookDetailsNotFoundError(BookDomainError):
 class BookSearchCriteriaMissingError(BookDomainError):
     error_code = ErrorCode.BOOK_SEARCH_CRITERIA_MISSING
     status_code = status.HTTP_400_BAD_REQUEST
+
+
+class BookProviderUnavailableError(BookDomainError):
+    error_code = ErrorCode.BOOK_PROVIDER_UNAVAILABLE
+    status_code = status.HTTP_502_BAD_GATEWAY
