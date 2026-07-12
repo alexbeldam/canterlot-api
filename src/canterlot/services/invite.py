@@ -180,6 +180,7 @@ class InviteService:
         log.info("Issuing secure identity-bound direct invite key")
 
         await self.__verify_privileged_role(club_id=club_id, user_id=issuer_id)
+        await self.__invite_repo.deactivate_all_direct_by_club_id_and_target_email(club_id, target_email)
 
         now = datetime.now(UTC)
         expires_at = now + timedelta(weeks=1)

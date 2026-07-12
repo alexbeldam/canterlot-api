@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from beanie import PydanticObjectId
+from pydantic import ValidationError
 
-from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse
+from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse, ClubSettingsUpdateRequest
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import MemberRole
+from canterlot.models.enums import JoinPolicy, MemberRole
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
@@ -21,6 +23,29 @@ def describe_club_create_request():
     def it_normalizes_preferred_languages():
         request = ClubCreateRequest(name="Book Club", preferred_languages=["English", "  pt-br  "])
         assert request.preferred_languages == ["en", "pt-BR"]
+
+
+def describe_club_settings_update_request():
+    def it_accepts_a_single_field():
+        request = ClubSettingsUpdateRequest(allow_suggestions=False)
+        assert request.allow_suggestions is False
+        assert request.name is None
+
+    def it_rejects_a_payload_with_no_fields_set():
+        with pytest.raises(ValidationError):
+            ClubSettingsUpdateRequest()
+
+    def it_rejects_a_name_that_is_too_short():
+        with pytest.raises(ValidationError):
+            ClubSettingsUpdateRequest(name="ab")
+
+    def it_rejects_an_invalid_join_policy():
+        with pytest.raises(ValidationError):
+            ClubSettingsUpdateRequest.model_validate({"join_policy": "NOT_A_POLICY"})
+
+    def it_accepts_a_valid_join_policy():
+        request = ClubSettingsUpdateRequest(join_policy=JoinPolicy.RESTRICTED)
+        assert request.join_policy == JoinPolicy.RESTRICTED
 
 
 def describe_club_response_from_model():

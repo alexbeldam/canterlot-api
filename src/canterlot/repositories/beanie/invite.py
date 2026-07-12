@@ -35,7 +35,7 @@ class BeanieInviteRepository(InviteRepository):
             InviteModel.is_active == True,
         ).update_many({"$set": {InviteModel.is_active: False}})
 
-    async def dactivate_all_direct_by_club_id_and_target_email(
+    async def deactivate_all_direct_by_club_id_and_target_email(
         self,
         club_id: PydanticObjectId,
         target_email: NormalizedEmailStr,

@@ -3,7 +3,13 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
-from canterlot.dto.club import ChangeMemberRoleRequest, ClubCreateRequest, ClubDetailResponse, ClubResponse
+from canterlot.dto.club import (
+    ChangeMemberRoleRequest,
+    ClubCreateRequest,
+    ClubDetailResponse,
+    ClubResponse,
+    ClubSettingsUpdateRequest,
+)
 from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
@@ -93,6 +99,55 @@ async def create_club(
     member_usernames = await club_service.resolve_member_usernames(res.members)
 
     return ClubResponse.from_model(res, user_usernames=member_usernames)
+
+
+@router.patch(
+    "/{club_slug}/settings",
+    response_model=ClubResponse,
+    responses={
+        status.HTTP_200_OK: {"description": "The club's settings were updated successfully."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller does not hold OWNER/ADMIN standing.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: No club exists with the given slug.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. No fields provided, or a field violates its constraints.",
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def update_club_settings(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    payload: ClubSettingsUpdateRequest,
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> ClubResponse:
+    updated = await club_service.update_settings(club_id, current_user_id, payload)
+    member_usernames = await club_service.resolve_member_usernames(updated.members)
+
+    return ClubResponse.from_model(updated, user_usernames=member_usernames)
 
 
 @router.get(

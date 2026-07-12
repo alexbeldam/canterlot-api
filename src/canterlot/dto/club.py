@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 
 from beanie import PydanticObjectId
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from canterlot.models.club import ClubModel, ClubNameStr, ClubSlugStr
 from canterlot.models.enums import ClubOnboardingStatus, JoinPolicy, MemberRole
@@ -19,6 +19,24 @@ class ClubCreateRequest(BaseModel):
     )
     join_policy: JoinPolicy = JoinPolicy.PUBLIC
     preferred_languages: list[LanguageStr] = Field(default_factory=list)
+
+
+class ClubSettingsUpdateRequest(BaseModel):
+    name: ClubNameStr | None = None
+    description: str | None = Field(
+        default=None,
+        examples=["A cozy corner for reading historical fiction and sharing tea recipes."],
+    )
+    join_policy: JoinPolicy | None = None
+    allow_suggestions: bool | None = None
+    preferred_languages: list[LanguageStr] | None = None
+
+    @model_validator(mode="after")
+    def check_at_least_one_field_provided(self) -> "ClubSettingsUpdateRequest":
+        fields = (self.name, self.description, self.join_policy, self.allow_suggestions, self.preferred_languages)
+        if all(value is None for value in fields):
+            raise ValueError("At least one setting must be provided.")
+        return self
 
 
 @dataclass(frozen=True)

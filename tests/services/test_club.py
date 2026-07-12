@@ -5,7 +5,7 @@ from unittest.mock import ANY, AsyncMock
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.dto.club import ClubCreateRequest
+from canterlot.dto.club import ClubCreateRequest, ClubSettingsUpdateRequest
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
@@ -807,6 +807,145 @@ def describe_change_member_role():
         await service.change_member_role(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID, MemberRole.ADMIN)
 
         club_repo.change_member_role.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID, MemberRole.ADMIN)
+
+
+def describe_update_settings():
+    def _club(members: list[MemberSchema], slug: str = "book-club") -> SimpleNamespace:
+        return SimpleNamespace(members=members, slug=slug, name="Book Club")
+
+    async def it_raises_when_the_club_does_not_exist(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.update_settings(
+                SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(allow_suggestions=False)
+            )
+
+    async def it_raises_when_the_caller_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.update_settings(
+                SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(allow_suggestions=False)
+            )
+
+        club_repo.update_settings.assert_not_called()
+
+    async def it_raises_when_the_caller_is_a_plain_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.update_settings(
+                SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(allow_suggestions=False)
+            )
+
+        club_repo.update_settings.assert_not_called()
+
+    @pytest.mark.parametrize("role", [MemberRole.OWNER, MemberRole.ADMIN])
+    async def it_updates_only_the_provided_fields_for_owner_and_admin(
+        role: MemberRole, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=role)])
+        club_repo.update_settings.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.update_settings(
+            SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(allow_suggestions=False)
+        )
+
+        assert result.allow_suggestions is False
+        assert result.slug == "book-club"
+        club_repo.update_settings.assert_awaited_once_with(
+            SOME_CLUB_ID,
+            name=None,
+            slug=None,
+            description=None,
+            join_policy=None,
+            allow_suggestions=False,
+            preferred_languages=None,
+        )
+        club_repo.exists_by_club_slug.assert_not_called()
+
+    async def it_raises_when_the_repository_reports_no_match(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
+        club_repo.update_settings.return_value = False
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.update_settings(
+                SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(allow_suggestions=False)
+            )
+
+    async def it_regenerates_the_slug_when_the_name_changes(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
+        club_repo.update_settings.return_value = True
+        club_repo.exists_by_club_slug.return_value = False
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.update_settings(
+            SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(name="Renamed Club")
+        )
+
+        assert result.name == "Renamed Club"
+        assert result.slug == "renamed-club"
+        club_repo.update_settings.assert_awaited_once_with(
+            SOME_CLUB_ID,
+            name="Renamed Club",
+            slug="renamed-club",
+            description=None,
+            join_policy=None,
+            allow_suggestions=None,
+            preferred_languages=None,
+        )
+
+    async def it_suffixes_the_slug_when_the_base_slug_is_taken(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
+        club_repo.update_settings.return_value = True
+        club_repo.exists_by_club_slug.side_effect = [True, False]
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.update_settings(
+            SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(name="Renamed Club")
+        )
+
+        assert result.slug != "renamed-club"
+        assert result.slug.startswith("renamed-cl")
+
+    async def it_keeps_the_same_slug_when_the_name_is_resubmitted_unchanged(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)])
+        club_repo.update_settings.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.update_settings(SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(name="Book Club"))
+
+        assert result.slug == "book-club"
+        club_repo.exists_by_club_slug.assert_not_called()
+
+    async def it_keeps_a_suffixed_slug_untouched_when_the_name_is_resubmitted_unchanged(
+        club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_id.return_value = _club(
+            [MemberSchema(user_id=SOME_USER_ID, role=MemberRole.OWNER)], slug="book-club-a1b2c"
+        )
+        club_repo.update_settings.return_value = True
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.update_settings(SOME_CLUB_ID, SOME_USER_ID, ClubSettingsUpdateRequest(name="Book Club"))
+
+        assert result.slug == "book-club-a1b2c"
+        club_repo.exists_by_club_slug.assert_not_called()
+        club_repo.update_settings.assert_awaited_once_with(
+            SOME_CLUB_ID,
+            name="Book Club",
+            slug=None,
+            description=None,
+            join_policy=None,
+            allow_suggestions=None,
+            preferred_languages=None,
+        )
 
 
 def describe_leave_club():
