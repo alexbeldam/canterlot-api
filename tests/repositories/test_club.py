@@ -364,6 +364,19 @@ def describe_remove_member():
         assert found.members == []
 
 
+def describe_remove_and_ban_member():
+    async def it_atomically_removes_the_member_and_bans_them():
+        member_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=member_id)])
+
+        await repo.remove_and_ban_member(_id(club), member_id)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.members == []
+        assert found.banned_users == [member_id]
+
+
 def describe_remove_from_pending_approvals():
     async def it_removes_a_pending_approval():
         user_id = PydanticObjectId()

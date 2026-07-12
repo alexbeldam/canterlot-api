@@ -10,6 +10,7 @@ from canterlot.exceptions import (
     CannotTransferOwnershipToSelfError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    FormerOwnerProtectedError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -504,3 +505,136 @@ def describe_reclaim_ownership():
 
         with pytest.raises(OwnershipTransferConflictError):
             await service.reclaim_ownership(SOME_CLUB_ID, SOME_FORMER_OWNER_ID)
+
+
+def describe_remove_member():
+    SOME_REMOVER_ID = PydanticObjectId("507f1f77bcf86cd799439018")
+
+    def _club(
+        members: list[MemberSchema],
+        ownership_transferred_at: datetime | None = None,
+        protected_former_owner_id: PydanticObjectId | None = None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            members=members,
+            ownership_transferred_at=ownership_transferred_at,
+            protected_former_owner_id=protected_former_owner_id,
+        )
+
+    async def it_raises_when_the_club_does_not_exist(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+    async def it_raises_when_the_remover_is_not_a_member_at_all(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+        club_repo.remove_and_ban_member.assert_not_called()
+
+    async def it_raises_when_the_remover_is_a_plain_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.MEMBER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+    async def it_raises_when_the_target_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.OWNER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubMemberNotFoundError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+    async def it_raises_when_an_admin_targets_another_admin(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.ADMIN),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+        club_repo.remove_and_ban_member.assert_not_called()
+
+    async def it_raises_when_an_admin_targets_the_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.ADMIN),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.OWNER),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+    async def it_raises_when_the_target_is_a_protected_former_owner(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=29),
+            protected_former_owner_id=SOME_TARGET_ID,
+        )
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(FormerOwnerProtectedError):
+            await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+        club_repo.remove_and_ban_member.assert_not_called()
+
+    async def it_allows_removal_of_the_former_owner_once_the_window_elapses(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=31),
+            protected_former_owner_id=SOME_TARGET_ID,
+        )
+        service = ClubService(club_repo, user_repo)
+
+        await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+        club_repo.remove_and_ban_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID)
+
+    async def it_removes_and_bans_an_admin_when_the_owner_is_the_remover(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+        club_repo.remove_and_ban_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID)
+
+    async def it_removes_and_bans_a_member_when_an_admin_is_the_remover(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club(
+            [
+                MemberSchema(user_id=SOME_REMOVER_ID, role=MemberRole.ADMIN),
+                MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER),
+            ]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        await service.remove_member(SOME_CLUB_ID, SOME_REMOVER_ID, SOME_TARGET_ID)
+
+        club_repo.remove_and_ban_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_TARGET_ID)

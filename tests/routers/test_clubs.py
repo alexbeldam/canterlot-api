@@ -8,6 +8,7 @@ from canterlot.exceptions import (
     CannotTransferOwnershipToSelfError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    FormerOwnerProtectedError,
     InviteLinkDeactivatedError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
@@ -250,6 +251,65 @@ def describe_reject_pending_request():
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+
+def describe_remove_club_member():
+    def it_returns_204_when_removed(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.remove_member.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 204
+        club_service.remove_member.assert_awaited_once_with(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID)
+
+    def it_returns_403_when_the_caller_lacks_sufficient_rank(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.remove_member.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_target_is_not_a_member(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.remove_member.side_effect = ClubMemberNotFoundError("not a member")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
+
+    def it_returns_404_when_the_username_does_not_exist(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+    def it_returns_409_when_the_target_is_a_protected_former_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.remove_member.side_effect = FormerOwnerProtectedError("protected")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "FORMER_OWNER_PROTECTED"
 
 
 def describe_transfer_club_ownership():

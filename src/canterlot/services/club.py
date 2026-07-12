@@ -8,6 +8,7 @@ from canterlot.exceptions import (
     CannotTransferOwnershipToSelfError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    FormerOwnerProtectedError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -39,6 +40,13 @@ def _find_member(members: list[MemberSchema], user_id: PydanticObjectId) -> Memb
 
 def _find_owner(members: list[MemberSchema]) -> MemberSchema | None:
     return next((m for m in members if m.role == MemberRole.OWNER), None)
+
+
+_ROLE_RANK = list(MemberRole)
+
+
+def _outranks(actor: MemberRole, target: MemberRole) -> bool:
+    return _ROLE_RANK.index(actor) < _ROLE_RANK.index(target)
 
 
 @dataclass
@@ -189,6 +197,52 @@ class ClubService:
 
         await self.__club_repo.remove_from_pending_approvals(club_id, target_user_id)
         log.info("Pending join request reviewed successfully", outcome="approved" if approve else "rejected")
+
+    async def remove_member(
+        self,
+        club_id: PydanticObjectId,
+        remover_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+    ) -> None:
+        log = logger.bind(
+            club_id=str(club_id),
+            remover_id=str(remover_id),
+            target_user_id=str(target_user_id),
+        )
+        log.info("Initiating club member removal")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Removal rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        remover = _find_member(club.members, remover_id)
+        if remover is None or remover.role not in (MemberRole.OWNER, MemberRole.ADMIN):
+            log.warn("Removal rejected: caller lacks OWNER/ADMIN privileges")
+            raise UnauthorizedClubMemberError("Only an OWNER or ADMIN can remove a member.")
+
+        target = _find_member(club.members, target_user_id)
+        if target is None:
+            log.warn("Removal rejected: target user is not a member of this club")
+            raise ClubMemberNotFoundError("This user is not a member of this club.")
+
+        if not _outranks(remover.role, target.role):
+            log.warn("Removal rejected: caller does not outrank the target", target_role=str(target.role))
+            raise UnauthorizedClubMemberError("You do not have sufficient rank to remove this member.")
+
+        now = datetime.now(UTC)
+        if (
+            target_user_id == club.protected_former_owner_id
+            and club.ownership_transferred_at is not None
+            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+        ):
+            log.warn("Removal rejected: target is a protected former owner")
+            raise FormerOwnerProtectedError(
+                "This user transferred ownership away within the last 30 days and cannot be removed yet."
+            )
+
+        await self.__club_repo.remove_and_ban_member(club_id, target_user_id)
+        log.info("Member removed and banned successfully")
 
     async def transfer_ownership(
         self,

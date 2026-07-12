@@ -205,6 +205,12 @@ class BeanieClubRepository(ClubRepository):
     async def remove_member(self, club_id: PydanticObjectId, member_id: PydanticObjectId) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Pull({ClubModel.members: {"user_id": member_id}}))
 
+    async def remove_and_ban_member(self, club_id: PydanticObjectId, member_id: PydanticObjectId) -> None:
+        await ClubModel.find_one(ClubModel.id == club_id).update_one(
+            Pull({ClubModel.members: {"user_id": member_id}}),
+            Push({ClubModel.banned_users: member_id}),
+        )
+
     async def remove_from_pending_approvals(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(
             Pull({ClubModel.pending_approvals: {"user_id": user_id}})
