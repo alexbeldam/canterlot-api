@@ -32,6 +32,7 @@ read_books_router = APIRouter(prefix="/users/me/read-books", tags=["Users"])
 
 @auth_providers_router.get(
     "",
+    operation_id="getConnectedProviders",
     response_model=ConnectedProvidersResponse,
     responses={
         status.HTTP_200_OK: {
@@ -65,6 +66,7 @@ async def get_connected_providers(
 
 @auth_providers_router.post(
     "/{provider}",
+    operation_id="linkProvider",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Provider linked to the authenticated account."},
@@ -114,6 +116,7 @@ async def link_provider(
 
 @auth_providers_router.delete(
     "/{provider}",
+    operation_id="disconnectProvider",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Provider disconnected from the authenticated account."},
@@ -162,6 +165,7 @@ async def disconnect_provider(
 
 @read_books_router.put(
     "/{identifier}",
+    operation_id="markBookRead",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Book successfully recorded in the user's reading history."},

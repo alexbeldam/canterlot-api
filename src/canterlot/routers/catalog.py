@@ -35,6 +35,7 @@ router = APIRouter(prefix="/clubs/{club_slug}/catalog", tags=["Club Catalogs"])
 
 @router.post(
     "",
+    operation_id="suggestBookToClub",
     response_model=SuggestionResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
@@ -96,6 +97,7 @@ async def suggest_book_to_club(
 
 @router.get(
     "",
+    operation_id="getClubCatalog",
     response_model=PaginatedCatalogResponse,
     responses={
         status.HTTP_200_OK: {"description": "Successfully retrieved a paginated page of the club's catalog."},
@@ -140,6 +142,7 @@ async def get_club_catalog(
 
 @router.delete(
     "/{identifier}",
+    operation_id="removeFromClub",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Book successfully removed from the club catalog."},

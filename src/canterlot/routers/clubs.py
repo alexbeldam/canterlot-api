@@ -54,6 +54,7 @@ _CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY = Depends(rate_limit_club_owner_act
 
 @router.post(
     "",
+    operation_id="createClub",
     response_model=ClubResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
@@ -110,6 +111,7 @@ async def create_club(
 
 @router.patch(
     "/{club_slug}/settings",
+    operation_id="updateClubSettings",
     response_model=ClubResponse,
     responses={
         status.HTTP_200_OK: {"description": "The club's settings were updated successfully."},
@@ -159,6 +161,7 @@ async def update_club_settings(
 
 @router.get(
     "/{club_slug}",
+    operation_id="getClub",
     response_model=ClubDetailResponse | ClubResponse,
     responses={
         status.HTTP_200_OK: {
@@ -212,6 +215,7 @@ async def get_club(
 
 @router.patch(
     "/{club_slug}/pending-approvals/{username}",
+    operation_id="approvePendingRequest",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -261,6 +265,7 @@ async def approve_pending_request(
 
 @router.delete(
     "/{club_slug}/pending-approvals/{username}",
+    operation_id="rejectPendingRequest",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -312,6 +317,7 @@ async def reject_pending_request(
 
 @router.post(
     "/{club_slug}/invites",
+    operation_id="createInvite",
     status_code=status.HTTP_201_CREATED,
     response_model=InviteTokenResponse,
     responses={
@@ -381,6 +387,7 @@ async def create_invite(
 
 @router.delete(
     "/{club_slug}/members/me",
+    operation_id="leaveClub",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -437,6 +444,7 @@ async def leave_club(
 
 @router.delete(
     "/{club_slug}/members/{username}",
+    operation_id="removeClubMember",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -500,6 +508,7 @@ async def remove_club_member(
 
 @router.put(
     "/{club_slug}/members/{username}/role",
+    operation_id="changeClubMemberRole",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "The member's role was changed successfully."},
@@ -562,6 +571,7 @@ async def change_club_member_role(
 
 @router.post(
     "/{club_slug}/ownership-transfers",
+    operation_id="createOwnershipTransfer",
     status_code=status.HTTP_201_CREATED,
     response_model=OwnershipTransferResponse,
     dependencies=[_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY],
@@ -636,6 +646,7 @@ async def create_ownership_transfer(
 
 @router.delete(
     "/{club_slug}/ownership-transfers/current",
+    operation_id="reclaimClubOwnership",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[_CLUB_OWNERSHIP_ACTION_RATE_LIMIT_DEPENDENCY],
     responses={
@@ -697,6 +708,7 @@ async def reclaim_club_ownership(
 
 @router.get(
     "/{club_slug}/invites/public",
+    operation_id="getPublicInvite",
     response_model=InviteTokenResponse,
     status_code=status.HTTP_200_OK,
     responses={

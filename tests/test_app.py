@@ -1,6 +1,8 @@
+from collections import Counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute, RouteContext, iter_route_contexts
 from starlette.testclient import TestClient
 
 from canterlot.app import create_app, custom_openapi
@@ -47,6 +49,29 @@ def describe_custom_openapi():
         schema = custom_openapi(app)
 
         assert schema["servers"] == [{"url": "/api/v1", "description": "v1 Base Environment"}]
+
+
+def describe_operation_ids():
+    def _schema_routes(app: FastAPI) -> list[RouteContext]:
+        return [
+            route
+            for route in iter_route_contexts(app.routes)
+            if isinstance(route.original_route, APIRoute) and route.include_in_schema
+        ]
+
+    def it_sets_an_explicit_operation_id_on_every_documented_route():
+        app = create_app()
+
+        for route in _schema_routes(app):
+            assert route.operation_id, f"{route.methods} {route.path} is missing an explicit operation_id"
+
+    def it_never_reuses_an_operation_id_across_routes():
+        app = create_app()
+
+        operation_ids = [route.operation_id for route in _schema_routes(app)]
+        duplicates = [operation_id for operation_id, count in Counter(operation_ids).items() if count > 1]
+
+        assert not duplicates, f"operation_id(s) reused across routes: {duplicates}"
 
 
 def describe_root_redirects():
