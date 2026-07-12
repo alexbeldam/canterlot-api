@@ -154,6 +154,57 @@ def describe_get_club():
         assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
 
 
+def describe_update_club_settings():
+    def it_returns_200_with_the_updated_club(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+        updated = _created_club()
+        updated.allow_suggestions = False
+        club_service.update_settings.return_value = updated
+        club_service.resolve_member_usernames.return_value = {SOME_OWNER_ID: "alice_1"}
+
+        response = client.patch(f"/api/v1/clubs/{SOME_CLUB_SLUG}/settings", json={"allow_suggestions": False})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["allow_suggestions"] is False
+        club_service.update_settings.assert_awaited_once()
+
+    def it_returns_403_when_the_caller_lacks_privileges(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_by_slug.return_value = _found_club()
+        club_service.update_settings.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.patch(f"/api/v1/clubs/{SOME_CLUB_SLUG}/settings", json={"allow_suggestions": False})
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_club_slug_does_not_exist(client: TestClient, club_repo: AsyncMock):
+        club_repo.find_by_slug.return_value = None
+
+        response = client.patch(f"/api/v1/clubs/{SOME_CLUB_SLUG}/settings", json={"allow_suggestions": False})
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
+
+    def it_returns_422_when_no_fields_are_provided(client: TestClient, club_repo: AsyncMock, club_service: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+
+        response = client.patch(f"/api/v1/clubs/{SOME_CLUB_SLUG}/settings", json={})
+
+        assert response.status_code == 422
+        club_service.update_settings.assert_not_called()
+
+    def it_returns_422_for_a_name_that_is_too_short(client: TestClient, club_repo: AsyncMock, club_service: AsyncMock):
+        club_repo.find_by_slug.return_value = _found_club()
+
+        response = client.patch(f"/api/v1/clubs/{SOME_CLUB_SLUG}/settings", json={"name": "ab"})
+
+        assert response.status_code == 422
+        club_service.update_settings.assert_not_called()
+
+
 def describe_approve_pending_request():
     def it_returns_204_when_approved(
         client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock

@@ -12,7 +12,7 @@ from beanie.operators import In, Or, RegEx
 from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
 from canterlot.config.enums import Environment
-from canterlot.dto.club import ClubCreateRequest
+from canterlot.dto.club import ClubCreateRequest, ClubSettingsUpdateRequest
 from canterlot.models import BookModel, ClubModel, InviteModel, JoinPolicy, MemberRole, UserModel
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.models.club import CatalogEntryModel
@@ -30,10 +30,6 @@ from canterlot.utils.security import hash_password
 # This goes through the same ClubService/InviteService calls the real routers use, so a freshly
 # seeded club ends up in exactly the state a club created through the API would be in (e.g. it
 # already has an active public invite, because create_club always rotates one on the way out).
-#
-# One state below has no matching endpoint yet (closing a club's suggestions queue), so that falls
-# back to the repository layer directly -- the same call a future settings endpoint would make, not
-# a raw Document poke.
 
 SEED_PASSWORD = "Password123!"
 SEED_EMAIL_DOMAIN = "seed.canterlot.dev"
@@ -290,7 +286,6 @@ async def _build_club_b(
 async def _build_club_c(
     club_service: ClubService,
     invite_service: InviteService,
-    club_repo: BeanieClubRepository,
     user_ids: dict[str, PydanticObjectId],
 ) -> ClubSeedResult:
     club_id, slug, public_invite_id = await _create_club(
@@ -305,11 +300,9 @@ async def _build_club_c(
     for username in ("twilightsparkle", "rarity"):
         await club_service.admit_user(club_id, user_ids[username], is_direct=False)
 
-    club = await club_repo.find_by_id(club_id)
-    if club is None:
-        raise RuntimeError(f"Seed failure: club '{CLUB_C_NAME}' vanished immediately after creation.")
-    club.allow_suggestions = False
-    await club_repo.save(club)
+    await club_service.update_settings(
+        club_id, user_ids["pinkiepie"], ClubSettingsUpdateRequest(allow_suggestions=False)
+    )
 
     return ClubSeedResult(slug=slug, name=CLUB_C_NAME, public_invite_id=public_invite_id)
 
@@ -369,7 +362,7 @@ async def seed() -> None:
 
         club_a = await _build_club_a(club_service, invite_service, book_repo, club_repo, user_ids)
         club_b, direct_invite_id = await _build_club_b(club_service, invite_service, book_repo, club_repo, user_ids)
-        club_c = await _build_club_c(club_service, invite_service, club_repo, user_ids)
+        club_c = await _build_club_c(club_service, invite_service, user_ids)
 
         _print_summary(SeedSummary(club_a=club_a, club_b=club_b, club_c=club_c, direct_invite_id=direct_invite_id))
 

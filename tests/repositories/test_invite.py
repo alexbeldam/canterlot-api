@@ -114,7 +114,7 @@ def describe_deactivate_all_public_by_club_id():
         assert (await repo.find_by_id(other_club_public.id)).is_active is True  # type: ignore[union-attr]
 
 
-def describe_dactivate_all_direct_by_club_id_and_target_email():
+def describe_deactivate_all_direct_by_club_id_and_target_email():
     async def it_deactivates_only_matching_direct_invites():
         club_id = PydanticObjectId()
         matching = await _invite(
@@ -125,7 +125,7 @@ def describe_dactivate_all_direct_by_club_id_and_target_email():
         )
         public = await _invite(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
 
-        await repo.dactivate_all_direct_by_club_id_and_target_email(club_id, "target@example.com")
+        await repo.deactivate_all_direct_by_club_id_and_target_email(club_id, "target@example.com")
 
         assert (await repo.find_by_id(matching.id)).is_active is False  # type: ignore[union-attr]
         assert (await repo.find_by_id(other_email.id)).is_active is True  # type: ignore[union-attr]

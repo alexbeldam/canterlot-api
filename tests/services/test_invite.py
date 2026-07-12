@@ -295,6 +295,9 @@ def describe_create_direct_invite():
         result = await service.create_direct_invite(SOME_CLUB_ID, SOME_USER_ID, "alice@example.com")
 
         assert result == "direct-invite-id"
+        invite_repo.deactivate_all_direct_by_club_id_and_target_email.assert_awaited_once_with(
+            SOME_CLUB_ID, "alice@example.com"
+        )
 
 
 def describe_register_invite_usage():

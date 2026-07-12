@@ -9,6 +9,7 @@ from canterlot.models import (
     CatalogEntryModel,
     ClubModel,
     InviteModel,
+    JoinPolicy,
     LinkedProviderSchema,
     MemberRole,
     MemberSchema,
@@ -91,6 +92,16 @@ class ClubRepository(Protocol):
         member_id: PydanticObjectId,
         new_role: MemberRole,
     ) -> bool: ...
+    async def update_settings(
+        self,
+        club_id: PydanticObjectId,
+        name: ClubNameStr | None = None,
+        slug: ClubSlugStr | None = None,
+        description: str | None = None,
+        join_policy: JoinPolicy | None = None,
+        allow_suggestions: bool | None = None,
+        preferred_languages: list[LanguageStr] | None = None,
+    ) -> bool: ...
     async def transfer_ownership(
         self,
         club_id: PydanticObjectId,
@@ -148,7 +159,7 @@ class InviteRepository(Protocol):
     async def increment_uses_count_by_id(self, invite_id: str) -> None: ...
     async def deactivate_by_id(self, invite_id: str) -> None: ...
     async def deactivate_all_public_by_club_id(self, club_id: PydanticObjectId) -> None: ...
-    async def dactivate_all_direct_by_club_id_and_target_email(
+    async def deactivate_all_direct_by_club_id_and_target_email(
         self,
         club_id: PydanticObjectId,
         target_email: NormalizedEmailStr,

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from beanie import PydanticObjectId
 
-from canterlot.dto.club import ClubCreateRequest, ClubOnboarding
+from canterlot.dto.club import ClubCreateRequest, ClubOnboarding, ClubSettingsUpdateRequest
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
@@ -255,6 +255,55 @@ class ClubService:
 
         await self.__club_repo.remove_and_ban_member(club_id, target_user_id)
         log.info("Member removed and banned successfully")
+
+    async def update_settings(
+        self,
+        club_id: PydanticObjectId,
+        caller_id: PydanticObjectId,
+        data: ClubSettingsUpdateRequest,
+    ) -> ClubModel:
+        log = logger.bind(club_id=str(club_id), caller_id=str(caller_id))
+        log.info("Initiating club settings update")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Settings update rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        caller = _find_member(club.members, caller_id)
+        if caller is None or caller.role not in (MemberRole.OWNER, MemberRole.ADMIN):
+            log.warn("Settings update rejected: caller lacks OWNER/ADMIN privileges")
+            raise UnauthorizedClubMemberError("Only an OWNER or ADMIN can update club settings.")
+
+        new_slug = None
+        if data.name is not None and data.name != club.name:
+
+            async def _is_slug_taken(candidate: str) -> bool:
+                return candidate != club.slug and await self.__club_repo.exists_by_club_slug(candidate)
+
+            new_slug = await make_slug(data.name, _is_slug_taken)
+
+        changed = await self.__club_repo.update_settings(
+            club_id,
+            name=data.name,
+            slug=new_slug,
+            description=data.description,
+            join_policy=data.join_policy,
+            allow_suggestions=data.allow_suggestions,
+            preferred_languages=data.preferred_languages,
+        )
+        if not changed:
+            log.warn("Settings update rejected: club no longer exists at write time")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        updates = data.model_dump(exclude_none=True)
+        if new_slug is not None:
+            updates["slug"] = new_slug
+        for field, value in updates.items():
+            setattr(club, field, value)
+
+        log.info("Club settings updated successfully", new_slug=new_slug)
+        return club
 
     async def change_member_role(
         self,

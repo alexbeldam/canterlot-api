@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
-from canterlot.models import BookModel, ClubModel, MemberRole, MemberSchema, PendingApprovalSchema
+from canterlot.models import BookModel, ClubModel, JoinPolicy, MemberRole, MemberSchema, PendingApprovalSchema
 from canterlot.models.club import CatalogEntryModel, ClubNameStr, ClubSlugStr
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import ClubRepository
@@ -235,6 +235,34 @@ class BeanieClubRepository(ClubRepository):
             {"$set": {"members.$[target].role": new_role}},
             array_filters=[{"target.user_id": member_id}],
         )
+
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def update_settings(
+        self,
+        club_id: PydanticObjectId,
+        name: ClubNameStr | None = None,
+        slug: ClubSlugStr | None = None,
+        description: str | None = None,
+        join_policy: JoinPolicy | None = None,
+        allow_suggestions: bool | None = None,
+        preferred_languages: list[LanguageStr] | None = None,
+    ) -> bool:
+        updates: dict[str, object] = {}
+        if name is not None:
+            updates["name"] = name
+        if slug is not None:
+            updates["slug"] = slug
+        if description is not None:
+            updates["description"] = description
+        if join_policy is not None:
+            updates["join_policy"] = join_policy
+        if allow_suggestions is not None:
+            updates["allow_suggestions"] = allow_suggestions
+        if preferred_languages is not None:
+            updates["preferred_languages"] = preferred_languages
+
+        result = await ClubModel.find_one(ClubModel.id == club_id).update_one({"$set": updates})
 
         return cast(UpdateResult, result).matched_count > 0
 

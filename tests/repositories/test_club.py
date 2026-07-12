@@ -7,7 +7,7 @@ from pymongo.errors import OperationFailure
 from canterlot.exceptions import ClubNotFoundError
 from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.models.club import CatalogEntryModel, ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import BookProviderName, MemberRole
+from canterlot.models.enums import BookProviderName, JoinPolicy, MemberRole
 from canterlot.pagination import SortDirection
 from canterlot.repositories.beanie.club import BeanieClubRepository
 
@@ -482,6 +482,48 @@ def describe_change_member_role():
         club = await _club(members=[MemberSchema(user_id=PydanticObjectId(), role=MemberRole.MEMBER)])
 
         matched = await repo.change_member_role(_id(club), PydanticObjectId(), MemberRole.ADMIN)
+
+        assert matched is False
+
+
+def describe_update_settings():
+    async def it_updates_only_the_provided_fields():
+        club = await _club(description="Old description")
+
+        matched = await repo.update_settings(_id(club), description="New description")
+
+        assert matched is True
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.description == "New description"
+        assert found.name == "Book Club"
+        assert found.slug == "book-club"
+
+    async def it_updates_every_field_when_all_are_provided():
+        club = await _club()
+
+        matched = await repo.update_settings(
+            _id(club),
+            name="Renamed Club",
+            slug="renamed-club",
+            description="A fresh description",
+            join_policy=JoinPolicy.RESTRICTED,
+            allow_suggestions=False,
+            preferred_languages=["en", "pt-BR"],
+        )
+
+        assert matched is True
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.name == "Renamed Club"
+        assert found.slug == "renamed-club"
+        assert found.description == "A fresh description"
+        assert found.join_policy == JoinPolicy.RESTRICTED
+        assert found.allow_suggestions is False
+        assert found.preferred_languages == ["en", "pt-BR"]
+
+    async def it_returns_false_when_the_club_no_longer_exists():
+        matched = await repo.update_settings(PydanticObjectId(), description="New description")
 
         assert matched is False
 
