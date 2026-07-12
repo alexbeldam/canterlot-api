@@ -585,3 +585,13 @@ def describe_save():
         found = await repo.find_by_id(_id(club))
         assert found is not None
         assert found.description == "An updated description"
+
+
+def describe_delete():
+    async def it_removes_the_club_document_entirely():
+        club = await _club(members=[MemberSchema(user_id=PydanticObjectId(), role=MemberRole.OWNER)])
+
+        await repo.delete(_id(club))
+
+        found = await repo.find_by_id(_id(club))
+        assert found is None

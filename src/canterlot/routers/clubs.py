@@ -213,6 +213,62 @@ async def get_club(
     return ClubResponse.from_model(view.club, view.member_usernames)
 
 
+@router.delete(
+    "/{club_slug}",
+    operation_id="dissolveClub",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Club dissolved. Every member is removed (not banned) and the club document itself no longer "
+                "exists; its slug becomes available for reuse and all outstanding invite links are permanently dead."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller does not hold OWNER standing.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: No club exists with the given slug.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "FormerOwnerProtectedError: This club has a former owner still protected from removal (transferred "
+                "ownership away less than 30 days ago); dissolution is blocked until that window elapses."
+            ),
+            "content": error_example(FormerOwnerProtectedError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def dissolve_club(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.dissolve_club(club_id, current_user_id)
+
+
 @router.patch(
     "/{club_slug}/pending-approvals/{username}",
     operation_id="approvePendingRequest",

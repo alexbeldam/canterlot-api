@@ -394,6 +394,34 @@ class ClubService:
         await self.__club_repo.remove_member(club_id, caller_id)
         log.info("Member left the club successfully")
 
+    async def dissolve_club(self, club_id: PydanticObjectId, caller_id: PydanticObjectId) -> None:
+        log = logger.bind(club_id=str(club_id), caller_id=str(caller_id))
+        log.info("Initiating club dissolution")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Dissolution rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        caller = _find_member(club.members, caller_id)
+        if caller is None or caller.role != MemberRole.OWNER:
+            log.warn("Dissolution rejected: caller is not the club OWNER")
+            raise UnauthorizedClubMemberError("Only the club OWNER can dissolve this club.")
+
+        now = datetime.now(UTC)
+        if (
+            club.protected_former_owner_id is not None
+            and club.ownership_transferred_at is not None
+            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+        ):
+            log.warn("Dissolution rejected: club has an active protected-former-owner window")
+            raise FormerOwnerProtectedError(
+                "This club cannot be dissolved while a former owner is still protected from removal."
+            )
+
+        await self.__club_repo.delete(club_id)
+        log.info("Club dissolved successfully")
+
     async def transfer_ownership(
         self,
         club_id: PydanticObjectId,

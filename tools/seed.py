@@ -94,7 +94,8 @@ CLUB_B_BOOKS: list[SeedBook] = [
 CLUB_A_NAME = "Catalog Club"
 CLUB_B_NAME = "Restricted Club"
 CLUB_C_NAME = "Closed Club"
-SEED_CLUB_NAMES = [CLUB_A_NAME, CLUB_B_NAME, CLUB_C_NAME]
+CLUB_D_NAME = "Dissolvable Club"
+SEED_CLUB_NAMES = [CLUB_A_NAME, CLUB_B_NAME, CLUB_C_NAME, CLUB_D_NAME]
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +110,7 @@ class SeedSummary:
     club_a: ClubSeedResult
     club_b: ClubSeedResult
     club_c: ClubSeedResult
+    club_d: ClubSeedResult
     direct_invite_id: str
 
 
@@ -307,6 +309,23 @@ async def _build_club_c(
     return ClubSeedResult(slug=slug, name=CLUB_C_NAME, public_invite_id=public_invite_id)
 
 
+async def _build_club_d(
+    club_service: ClubService,
+    invite_service: InviteService,
+    user_ids: dict[str, PydanticObjectId],
+) -> ClubSeedResult:
+    _club_id, slug, public_invite_id = await _create_club(
+        club_service,
+        invite_service,
+        CLUB_D_NAME,
+        "A minimal club that exists solely to demonstrate DELETE /clubs/{slug} (CLUB-14 dissolution).",
+        JoinPolicy.PUBLIC,
+        user_ids["rainbowdash"],
+    )
+
+    return ClubSeedResult(slug=slug, name=CLUB_D_NAME, public_invite_id=public_invite_id)
+
+
 def _print_summary(summary: SeedSummary) -> None:
     print()
     print("=== Seed complete ===")
@@ -320,7 +339,7 @@ def _print_summary(summary: SeedSummary) -> None:
     print(f'  curl -X POST /api/v1/auth/login -d "username=rarity&password={SEED_PASSWORD}"')
     print()
 
-    for club in (summary.club_a, summary.club_b, summary.club_c):
+    for club in (summary.club_a, summary.club_b, summary.club_c, summary.club_d):
         print(f"{club.name} -- slug: {club.slug}")
         print(f"  public invite: {club.public_invite_id}")
     print()
@@ -332,6 +351,7 @@ def _print_summary(summary: SeedSummary) -> None:
         "rainbowdash MEMBER; twilightsparkle PENDING"
     )
     print(f"  {CLUB_C_NAME}: pinkiepie OWNER; twilightsparkle/rarity MEMBER; suggestions closed")
+    print(f"  {CLUB_D_NAME}: rainbowdash OWNER; no other members")
     print()
 
     print("Try it out, e.g.:")
@@ -348,6 +368,7 @@ def _print_summary(summary: SeedSummary) -> None:
     print(f"  POST /api/v1/clubs/{summary.club_c.slug}/catalog/ (as pinkiepie -> 403 ClubSuggestionsClosedError)")
     print(f"  PUT /api/v1/clubs/{summary.club_b.slug}/members/rainbowdash/role (as applejack -> promote to ADMIN)")
     print(f"  DELETE /api/v1/clubs/{summary.club_a.slug}/members/me (as pinkiepie -> leaves voluntarily)")
+    print(f"  DELETE /api/v1/clubs/{summary.club_d.slug} (as rainbowdash -> dissolves the club entirely)")
 
 
 async def seed() -> None:
@@ -366,8 +387,11 @@ async def seed() -> None:
         club_a = await _build_club_a(club_service, invite_service, book_repo, club_repo, user_ids)
         club_b, direct_invite_id = await _build_club_b(club_service, invite_service, book_repo, club_repo, user_ids)
         club_c = await _build_club_c(club_service, invite_service, user_ids)
+        club_d = await _build_club_d(club_service, invite_service, user_ids)
 
-        _print_summary(SeedSummary(club_a=club_a, club_b=club_b, club_c=club_c, direct_invite_id=direct_invite_id))
+        _print_summary(
+            SeedSummary(club_a=club_a, club_b=club_b, club_c=club_c, club_d=club_d, direct_invite_id=direct_invite_id)
+        )
 
 
 def main() -> int:

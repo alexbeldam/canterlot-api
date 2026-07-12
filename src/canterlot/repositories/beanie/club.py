@@ -336,3 +336,6 @@ class BeanieClubRepository(ClubRepository):
 
     async def save(self, club: ClubModel) -> ClubModel:
         return await club.save()
+
+    async def delete(self, club_id: PydanticObjectId) -> None:
+        await ClubModel.find_one(ClubModel.id == club_id).delete()
