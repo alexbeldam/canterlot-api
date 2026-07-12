@@ -55,3 +55,18 @@ class OwnershipTransferConflictError(ClubDomainError):
 class FormerOwnerProtectedError(ClubDomainError):
     error_code = ErrorCode.FORMER_OWNER_PROTECTED
     status_code = status.HTTP_409_CONFLICT
+
+
+class CannotChangeOwnerRoleError(ClubDomainError):
+    error_code = ErrorCode.CANNOT_CHANGE_OWNER_ROLE
+    status_code = status.HTTP_400_BAD_REQUEST
+
+
+class MemberRoleChangeConflictError(ClubDomainError):
+    error_code = ErrorCode.MEMBER_ROLE_CHANGE_CONFLICT
+    status_code = status.HTTP_409_CONFLICT
+
+
+class ClubOwnerCannotLeaveError(ClubDomainError):
+    error_code = ErrorCode.CLUB_OWNER_CANNOT_LEAVE
+    status_code = status.HTTP_409_CONFLICT

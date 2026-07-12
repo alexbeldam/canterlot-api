@@ -41,7 +41,9 @@ class InviteService:
         self.__club_repo = club_repo
         self.__user_repo = user_repo
 
-    async def get_preview_metadata(self, invite_id: str) -> InvitePreviewResponse:
+    async def get_preview_metadata(
+        self, invite_id: str, invited_by: UsernameStr | None = None
+    ) -> InvitePreviewResponse:
         log = logger.bind(invite_id=invite_id)
         log.info("Fetching stateful token preview metadata")
 
@@ -65,9 +67,7 @@ class InviteService:
             log.warn("Preview aborted: relational parent club record is missing from database")
             raise ClubNotFoundError("The club associated with this invitation does not exist.")
 
-        inviter_username = None
-        if invite.created_by:
-            inviter_username = await self.__user_repo.find_username_by_id(invite.created_by)
+        inviter_username = await self.__resolve_inviter_username(invite, invited_by)
 
         log.info("Preview metadata successfully built and dispatched")
         return InvitePreviewResponse(
@@ -88,8 +88,11 @@ class InviteService:
         log.info("Executing strict entry point validation for incoming token")
 
         invite = await self.__invite_repo.find_by_id(invite_id)
-        if not invite or not invite.is_active:
-            log.warn("Validation failed: token is missing or dead")
+        if not invite:
+            log.warn("Validation failed: token does not exist")
+            raise InvalidInviteTokenError("Invalid or unrecognized invitation link.")
+        if not invite.is_active:
+            log.warn("Validation failed: token is deactivated")
             raise InviteLinkDeactivatedError("This invitation link is invalid or deactivated.")
 
         log = log.bind(club_id=str(invite.club_id), invite_type=str(invite.type))

@@ -13,14 +13,23 @@ from .auth import (
     UsernameAlreadyExistsError,
 )
 from .base import BusinessError
-from .book import BookDetailsNotFoundError, BookDomainError, BookNotFoundError, BookSearchCriteriaMissingError
+from .book import (
+    BookDetailsNotFoundError,
+    BookDomainError,
+    BookNotFoundError,
+    BookProviderUnavailableError,
+    BookSearchCriteriaMissingError,
+)
 from .club import (
+    CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
     ClubDomainError,
     ClubMemberNotFoundError,
     ClubNotFoundError,
+    ClubOwnerCannotLeaveError,
     ClubSuggestionsClosedError,
     FormerOwnerProtectedError,
+    MemberRoleChangeConflictError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -39,12 +48,15 @@ __all__ = [
     "BookDetailsNotFoundError",
     "BookDomainError",
     "BookNotFoundError",
+    "BookProviderUnavailableError",
     "BookSearchCriteriaMissingError",
     "BusinessError",
+    "CannotChangeOwnerRoleError",
     "CannotTransferOwnershipToSelfError",
     "ClubDomainError",
     "ClubMemberNotFoundError",
     "ClubNotFoundError",
+    "ClubOwnerCannotLeaveError",
     "ClubSuggestionsClosedError",
     "DirectInviteIdentityMismatchError",
     "EmailAlreadyExistsError",
@@ -55,6 +67,7 @@ __all__ = [
     "InvalidOAuthCredentialError",
     "InviteLinkDeactivatedError",
     "LastAuthenticationMethodError",
+    "MemberRoleChangeConflictError",
     "OAuthAccountCreationConflictError",
     "OwnershipReclaimWindowExpiredError",
     "OwnershipTransferConflictError",

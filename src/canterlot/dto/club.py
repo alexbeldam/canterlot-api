@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
@@ -30,6 +31,10 @@ class ClubMemberDTO(BaseModel):
     username: UsernameStr
     role: MemberRole
     joined_at: datetime
+
+
+class ChangeMemberRoleRequest(BaseModel):
+    role: Literal[MemberRole.ADMIN, MemberRole.MEMBER]
 
 
 class PendingApprovalDTO(BaseModel):

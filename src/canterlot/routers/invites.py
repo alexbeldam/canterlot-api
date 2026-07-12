@@ -4,6 +4,7 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
 from canterlot.dto.club import ClubOnboarding
+from canterlot.dto.invite import InvitePreviewResponse
 from canterlot.exceptions import (
     ClubNotFoundError,
     DirectInviteIdentityMismatchError,
@@ -15,13 +16,49 @@ from canterlot.exceptions import (
 )
 from canterlot.models import ErrorResponseModel
 from canterlot.models.enums import ClubOnboardingStatus
-from canterlot.models.user import UserModel
+from canterlot.models.user import UserModel, UsernameStr
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
 
 from .dependencies import get_club_service, get_current_user, get_invite_service
 
 router = APIRouter(prefix="/invites", tags=["Invitations"])
+
+
+@router.get(
+    "/{invite_id}/preview",
+    response_model=InvitePreviewResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_200_OK: {"description": "Invite metadata returned for a not-yet-authenticated viewer."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "InvalidInviteTokenError: The invite_id does not correspond to an existing invitation.",
+            "content": error_example(InvalidInviteTokenError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: The club associated with this invitation no longer exists.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_410_GONE: {
+            "model": ErrorResponseModel,
+            "description": "InviteLinkDeactivatedError: This invitation has been deactivated or has expired.",
+            "content": error_example(InviteLinkDeactivatedError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def preview_invitation(
+    invite_id: str,
+    invite_service: Annotated[InviteService, Depends(get_invite_service)],
+    invited_by: UsernameStr | None = None,
+):
+    return await invite_service.get_preview_metadata(invite_id, invited_by=invited_by)
 
 
 @router.post(

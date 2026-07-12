@@ -43,7 +43,7 @@ class ExternalBookSearchFilters:
 
 
 @router.post(
-    "/",
+    "",
     response_model=SuggestionResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
@@ -94,7 +94,7 @@ async def suggest_book_to_club(
 
 
 @router.get(
-    "/",
+    "",
     response_model=PaginatedCatalogResponse,
     responses={
         status.HTTP_200_OK: {"description": "Successfully retrieved a paginated page of the club's catalog."},

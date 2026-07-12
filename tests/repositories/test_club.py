@@ -455,6 +455,37 @@ def describe_transfer_ownership():
             await repo.transfer_ownership(_id(club), owner_id, owner_id, datetime.now(UTC))
 
 
+def describe_change_member_role():
+    async def it_changes_the_role_and_persists_it():
+        target_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=target_id, role=MemberRole.MEMBER)])
+
+        matched = await repo.change_member_role(_id(club), target_id, MemberRole.ADMIN)
+
+        assert matched is True
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert next(m.role for m in found.members if m.user_id == target_id) == MemberRole.ADMIN
+
+    async def it_returns_false_when_the_target_is_the_owner():
+        target_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=target_id, role=MemberRole.OWNER)])
+
+        matched = await repo.change_member_role(_id(club), target_id, MemberRole.MEMBER)
+
+        assert matched is False
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert next(m.role for m in found.members if m.user_id == target_id) == MemberRole.OWNER
+
+    async def it_returns_false_when_the_target_is_no_longer_a_member():
+        club = await _club(members=[MemberSchema(user_id=PydanticObjectId(), role=MemberRole.MEMBER)])
+
+        matched = await repo.change_member_role(_id(club), PydanticObjectId(), MemberRole.ADMIN)
+
+        assert matched is False
+
+
 def describe_reclaim_ownership():
     async def it_reverses_roles_and_clears_transfer_bookkeeping():
         former_owner_id = PydanticObjectId()

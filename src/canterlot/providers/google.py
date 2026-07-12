@@ -4,6 +4,7 @@ from pydantic import HttpUrl
 
 from canterlot.config import get_settings
 from canterlot.dto.book import BookDetails, BookSearchResult
+from canterlot.exceptions import BookProviderUnavailableError
 from canterlot.models.book import BookProviderIdentifier, SearchParams
 from canterlot.models.enums import BookProviderName
 from canterlot.utils import get_logger
@@ -115,9 +116,16 @@ class GoogleBookProvider(BookProvider):
 
         log = log.bind(http_status_code=response.status_code)
 
-        if response.status_code != status.HTTP_200_OK:
-            log.warn("Failed to fetch volume details card from Google Books API", response_body=response.text[:500])
+        if response.status_code == status.HTTP_404_NOT_FOUND:
+            log.info("Volume does not exist on Google Books")
             return None
+
+        if response.status_code != status.HTTP_200_OK:
+            log.error(
+                "Google Books API returned an unexpected status while fetching volume details",
+                response_body=response.text[:500],
+            )
+            raise BookProviderUnavailableError(f"The '{self.name}' book provider is temporarily unavailable.")
 
         data = response.json()
         volume_info = data.get("volumeInfo", {})

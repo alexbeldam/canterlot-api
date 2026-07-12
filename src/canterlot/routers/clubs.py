@@ -3,13 +3,16 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
-from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse
+from canterlot.dto.club import ChangeMemberRoleRequest, ClubCreateRequest, ClubDetailResponse, ClubResponse
 from canterlot.dto.invite import DirectInvitePayload, InviteTokenResponse
 from canterlot.exceptions import (
+    CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
+    ClubOwnerCannotLeaveError,
     FormerOwnerProtectedError,
     InvalidCredentialsError,
     InviteLinkDeactivatedError,
+    MemberRoleChangeConflictError,
     OwnershipReclaimWindowExpiredError,
     OwnershipTransferConflictError,
     OwnershipTransferCooldownError,
@@ -351,6 +354,62 @@ async def create_direct_invite(
 
 
 @router.delete(
+    "/{club_slug}/members/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Caller left the club voluntarily. This is never a ban — the caller can rejoin later via any "
+                "public link or invite."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller is not a member of this club.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: No club exists with the given slug.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubOwnerCannotLeaveError: The caller is this club's OWNER, who can never leave directly. "
+                "FormerOwnerProtectedError: The caller transferred ownership away less than 30 days ago and is "
+                "still protected from leaving."
+            ),
+            "content": error_example(ClubOwnerCannotLeaveError, FormerOwnerProtectedError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def leave_club(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.leave_club(club_id, current_user_id)
+
+
+@router.delete(
     "/{club_slug}/members/{username}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
@@ -411,6 +470,68 @@ async def remove_club_member(
     club_service: Annotated[ClubService, Depends(get_club_service)],
 ) -> None:
     await club_service.remove_member(club_id, current_user_id, target_user_id)
+
+
+@router.put(
+    "/{club_slug}/members/{username}/role",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {"description": "The member's role was changed successfully."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": (
+                "TokenMalformedError: The bearer token is corrupt, malformed, or altered. "
+                "CannotChangeOwnerRoleError: The target is this club's OWNER; ownership can only be changed "
+                "via the transfer-ownership action."
+            ),
+            "content": error_example(TokenMalformedError, CannotChangeOwnerRoleError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller does not hold OWNER standing.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError: No club exists with the given slug. "
+                "UserNotFoundError: No user exists with the given username. "
+                "ClubMemberNotFoundError: The target user is not a member of this club."
+            ),
+            "content": error_example(ClubNotFoundError, UserNotFoundError, ClubMemberNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "FormerOwnerProtectedError: The target transferred ownership away less than 30 days ago and is "
+                "still protected from further demotion. "
+                "MemberRoleChangeConflictError: This club's membership changed before the role update could "
+                "complete."
+            ),
+            "content": error_example(FormerOwnerProtectedError, MemberRoleChangeConflictError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def change_club_member_role(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    payload: ChangeMemberRoleRequest,
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+) -> None:
+    await club_service.change_member_role(club_id, current_user_id, target_user_id, payload.role)
 
 
 @router.post(

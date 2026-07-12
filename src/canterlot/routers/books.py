@@ -7,6 +7,7 @@ from canterlot.dto.book import BookDetails, BookResponse
 from canterlot.exceptions import (
     BookDetailsNotFoundError,
     BookNotFoundError,
+    BookProviderUnavailableError,
     InvalidCredentialsError,
     TokenExpiredError,
 )
@@ -49,6 +50,14 @@ router = APIRouter(prefix="/books", tags=["Books"])
             "model": ErrorResponseModel,
             "description": "Unexpected global or integration breakdown.",
             "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+        status.HTTP_502_BAD_GATEWAY: {
+            "model": ErrorResponseModel,
+            "description": (
+                "BookProviderUnavailableError: The external provider responded with an unexpected error "
+                "(rate limit, quota, or an outage) rather than confirming the volume doesn't exist."
+            ),
+            "content": error_example(BookProviderUnavailableError),
         },
     },
 )
