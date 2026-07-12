@@ -28,6 +28,7 @@ router = APIRouter(prefix="/invites", tags=["Invitations"])
 
 @router.get(
     "/{invite_id}/preview",
+    operation_id="previewInvitation",
     response_model=InvitePreviewResponse,
     status_code=status.HTTP_200_OK,
     responses={
@@ -64,6 +65,7 @@ async def preview_invitation(
 
 @router.patch(
     "/{invite_id}",
+    operation_id="acceptInvitation",
     response_model=ClubOnboarding,
     responses={
         status.HTTP_200_OK: {

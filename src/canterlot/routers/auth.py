@@ -41,6 +41,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post(
     "/register",
+    operation_id="register",
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
@@ -138,6 +139,7 @@ async def register(
 
 @router.post(
     "/login",
+    operation_id="login",
     response_model=TokenResponse,
     responses={
         status.HTTP_200_OK: {"description": "Authentication successful. User credentials verified."},
@@ -170,6 +172,7 @@ async def login(
 
 @router.post(
     "/refresh",
+    operation_id="refreshTokenRotation",
     response_model=TokenResponse,
     responses={
         status.HTTP_200_OK: {
@@ -207,6 +210,7 @@ async def refresh_token_rotation(
 
 @router.post(
     "/{provider}",
+    operation_id="signInWithProvider",
     response_model=OAuthSignInResponse,
     responses={
         status.HTTP_200_OK: {"description": "Provider credential verified against an existing, linked account."},

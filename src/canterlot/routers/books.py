@@ -41,6 +41,7 @@ class ExternalBookSearchFilters:
 
 @router.get(
     "/external/{identifier}",
+    operation_id="getExternalBookDetails",
     response_model=BookDetails,
     responses={
         status.HTTP_200_OK: {"description": "Successfully retrieved specific external book details."},
@@ -82,6 +83,7 @@ async def get_external_book_details(
 
 @router.get(
     "/external",
+    operation_id="searchExternalBooks",
     response_model=PaginatedBooksResponse,
     responses={
         status.HTTP_200_OK: {
@@ -137,6 +139,7 @@ async def search_external_books(
 
 @router.get(
     "/{identifier}",
+    operation_id="getBook",
     response_model=BookResponse,
     responses={
         status.HTTP_200_OK: {"description": "Successfully retrieved internal book record."},
