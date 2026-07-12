@@ -699,6 +699,45 @@ def describe_reclaim_club_ownership():
         assert response.headers["Retry-After"] == "15"
 
 
+def describe_dissolve_club():
+    def it_returns_204_when_dissolved(client: TestClient, club_service: AsyncMock, club_repo: AsyncMock):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.dissolve_club.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 204
+        club_service.dissolve_club.assert_awaited_once_with(SOME_CLUB_ID, SOME_OWNER_ID)
+
+    def it_returns_403_when_the_caller_is_not_the_owner(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.dissolve_club.side_effect = UnauthorizedClubMemberError("nope")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 403
+
+    def it_returns_404_when_the_club_slug_does_not_exist(client: TestClient, club_repo: AsyncMock):
+        club_repo.find_id_by_slug.return_value = None
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 404
+
+    def it_returns_409_when_a_former_owner_is_still_protected(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.dissolve_club.side_effect = FormerOwnerProtectedError("still protected")
+
+        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "FORMER_OWNER_PROTECTED"
+
+
 def describe_create_invite():
     def it_rotates_the_public_link_and_returns_the_new_token(
         client: TestClient, invite_service: AsyncMock, club_repo: AsyncMock
