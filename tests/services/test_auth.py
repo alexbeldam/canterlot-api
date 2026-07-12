@@ -132,7 +132,7 @@ def describe_sign_in_with_provider():
     async def it_logs_in_when_the_identity_matches_an_existing_linked_account(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
-        user_repo.find_by_linked_provider.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         result = await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
@@ -145,7 +145,7 @@ def describe_sign_in_with_provider():
     async def it_requires_linking_when_the_email_already_belongs_to_a_different_account(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
-        user_repo.find_by_linked_provider.return_value = None
+        user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = SimpleNamespace(id=SOME_USER_ID)
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
@@ -159,7 +159,7 @@ def describe_sign_in_with_provider():
     async def it_creates_a_new_account_when_no_match_exists(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
-        user_repo.find_by_linked_provider.return_value = None
+        user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
         user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
@@ -179,7 +179,7 @@ def describe_sign_in_with_provider():
     async def it_falls_back_to_the_email_local_part_for_the_username_when_no_name_is_given(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name=None)
-        user_repo.find_by_linked_provider.return_value = None
+        user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
         user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
@@ -201,7 +201,7 @@ def describe_link_provider():
     async def it_links_the_provider_when_unclaimed(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com")
-        user_repo.find_by_linked_provider.return_value = None
+        user_repo.find_id_by_linked_provider.return_value = None
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
@@ -215,7 +215,7 @@ def describe_link_provider():
     async def it_is_idempotent_when_already_linked_to_the_same_account(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com")
-        user_repo.find_by_linked_provider.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
@@ -225,7 +225,7 @@ def describe_link_provider():
     async def it_rejects_linking_a_credential_already_owned_by_a_different_account(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com")
-        user_repo.find_by_linked_provider.return_value = SimpleNamespace(id=SOME_OTHER_USER_ID)
+        user_repo.find_id_by_linked_provider.return_value = SOME_OTHER_USER_ID
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         with pytest.raises(AuthProviderAlreadyLinkedError):

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import AfterValidator, BaseModel, Field, GetCoreSchemaHandler, StringConstraints, model_validator
@@ -63,10 +63,18 @@ class BookProviderIdentifier:
         self.book_id = book_id
 
     def __repr__(self) -> str:
-        return f"ProviderIdentifier(provider='{self.provider}', id='{self.book_id}')"
+        return f"BookProviderIdentifier(provider='{self.provider}', id='{self.book_id}')"
 
     def __str__(self) -> str:
         return f"{self.provider}__{self.book_id}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BookProviderIdentifier):
+            return NotImplemented
+        return self.provider == other.provider and self.book_id == other.book_id
+
+    def __hash__(self) -> int:
+        return hash((self.provider, self.book_id))
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -146,6 +154,7 @@ class BookModel(Document):
 
     class Settings:
         name = "books"
+        bson_encoders: ClassVar[dict[type, Any]] = {BookProviderIdentifier: str}
 
 
 class SearchParams(BaseModel):

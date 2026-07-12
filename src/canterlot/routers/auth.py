@@ -1,6 +1,5 @@
 from typing import Annotated
 
-from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -28,6 +27,7 @@ from canterlot.models import ErrorResponseModel
 from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
 from canterlot.models.user import UsernameStr
 from canterlot.routers.dependencies import (
+    RefreshTokenContext,
     get_auth_service,
     get_club_service,
     get_invite_service,
@@ -201,12 +201,10 @@ async def login(
     },
 )
 async def refresh_token_rotation(
-    token_data: Annotated[tuple[PydanticObjectId, str], Depends(get_user_id_from_valid_refresh_token)],
+    token_data: Annotated[RefreshTokenContext, Depends(get_user_id_from_valid_refresh_token)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ):
-    user_id, old_refresh_token = token_data
-
-    return await auth_service.rotate_refresh_token(user_id, old_refresh_token)
+    return await auth_service.rotate_refresh_token(token_data.user_id, token_data.token)
 
 
 @router.post(

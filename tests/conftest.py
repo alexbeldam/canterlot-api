@@ -8,10 +8,7 @@ from beanie import init_beanie
 from mongomock_motor import AsyncMongoMockClient
 
 from canterlot.config.settings import get_settings
-from canterlot.models.book import BookModel
-from canterlot.models.club import ClubModel
-from canterlot.models.invite import InviteModel
-from canterlot.models.user import UserModel
+from canterlot.models import BEANIE_DOCUMENT_MODELS
 
 _original_list_collection_names = mongomock.database.Database.list_collection_names
 _original_gensalt = bcrypt.gensalt
@@ -57,7 +54,7 @@ async def _initialized_beanie() -> AsyncIterator[None]:
         client: AsyncMongoMockClient = AsyncMongoMockClient()
         await init_beanie(
             database=client["test"],  # type: ignore[arg-type]
-            document_models=[UserModel, ClubModel, BookModel, InviteModel],
+            document_models=BEANIE_DOCUMENT_MODELS,
         )
         yield
     finally:

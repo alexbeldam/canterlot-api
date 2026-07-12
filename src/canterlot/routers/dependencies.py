@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Annotated
 
 import redis.asyncio as aioredis
@@ -10,9 +11,13 @@ from fastapi.security import OAuth2PasswordBearer
 
 from canterlot.config import get_settings
 from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError
+from canterlot.exceptions.book import BookNotFoundError
+from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models import UserModel
+from canterlot.models.book import BookExternalId
 from canterlot.models.club import ClubSlugStr
 from canterlot.models.enums import AuthProviderName
+from canterlot.models.user import UsernameStr
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
 from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
 from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
@@ -23,8 +28,9 @@ from canterlot.repositories.beanie import (
     BeanieUserRepository,
 )
 from canterlot.repositories.redis import RedisCacheRepository
-from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService, UserService
 from canterlot.utils import decode_jwt_payload
+from canterlot.utils.format import ISBNStr
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -115,6 +121,10 @@ async def get_invite_service(
     return InviteService(invite_repo, club_repo, user_repo)
 
 
+async def get_user_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]):
+    return UserService(user_repo)
+
+
 async def get_club_id_from_slug(
     club_slug: ClubSlugStr,
     club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
@@ -123,6 +133,26 @@ async def get_club_id_from_slug(
     if club is None:
         raise ClubNotFoundError(f"Club with slug '{club_slug}' not found")
     return PydanticObjectId(club.id)
+
+
+async def get_user_id_from_username(
+    username: UsernameStr,
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> PydanticObjectId:
+    user_id = await user_repo.find_id_by_username(username)
+    if user_id is None:
+        raise UserNotFoundError(f"User with username '{username}' not found")
+    return user_id
+
+
+async def get_book_id_from_identifier(
+    identifier: BookExternalId | ISBNStr,
+    book_repo: Annotated[BookRepository, Depends(get_book_repository)],
+) -> PydanticObjectId:
+    id = await book_repo.find_id_by_identifier(identifier)
+    if id is None:
+        raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
+    return id
 
 
 def _parse_subject_id(user_id: str) -> PydanticObjectId:
@@ -146,10 +176,16 @@ async def get_current_user_id(
     return _parse_subject_id(user_id)
 
 
+@dataclass(frozen=True, slots=True)
+class RefreshTokenContext:
+    user_id: PydanticObjectId
+    token: str
+
+
 async def get_user_id_from_valid_refresh_token(
     token: Annotated[str, Depends(oauth2_scheme)],
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
-) -> tuple[PydanticObjectId, str]:
+) -> RefreshTokenContext:
     payload = decode_jwt_payload(token)
 
     user_id: str | None = payload.get("sub")
@@ -159,11 +195,11 @@ async def get_user_id_from_valid_refresh_token(
         raise InvalidCredentialsError("Invalid session refresh payload structure.")
 
     pyid = _parse_subject_id(user_id)
-    user = await user_repo.find_by_id(pyid)
-    if user is None or token not in user.refresh_tokens:
+    refresh_tokens = await user_repo.find_refresh_tokens_by_id(pyid)
+    if refresh_tokens is None or token not in refresh_tokens:
         raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
 
-    return pyid, token
+    return RefreshTokenContext(user_id=pyid, token=token)
 
 
 async def get_current_user(

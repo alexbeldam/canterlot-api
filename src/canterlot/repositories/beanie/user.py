@@ -1,6 +1,6 @@
 from beanie import PydanticObjectId
 from beanie.operators import ElemMatch, In, Pull, Push
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from canterlot.models import AuthProviderName, LinkedProviderSchema, UserModel
 from canterlot.models.user import UsernameStr
@@ -10,6 +10,16 @@ from canterlot.utils.format import NormalizedEmailStr
 
 class UsernameProjection(BaseModel):
     username: UsernameStr
+
+
+class IdProjection(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: PydanticObjectId = Field(alias="_id")
+
+
+class RefreshTokensProjection(BaseModel):
+    refresh_tokens: list[str]
 
 
 class BeanieUserRepository(UserRepository):
@@ -34,13 +44,31 @@ class BeanieUserRepository(UserRepository):
     async def find_by_username(self, username: UsernameStr) -> UserModel | None:
         return await UserModel.find_one(UserModel.username == username)
 
+    async def find_id_by_username(self, username: UsernameStr) -> PydanticObjectId | None:
+        projection = await UserModel.find_one(UserModel.username == username).project(IdProjection)
+
+        if not projection:
+            return None
+        return projection.id
+
     async def find_by_email(self, email: NormalizedEmailStr) -> UserModel | None:
         return await UserModel.find_one(UserModel.email == email)
 
-    async def find_by_linked_provider(self, provider: AuthProviderName, external_id: str) -> UserModel | None:
-        return await UserModel.find_one(
+    async def find_id_by_linked_provider(self, provider: AuthProviderName, external_id: str) -> PydanticObjectId | None:
+        projection = await UserModel.find_one(
             ElemMatch(UserModel.linked_providers, {"provider": provider, "external_id": external_id})
-        )
+        ).project(IdProjection)
+
+        if not projection:
+            return None
+        return projection.id
+
+    async def find_refresh_tokens_by_id(self, user_id: PydanticObjectId) -> list[str] | None:
+        projection = await UserModel.find_one(UserModel.id == user_id).project(RefreshTokensProjection)
+
+        if not projection:
+            return None
+        return projection.refresh_tokens
 
     async def exists_by_username(self, username: UsernameStr) -> bool:
         return await UserModel.find(UserModel.username == username).count() > 0
@@ -53,6 +81,9 @@ class BeanieUserRepository(UserRepository):
 
     async def increment_referral_count_by_username(self, username: UsernameStr) -> None:
         await UserModel.find_one(UserModel.username == username).inc({UserModel.referral_count: 1})
+
+    async def push_read_book_by_id(self, user_id, read_book):
+        await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.books_read: read_book}))
 
     async def push_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.refresh_tokens: token}))

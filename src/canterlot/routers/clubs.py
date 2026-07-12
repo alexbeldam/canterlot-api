@@ -12,6 +12,7 @@ from canterlot.exceptions import (
     TokenExpiredError,
     TokenMalformedError,
     UnauthorizedClubMemberError,
+    UserNotFoundError,
 )
 from canterlot.exceptions.club import ClubNotFoundError
 from canterlot.models import ErrorResponseModel
@@ -21,6 +22,7 @@ from canterlot.routers.dependencies import (
     get_club_service,
     get_current_user_id,
     get_invite_service,
+    get_user_id_from_username,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
@@ -135,7 +137,7 @@ async def get_club(
 
 
 @router.post(
-    "/{club_slug}/pending-approvals/{user_id}/approve",
+    "/{club_slug}/pending-approvals/{username}/approve",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -162,9 +164,10 @@ async def get_club(
             "model": ErrorResponseModel,
             "description": (
                 "ClubNotFoundError: No club exists with the given slug. "
+                "UserNotFoundError: No user exists with the given username. "
                 "PendingRequestNotFoundError: This user has no pending join request for this club."
             ),
-            "content": error_example(ClubNotFoundError, PendingRequestNotFoundError),
+            "content": error_example(ClubNotFoundError, UserNotFoundError, PendingRequestNotFoundError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
@@ -175,15 +178,15 @@ async def get_club(
 )
 async def approve_pending_request(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
-    user_id: PydanticObjectId,
+    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
 ) -> None:
-    await club_service.review_pending_request(club_id, current_user_id, user_id, approve=True)
+    await club_service.review_pending_request(club_id, current_user_id, target_user_id, approve=True)
 
 
 @router.post(
-    "/{club_slug}/pending-approvals/{user_id}/reject",
+    "/{club_slug}/pending-approvals/{username}/reject",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_204_NO_CONTENT: {
@@ -212,9 +215,10 @@ async def approve_pending_request(
             "model": ErrorResponseModel,
             "description": (
                 "ClubNotFoundError: No club exists with the given slug. "
+                "UserNotFoundError: No user exists with the given username. "
                 "PendingRequestNotFoundError: This user has no pending join request for this club."
             ),
-            "content": error_example(ClubNotFoundError, PendingRequestNotFoundError),
+            "content": error_example(ClubNotFoundError, UserNotFoundError, PendingRequestNotFoundError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
@@ -225,11 +229,11 @@ async def approve_pending_request(
 )
 async def reject_pending_request(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
-    user_id: PydanticObjectId,
+    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     club_service: Annotated[ClubService, Depends(get_club_service)],
 ) -> None:
-    await club_service.review_pending_request(club_id, current_user_id, user_id, approve=False)
+    await club_service.review_pending_request(club_id, current_user_id, target_user_id, approve=False)
 
 
 @router.post(

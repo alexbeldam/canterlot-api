@@ -12,7 +12,7 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.models.club import ClubNameStr
-from canterlot.models.enums import InviteType, UserRole
+from canterlot.models.enums import InviteType, MemberRole
 from canterlot.models.invite import InviteModel
 from canterlot.models.user import UsernameStr
 from canterlot.repositories import ClubRepository, InviteRepository, UserRepository
@@ -95,8 +95,8 @@ class InviteService:
         log = log.bind(club_id=str(invite.club_id), invite_type=str(invite.type))
         self.__assert_not_expired(invite, log)
 
-        club = await self.__club_repo.find_by_id(invite.club_id)
-        if not club:
+        club_name = await self.__club_repo.find_club_name_by_id(invite.club_id)
+        if not club_name:
             log.warn("Validation failed: destination club no longer exists")
             raise ClubNotFoundError("Target club does not exist.")
 
@@ -107,7 +107,7 @@ class InviteService:
         log.info("Entry ticket criteria passed, staging domain context results metadata")
         return InviteValidationResult(
             club_id=invite.club_id,
-            club_name=club.name,
+            club_name=club_name,
             invited_by=inviter_username,
             is_direct=is_direct,
         )
@@ -157,11 +157,12 @@ class InviteService:
         return saved.id
 
     async def get_public_link(self, club_id: PydanticObjectId) -> str:
-        logger.debug("Fetching current active public link reference", club_id=str(club_id))
-        invite = await self.__invite_repo.find_one_active_public_by_club_id(club_id)
+        log = logger.bind(club_id=str(club_id))
+        log.info("Fetching current active public link reference")
 
+        invite = await self.__invite_repo.find_one_active_public_by_club_id(club_id)
         if not invite:
-            logger.warn("Public query failed: no live token mapped for this club", club_id=str(club_id))
+            log.warn("Public link lookup failed: no active token mapped for this club")
             raise InviteLinkDeactivatedError(f"Club with ID {club_id} has no active public link.")
 
         return invite.id
@@ -214,7 +215,7 @@ class InviteService:
     async def __verify_privileged_role(self, club_id: PydanticObjectId, user_id: PydanticObjectId):
         role = await self.__club_repo.find_member_role_by_club_id_and_user_id(club_id, user_id)
 
-        if not role or role not in [UserRole.OWNER, UserRole.ADMIN]:
+        if not role or role not in [MemberRole.OWNER, MemberRole.ADMIN]:
             logger.warn(
                 "Access Denied: administrative scope escalation attempt intercepted",
                 club_id=str(club_id),

@@ -10,6 +10,7 @@ from canterlot.models.book import (
     TitleStr,
     UrlList,
 )
+from canterlot.pagination import Page
 from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
 
 
@@ -35,11 +36,7 @@ class BookDetails(BaseModel):
     categories: list[NonEmptyStr] = Field(default_factory=list, examples=[["Fiction", "Fantasy", "High Fantasy"]])
 
 
-class PaginatedBooksResponse(BaseModel):
-    books: list[BookSearchResult]
-    total_pages: int = Field(ge=0, examples=[1])
-    current_page: int = Field(ge=1)
-    total_results: int = Field(ge=0, examples=[1])
+PaginatedBooksResponse = Page[BookSearchResult]
 
 
 class BookResponse(BaseModel):

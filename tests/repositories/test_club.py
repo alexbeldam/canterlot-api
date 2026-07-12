@@ -1,0 +1,411 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from beanie import PydanticObjectId
+
+from canterlot.exceptions import ClubNotFoundError
+from canterlot.models.book import BookModel, BookProviderIdentifier
+from canterlot.models.club import CatalogEntryModel, ClubModel, MemberSchema, PendingApprovalSchema
+from canterlot.models.enums import BookProviderName, MemberRole
+from canterlot.pagination import SortDirection
+from canterlot.repositories.beanie.club import BeanieClubRepository
+
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
+repo = BeanieClubRepository()
+
+
+def _id(document: BookModel | ClubModel) -> PydanticObjectId:
+    return PydanticObjectId(document.id)
+
+
+async def _book(title: str, year: int, external_id: str) -> BookModel:
+    return await BookModel(
+        external_id=BookProviderIdentifier(BookProviderName.GOOGLE, external_id),
+        title=title,
+        year=year,
+        created_at=datetime.now(UTC),
+    ).insert()
+
+
+async def _club(**overrides: object) -> ClubModel:
+    defaults = {"name": "Book Club", "slug": "book-club"}
+    return await ClubModel(**{**defaults, **overrides}).insert()
+
+
+def describe_find_catalog_page_by_club_id():
+    async def it_sorts_by_title_via_a_lookup_join():
+        zebra = await _book("Zebra Book", 2020, "zebra")
+        alpha = await _book("Alpha Book", 2010, "alpha")
+        suggester = PydanticObjectId()
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(zebra), suggested_by=suggester),
+                CatalogEntryModel(book_id=_id(alpha), suggested_by=suggester),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(
+            _id(club), page=1, limit=10, sort_by="title", sort_direction=SortDirection.ASC
+        )
+
+        assert [entry.book_id for entry in page.items] == [_id(alpha), _id(zebra)]
+        assert page.total_items == 2
+
+    async def it_sorts_by_year_via_a_lookup_join():
+        newer = await _book("Newer Book", 2020, "newer")
+        older = await _book("Older Book", 2010, "older")
+        suggester = PydanticObjectId()
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(newer), suggested_by=suggester),
+                CatalogEntryModel(book_id=_id(older), suggested_by=suggester),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(
+            _id(club), page=1, limit=10, sort_by="year", sort_direction=SortDirection.ASC
+        )
+
+        assert [entry.book_id for entry in page.items] == [_id(older), _id(newer)]
+
+    async def it_sorts_by_suggested_at_descending_by_default():
+        book_a = await _book("Book A", 2020, "a")
+        book_b = await _book("Book B", 2020, "b")
+        suggester = PydanticObjectId()
+        now = datetime.now(UTC)
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(book_a), suggested_by=suggester, suggested_at=now - timedelta(days=1)),
+                CatalogEntryModel(book_id=_id(book_b), suggested_by=suggester, suggested_at=now),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10)
+
+        assert [entry.book_id for entry in page.items] == [_id(book_b), _id(book_a)]
+
+    async def it_sorts_ascending_when_requested():
+        book_a = await _book("Book A", 2020, "asc-a")
+        book_b = await _book("Book B", 2020, "asc-b")
+        suggester = PydanticObjectId()
+        now = datetime.now(UTC)
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(book_a), suggested_by=suggester, suggested_at=now - timedelta(days=1)),
+                CatalogEntryModel(book_id=_id(book_b), suggested_by=suggester, suggested_at=now),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, sort_direction=SortDirection.ASC)
+
+        assert [entry.book_id for entry in page.items] == [_id(book_a), _id(book_b)]
+
+    async def it_paginates_with_skip_and_limit():
+        books = [await _book(f"Book {i}", 2020, f"page-{i}") for i in range(3)]
+        suggester = PydanticObjectId()
+        now = datetime.now(UTC)
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(book), suggested_by=suggester, suggested_at=now + timedelta(seconds=i))
+                for i, book in enumerate(books)
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=2, limit=1)
+
+        assert len(page.items) == 1
+        assert page.total_items == 3
+        assert page.items[0].book_id == _id(books[1])
+
+    async def it_filters_by_suggested_by():
+        book_a = await _book("Book A", 2020, "filter-a")
+        book_b = await _book("Book B", 2020, "filter-b")
+        alice, bob = PydanticObjectId(), PydanticObjectId()
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(book_a), suggested_by=alice),
+                CatalogEntryModel(book_id=_id(book_b), suggested_by=bob),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, suggested_by=alice)
+
+        assert page.total_items == 1
+        assert page.items[0].book_id == _id(book_a)
+
+    async def it_falls_back_to_suggested_at_for_an_unrecognized_sort_field():
+        book_a = await _book("Book A", 2020, "fallback-a")
+        book_b = await _book("Book B", 2020, "fallback-b")
+        suggester = PydanticObjectId()
+        now = datetime.now(UTC)
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(book_a), suggested_by=suggester, suggested_at=now - timedelta(days=1)),
+                CatalogEntryModel(book_id=_id(book_b), suggested_by=suggester, suggested_at=now),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, sort_by="not-a-real-field")
+
+        assert [entry.book_id for entry in page.items] == [_id(book_b), _id(book_a)]
+
+    async def it_returns_an_empty_page_for_a_club_with_no_catalog():
+        club = await _club()
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10)
+
+        assert page.items == []
+        assert page.total_items == 0
+
+
+def describe_find_by_id():
+    async def it_finds_a_club_by_id():
+        club = await _club()
+
+        found = await repo.find_by_id(_id(club))
+
+        assert found is not None
+        assert found.slug == "book-club"
+
+    async def it_returns_none_when_the_club_does_not_exist():
+        assert await repo.find_by_id(PydanticObjectId()) is None
+
+
+def describe_find_club_name_by_id():
+    async def it_returns_the_club_name():
+        club = await _club(name="The Canterlot Archives")
+
+        assert await repo.find_club_name_by_id(_id(club)) == "The Canterlot Archives"
+
+    async def it_returns_none_when_the_club_does_not_exist():
+        assert await repo.find_club_name_by_id(PydanticObjectId()) is None
+
+
+def describe_get_preferred_languages_by_id():
+    async def it_returns_the_preferred_languages():
+        club = await _club(preferred_languages=["en", "pt-BR"])
+
+        assert await repo.get_preferred_languages_by_id(_id(club)) == ["en", "pt-BR"]
+
+    async def it_raises_club_not_found_when_the_club_does_not_exist():
+        try:
+            await repo.get_preferred_languages_by_id(PydanticObjectId())
+            raise AssertionError("expected ClubNotFoundError")
+        except ClubNotFoundError:
+            pass
+
+
+def describe_find_member_role_by_club_id_and_user_id():
+    async def it_returns_the_members_role():
+        member_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=member_id, role=MemberRole.ADMIN)])
+
+        role = await repo.find_member_role_by_club_id_and_user_id(_id(club), member_id)
+
+        assert role == MemberRole.ADMIN
+
+    async def it_returns_none_when_the_user_is_not_a_member():
+        club = await _club()
+
+        assert await repo.find_member_role_by_club_id_and_user_id(_id(club), PydanticObjectId()) is None
+
+
+def describe_find_by_slug():
+    async def it_finds_a_club_by_slug():
+        await _club(slug="the-canterlot-archives")
+
+        found = await repo.find_by_slug("the-canterlot-archives")
+
+        assert found is not None
+        assert found.slug == "the-canterlot-archives"
+
+    async def it_returns_none_when_the_slug_does_not_exist():
+        assert await repo.find_by_slug("no-such-slug") is None
+
+
+def describe_exists_by_club_slug():
+    async def it_returns_true_when_the_slug_exists():
+        await _club(slug="existing-slug")
+
+        assert await repo.exists_by_club_slug("existing-slug") is True
+
+    async def it_returns_false_when_the_slug_does_not_exist():
+        assert await repo.exists_by_club_slug("missing-slug") is False
+
+
+def describe_exists_by_club_id_and_member_user_id():
+    async def it_returns_true_for_an_existing_member():
+        member_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=member_id)])
+
+        assert await repo.exists_by_club_id_and_member_user_id(_id(club), member_id) is True
+
+    async def it_returns_false_for_a_non_member():
+        club = await _club()
+
+        assert await repo.exists_by_club_id_and_member_user_id(_id(club), PydanticObjectId()) is False
+
+
+def describe_exists_by_club_id_and_pending_user_id():
+    async def it_returns_true_for_a_pending_user():
+        pending_id = PydanticObjectId()
+        club = await _club(pending_approvals=[PendingApprovalSchema(user_id=pending_id)])
+
+        assert await repo.exists_by_club_id_and_pending_user_id(_id(club), pending_id) is True
+
+    async def it_returns_false_for_a_non_pending_user():
+        club = await _club()
+
+        assert await repo.exists_by_club_id_and_pending_user_id(_id(club), PydanticObjectId()) is False
+
+
+def describe_exists_by_club_id_and_catalog_book_id():
+    async def it_returns_true_when_the_book_is_in_the_catalog():
+        book = await _book("A Book", 2020, "exists-in-catalog")
+        club = await _club(catalog=[CatalogEntryModel(book_id=_id(book), suggested_by=PydanticObjectId())])
+
+        assert await repo.exists_by_club_id_and_catalog_book_id(_id(club), _id(book)) is True
+
+    async def it_returns_false_when_the_book_is_not_in_the_catalog():
+        club = await _club()
+
+        assert await repo.exists_by_club_id_and_catalog_book_id(_id(club), PydanticObjectId()) is False
+
+
+def describe_find_catalog_entry_by_club_id_and_book_id():
+    async def it_finds_the_catalog_entry():
+        book = await _book("A Book", 2020, "find-entry")
+        suggester = PydanticObjectId()
+        club = await _club(catalog=[CatalogEntryModel(book_id=_id(book), suggested_by=suggester)])
+
+        entry = await repo.find_catalog_entry_by_club_id_and_book_id(_id(club), _id(book))
+
+        assert entry is not None
+        assert entry.suggested_by == suggester
+
+    async def it_returns_none_when_the_book_is_not_in_the_catalog():
+        club = await _club()
+
+        assert await repo.find_catalog_entry_by_club_id_and_book_id(_id(club), PydanticObjectId()) is None
+
+
+def describe_is_suggestions_allowed():
+    async def it_returns_true_when_suggestions_are_allowed():
+        club = await _club(allow_suggestions=True)
+
+        assert await repo.is_suggestions_allowed(_id(club)) is True
+
+    async def it_returns_false_when_suggestions_are_disallowed():
+        club = await _club(allow_suggestions=False)
+
+        assert await repo.is_suggestions_allowed(_id(club)) is False
+
+
+def describe_add_member():
+    async def it_appends_a_member():
+        club = await _club()
+        member_id = PydanticObjectId()
+
+        await repo.add_member(_id(club), MemberSchema(user_id=member_id, role=MemberRole.ADMIN))
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert [m.user_id for m in found.members] == [member_id]
+
+
+def describe_add_to_pending_approvals():
+    async def it_appends_a_pending_approval():
+        club = await _club()
+        user_id = PydanticObjectId()
+
+        await repo.add_to_pending_approvals(_id(club), user_id)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert [p.user_id for p in found.pending_approvals] == [user_id]
+
+
+def describe_add_to_banned_users():
+    async def it_appends_a_banned_user():
+        club = await _club()
+        user_id = PydanticObjectId()
+
+        await repo.add_to_banned_users(_id(club), user_id)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.banned_users == [user_id]
+
+
+def describe_add_to_catalog():
+    async def it_appends_a_catalog_entry():
+        club = await _club()
+        book = await _book("A Book", 2020, "add-to-catalog")
+        entry = CatalogEntryModel(book_id=_id(book), suggested_by=PydanticObjectId())
+
+        await repo.add_to_catalog(_id(club), entry)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert [e.book_id for e in found.catalog] == [_id(book)]
+
+
+def describe_remove_member():
+    async def it_removes_a_member():
+        member_id = PydanticObjectId()
+        club = await _club(members=[MemberSchema(user_id=member_id)])
+
+        await repo.remove_member(_id(club), member_id)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.members == []
+
+
+def describe_remove_from_pending_approvals():
+    async def it_removes_a_pending_approval():
+        user_id = PydanticObjectId()
+        club = await _club(pending_approvals=[PendingApprovalSchema(user_id=user_id)])
+
+        await repo.remove_from_pending_approvals(_id(club), user_id)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.pending_approvals == []
+
+
+def describe_remove_from_banned_users():
+    async def it_removes_a_banned_user():
+        user_id = PydanticObjectId()
+        club = await _club(banned_users=[user_id])
+
+        await repo.remove_from_banned_users(_id(club), user_id)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.banned_users == []
+
+
+def describe_remove_from_catalog():
+    async def it_removes_a_catalog_entry():
+        book = await _book("A Book", 2020, "remove-from-catalog")
+        club = await _club(catalog=[CatalogEntryModel(book_id=_id(book), suggested_by=PydanticObjectId())])
+
+        await repo.remove_from_catalog(_id(club), _id(book))
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.catalog == []
+
+
+def describe_save():
+    async def it_persists_changes_to_an_existing_club():
+        club = await _club()
+
+        club.description = "An updated description"
+        await repo.save(club)
+
+        found = await repo.find_by_id(_id(club))
+        assert found is not None
+        assert found.description == "An updated description"

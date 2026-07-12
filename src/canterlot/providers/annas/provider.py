@@ -118,10 +118,8 @@ class AnnaLinkProvider(LinkProvider):
     async def __search_all(self, search: SearchParams) -> list[SearchResponse]:
         generated_params = self.__build_params(search)
 
-        logger.bind(provider=self.name).debug(
-            "Generated search parameter permutations",
-            query_variations_count=len(generated_params),
-        )
+        log = logger.bind(provider=self.name)
+        log.debug("Generated search parameter permutations", query_variations_count=len(generated_params))
 
         tasks = [
             self.__pool.execute(

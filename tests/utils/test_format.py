@@ -200,7 +200,7 @@ def describe_make_username():
 
         assert username == "twilight_sparkle"
 
-    async def it_appends_a_random_suffix_with_underscores_when_taken():
+    async def it_appends_a_random_suffix_with_underscores_when_taken() -> None:
         calls: list[str] = []
 
         async def taken_once(candidate: str) -> bool:

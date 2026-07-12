@@ -4,14 +4,20 @@ import pytest
 from beanie import PydanticObjectId
 
 from canterlot.dto.catalog import BookSuggestionRequest, SuggestionStatus
-from canterlot.exceptions import ClubSuggestionsClosedError, UnauthorizedClubMemberError
+from canterlot.exceptions import (
+    BookNotFoundError,
+    ClubSuggestionsClosedError,
+    UnauthorizedClubMemberError,
+)
 from canterlot.models.book import LinkCandidate
-from canterlot.models.enums import ExtensionType, LinkProviderName
+from canterlot.models.club import CatalogEntryModel
+from canterlot.models.enums import ExtensionType, LinkProviderName, MemberRole
 from canterlot.services.catalog import CatalogService
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
+OTHER_USER_ID = PydanticObjectId("507f1f77bcf86cd799439014")
 
 
 def _suggestion(**overrides) -> BookSuggestionRequest:
@@ -221,6 +227,68 @@ def describe_suggesting_an_existing_book():
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
         book_repo.add_to_urls.assert_not_called()
+
+
+def describe_removing_a_book_from_the_catalog():
+    def _entry(suggested_by: PydanticObjectId = OTHER_USER_ID) -> CatalogEntryModel:
+        return CatalogEntryModel(book_id=SOME_BOOK_ID, suggested_by=suggested_by)
+
+    async def it_removes_the_book_when_the_caller_is_an_owner(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+    ):
+        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
+        service = _service(book_repo, club_repo, link_provider)
+
+        await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
+
+        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+
+    async def it_removes_the_book_when_the_caller_is_an_admin(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+    ):
+        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.ADMIN
+        service = _service(book_repo, club_repo, link_provider)
+
+        await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
+
+        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+
+    async def it_removes_the_book_when_the_caller_is_the_original_suggester(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+    ):
+        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry(suggested_by=SOME_USER_ID)
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
+        service = _service(book_repo, club_repo, link_provider)
+
+        await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
+
+        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+
+    async def it_rejects_a_plain_member_who_did_not_suggest_the_book(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+    ):
+        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry(suggested_by=OTHER_USER_ID)
+        club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
+        service = _service(book_repo, club_repo, link_provider)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
+
+        club_repo.remove_from_catalog.assert_not_called()
+
+    async def it_raises_when_the_book_is_not_in_this_clubs_catalog(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+    ):
+        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = None
+        service = _service(book_repo, club_repo, link_provider)
+
+        with pytest.raises(BookNotFoundError):
+            await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
+
+        club_repo.find_member_role_by_club_id_and_user_id.assert_not_called()
+        club_repo.remove_from_catalog.assert_not_called()
 
 
 def describe_backfilling_missing_metadata():

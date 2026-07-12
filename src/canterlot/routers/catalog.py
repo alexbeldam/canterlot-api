@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, Query, status
 from canterlot.dto.book import PaginatedBooksResponse
 from canterlot.dto.catalog import BookSuggestionRequest, SuggestionResponse
 from canterlot.exceptions import (
+    BookNotFoundError,
     BookSearchCriteriaMissingError,
+    ClubNotFoundError,
     ClubSuggestionsClosedError,
     InvalidCredentialsError,
     TokenExpiredError,
@@ -17,6 +19,7 @@ from canterlot.exceptions.auth import TokenMalformedError
 from canterlot.models import ErrorResponseModel
 from canterlot.models.book import TitleStr
 from canterlot.routers.dependencies import (
+    get_book_id_from_identifier,
     get_book_service,
     get_catalog_service,
     get_club_id_from_slug,
@@ -140,3 +143,55 @@ async def search_external_books_for_club(
         page=filters.page,
         limit=filters.limit,
     )
+
+
+@router.delete(
+    "/{identifier}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {"description": "Book successfully removed from the club catalog."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": (
+                "UnauthorizedClubMemberError: The requesting user is neither an OWNER/ADMIN "
+                "nor the member who originally suggested this book."
+            ),
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError, or BookNotFoundError: the club or the book identifier doesn't resolve, "
+                "or the book isn't in this club's catalog."
+            ),
+            "content": error_example(ClubNotFoundError, BookNotFoundError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. The club_slug or identifier path parameter is invalid."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def remove_from_club(
+    book_id: Annotated[PydanticObjectId, Depends(get_book_id_from_identifier)],
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
+):
+    await catalog_service.remove_book_from_club(club_id, book_id, current_user_id)
