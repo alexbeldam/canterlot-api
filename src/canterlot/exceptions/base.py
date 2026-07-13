@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import ClassVar
+from typing import Any, ClassVar
 
 
 class ErrorCode(StrEnum):
@@ -47,9 +47,11 @@ class BusinessError(Exception):
     status_code: ClassVar[int]
     client_message: ClassVar[str | None] = None
     headers: dict[str, str] | None = None
+    context: dict[str, Any] | None = None
 
-    def __init__(self, message: str | None = None):
+    def __init__(self, message: str | None = None, context: dict[str, Any] | None = None):
         super().__init__(message or self.client_message or self.error_code.value)
+        self.context = context
 
     @property
     def response_message(self) -> str:

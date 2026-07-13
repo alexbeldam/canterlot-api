@@ -9,5 +9,5 @@ class RateLimitExceededError(BusinessError):
     client_message = "Too many requests. Please try again later."
 
     def __init__(self, retry_after_seconds: int):
-        super().__init__()
+        super().__init__(context={"retry_after_seconds": retry_after_seconds})
         self.headers = {"Retry-After": str(retry_after_seconds)}
