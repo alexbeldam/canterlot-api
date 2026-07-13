@@ -5,7 +5,9 @@ from canterlot.providers.auth.google import GoogleAuthProvider
 
 
 def describe_get_all_oauth_providers():
-    def it_returns_an_empty_dict_when_no_client_id_is_configured():
+    def it_returns_an_empty_dict_when_no_client_id_is_configured(monkeypatch):
+        monkeypatch.setattr(get_settings(), "google_oauth_client_id", None)
+
         assert get_all_oauth_providers() == {}
 
     def it_registers_google_when_a_client_id_is_configured(monkeypatch):

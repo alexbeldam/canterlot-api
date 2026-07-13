@@ -14,6 +14,7 @@ from canterlot.exceptions import (
     InvalidCredentialsError,
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
+    OAuthLinkRequiredError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models.enums import AuthOutcome, AuthProviderName
@@ -115,6 +116,7 @@ def describe_login_user():
 
 def describe_rotate_refresh_token():
     async def it_pulls_the_old_token_and_pushes_a_freshly_issued_pair(user_repo: AsyncMock):
+        user_repo.pull_refresh_token_by_id.return_value = True
         service = AuthService(user_repo, {})
 
         result = await service.rotate_refresh_token(SOME_USER_ID, "old-token")
@@ -122,6 +124,31 @@ def describe_rotate_refresh_token():
         user_repo.pull_refresh_token_by_id.assert_awaited_once_with(SOME_USER_ID, "old-token")
         user_repo.push_refresh_token_by_id.assert_awaited_once_with(SOME_USER_ID, result.refresh_token)
         assert result.access_token
+
+    async def it_rejects_rotation_when_the_old_token_was_already_rotated_or_unknown(user_repo: AsyncMock):
+        user_repo.pull_refresh_token_by_id.return_value = False
+        service = AuthService(user_repo, {})
+
+        with pytest.raises(InvalidCredentialsError):
+            await service.rotate_refresh_token(SOME_USER_ID, "old-token")
+
+        user_repo.push_refresh_token_by_id.assert_not_called()
+
+
+def describe_logout():
+    async def it_pulls_the_current_session_token(user_repo: AsyncMock):
+        user_repo.pull_refresh_token_by_id.return_value = True
+        service = AuthService(user_repo, {})
+
+        await service.logout(SOME_USER_ID, "some-token")
+
+        user_repo.pull_refresh_token_by_id.assert_awaited_once_with(SOME_USER_ID, "some-token")
+
+    async def it_is_a_no_op_when_the_token_was_already_invalidated(user_repo: AsyncMock):
+        user_repo.pull_refresh_token_by_id.return_value = False
+        service = AuthService(user_repo, {})
+
+        await service.logout(SOME_USER_ID, "some-token")
 
 
 def describe_sign_in_with_provider():
@@ -151,11 +178,9 @@ def describe_sign_in_with_provider():
         user_repo.find_by_email.return_value = SimpleNamespace(id=SOME_USER_ID)
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
-        result = await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+        with pytest.raises(OAuthLinkRequiredError):
+            await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
 
-        assert result.outcome == AuthOutcome.LINK_REQUIRED
-        assert result.access_token is None
-        assert result.refresh_token is None
         user_repo.save_new_oauth_account.assert_not_called()
 
     async def it_creates_a_new_account_when_no_match_exists(user_repo: AsyncMock):

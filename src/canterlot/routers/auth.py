@@ -1,241 +1,76 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from canterlot.dto.auth import (
-    OAuthSignInRequest,
-    OAuthSignInResponse,
-    RegisterResponse,
-    TokenResponse,
-    UserRegisterRequest,
-)
+from canterlot.dto.auth import AccessTokenResponse, CreateSessionRequest
 from canterlot.exceptions import (
-    ClubNotFoundError,
-    DirectInviteIdentityMismatchError,
-    EmailAlreadyExistsError,
     GatewayConfigurationError,
     InvalidCredentialsError,
-    InvalidInviteTokenError,
     InvalidOAuthCredentialError,
-    InviteLinkDeactivatedError,
     OAuthAccountCreationConflictError,
+    OAuthLinkRequiredError,
     TokenExpiredError,
     TokenMalformedError,
-    UsernameAlreadyExistsError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import AuthOutcome, AuthProviderName, ClubOnboardingStatus
+from canterlot.models.enums import AuthOutcome, AuthProviderName, SessionType
+from canterlot.models.user import UsernameStr
+from canterlot.routers.cookies import clear_refresh_token_cookie, set_refresh_token_cookie
 from canterlot.routers.dependencies import (
     RefreshTokenContext,
     get_auth_service,
-    get_club_service,
-    get_invite_service,
+    get_optional_refresh_token_context,
     get_user_id_from_valid_refresh_token,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import AuthService, ClubService, InviteService
+from canterlot.services import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post(
-    "/register",
-    operation_id="register",
-    response_model=RegisterResponse,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_201_CREATED: {
-            "description": "User account created successfully. Active access and refresh session tokens returned."
-        },
-        status.HTTP_400_BAD_REQUEST: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InvalidInviteTokenError: The provided invite_id does not correspond to an existing invitation."
-            ),
-            "content": error_example(InvalidInviteTokenError),
-        },
-        status.HTTP_403_FORBIDDEN: {
-            "model": ErrorResponseModel,
-            "description": (
-                "DirectInviteIdentityMismatchError: The provided invite_id is a direct invitation bound to a "
-                "different email address than the one being registered."
-            ),
-            "content": error_example(DirectInviteIdentityMismatchError),
-        },
-        status.HTTP_404_NOT_FOUND: {
-            "model": ErrorResponseModel,
-            "description": "ClubNotFoundError: The club associated with the provided invite_id no longer exists.",
-            "content": error_example(ClubNotFoundError),
-        },
-        status.HTTP_409_CONFLICT: {
-            "model": ErrorResponseModel,
-            "description": (
-                "UsernameAlreadyExistsError or EmailAlreadyExistsError: The username or email string "
-                "is already bound to a different profile."
-            ),
-            "content": error_example(UsernameAlreadyExistsError, EmailAlreadyExistsError),
-        },
-        status.HTTP_410_GONE: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InviteLinkDeactivatedError: The provided invite_id has been deactivated, rotated, or has expired."
-            ),
-            "content": error_example(InviteLinkDeactivatedError),
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": (
-                "Validation error. Request body values violate type constraints or payload formatting requirements."
-            )
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected global backend execution failure or persistence error.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
-)
-async def register(
-    payload: UserRegisterRequest,
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    invite_service: Annotated[InviteService, Depends(get_invite_service)],
-    club_service: Annotated[ClubService, Depends(get_club_service)],
-):
-    validated_invite = None
-    inviter_username = payload.invited_by
-
-    if payload.invite_id:
-        validated_invite = await invite_service.validate_incoming_invite(
-            payload.invite_id,
-            payload.email,
-            payload.invited_by,
-        )
-
-        inviter_username = validated_invite.invited_by or payload.invited_by
-
-    res = await auth_service.register_user(payload, inviter_username)
-    onboarding = None
-
-    if validated_invite:
-        onboarding = await club_service.admit_user(
-            validated_invite.club_id,
-            res.user_id,
-            validated_invite.is_direct,
-        )
-
-        if (
-            onboarding
-            and onboarding.status in [ClubOnboardingStatus.JOINED, ClubOnboardingStatus.PENDING_APPROVAL]
-            and payload.invite_id
-        ):
-            await invite_service.register_invite_usage(payload.invite_id)
-
-    return RegisterResponse(
-        access_token=res.access_token,
-        refresh_token=res.refresh_token,
-        onboarding=onboarding,
-    )
-
-
-@router.post(
-    "/login",
-    operation_id="login",
-    response_model=TokenResponse,
-    responses={
-        status.HTTP_200_OK: {"description": "Authentication successful. User credentials verified."},
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InvalidCredentialsError: Incorrect username, profile identity, or plain text password combination."
-            ),
-            "content": error_example(InvalidCredentialsError),
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": "Validation error. Form values missing or incorrectly structured during transmission."
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected runtime engine error during validation processing.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
-)
-async def login(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
-):
-    return await auth_service.login_user(
-        username=form_data.username,
-        plain_password=form_data.password,
-    )
-
-
-@router.post(
-    "/refresh",
-    operation_id="refreshTokenRotation",
-    response_model=TokenResponse,
+    "/sessions",
+    operation_id="createSession",
+    response_model=AccessTokenResponse,
     responses={
         status.HTTP_200_OK: {
-            "description": "Refresh session token rotated successfully. Old session invalidated and new pair returned."
-        },
-        status.HTTP_400_BAD_REQUEST: {
-            "model": ErrorResponseModel,
             "description": (
-                "TokenMalformedError: Token payload parsing validation failed (corrupt or modified parameters)."
-            ),
-            "content": error_example(TokenMalformedError),
+                "Session created (password login, or an OAuth credential matched an existing linked account). "
+                "Access token returned in the body; the refresh token is set as an httpOnly session cookie."
+            )
         },
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "TokenExpiredError: The validation timeframe window for the provided token signature has lapsed. "
-                "InvalidCredentialsError: The refresh payload is missing its subject, or the token has already "
-                "been revoked or invalidated."
-            ),
-            "content": error_example(TokenExpiredError, InvalidCredentialsError),
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected database context mutation exception during token lifecycle rotation.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
-)
-async def refresh_token_rotation(
-    token_data: Annotated[RefreshTokenContext, Depends(get_user_id_from_valid_refresh_token)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
-):
-    return await auth_service.rotate_refresh_token(token_data.user_id, token_data.token)
-
-
-@router.post(
-    "/{provider}",
-    operation_id="signInWithProvider",
-    response_model=OAuthSignInResponse,
-    responses={
-        status.HTTP_200_OK: {"description": "Provider credential verified against an existing, linked account."},
         status.HTTP_201_CREATED: {
-            "description": "Provider credential verified and a new user account was created from this identity."
+            "description": (
+                "OAuth credential verified and a new user account was created from this identity. Access token "
+                "returned in the body; the refresh token is set as an httpOnly session cookie."
+            )
         },
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponseModel,
-            "description": "InvalidOAuthCredentialError: The provided credential failed cryptographic verification.",
-            "content": error_example(InvalidOAuthCredentialError),
+            "description": (
+                "InvalidCredentialsError: Incorrect username/password combination. "
+                "InvalidOAuthCredentialError: The provided OAuth credential failed cryptographic verification."
+            ),
+            "content": error_example(InvalidCredentialsError, InvalidOAuthCredentialError),
         },
         status.HTTP_409_CONFLICT: {
             "model": ErrorResponseModel,
             "description": (
                 "OAuthAccountCreationConflictError: A concurrent sign-in for this same identity left this "
                 "request unable to resolve to an account. Extremely rare; retrying the request resolves it. "
-                "This status is also returned (still carrying an OAuthSignInResponse body, not an error envelope) "
-                "when `outcome` is LINK_REQUIRED: an account with this email already exists under a different "
-                "authentication method -- the frontend should prompt the user to log in with that method and "
-                "link this provider from there (see POST /users/me/auth-providers/{provider})."
+                "OAuthLinkRequiredError: The OAuth credential's identity resolves to an account that already "
+                "exists under a different authentication method -- the frontend should prompt the user to log "
+                "in with that method and link this provider from there (see "
+                "POST /users/me/auth-providers/{provider})."
             ),
-            "content": error_example(OAuthAccountCreationConflictError),
+            "content": error_example(OAuthAccountCreationConflictError, OAuthLinkRequiredError),
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": "Validation error. `provider` is not a recognized authentication provider."
+            "description": (
+                "Validation error. Fields don't match `type` (PASSWORD requires username+password, OAUTH "
+                "requires provider+credential), or `provider` is not a recognized authentication provider."
+            )
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
@@ -249,17 +84,122 @@ async def refresh_token_rotation(
         },
     },
 )
-async def sign_in_with_provider(
-    provider: AuthProviderName,
-    payload: OAuthSignInRequest,
+async def create_session(
+    payload: CreateSessionRequest,
     response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> OAuthSignInResponse:
-    result = await auth_service.sign_in_with_provider(provider, payload.credential)
+) -> AccessTokenResponse:
+    if payload.type is SessionType.PASSWORD:
+        login_result = await auth_service.login_user(
+            username=cast(UsernameStr, payload.username),
+            plain_password=cast(str, payload.password),
+        )
+        set_refresh_token_cookie(response, login_result.refresh_token)
+        return AccessTokenResponse(access_token=login_result.access_token)
 
-    if result.outcome == AuthOutcome.CREATED:
+    oauth_result = await auth_service.sign_in_with_provider(
+        cast(AuthProviderName, payload.provider),
+        cast(str, payload.credential),
+    )
+
+    if oauth_result.outcome == AuthOutcome.CREATED:
         response.status_code = status.HTTP_201_CREATED
-    elif result.outcome == AuthOutcome.LINK_REQUIRED:
-        response.status_code = status.HTTP_409_CONFLICT
 
-    return result
+    set_refresh_token_cookie(response, oauth_result.refresh_token)
+
+    return AccessTokenResponse(access_token=oauth_result.access_token)
+
+
+@router.post(
+    "/login",
+    include_in_schema=False,
+)
+async def login(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> AccessTokenResponse:
+    # Hidden from the OpenAPI schema -- this exists only so Swagger's built-in OAuth2-password
+    # "Authorize" popup has a real, form-encoded token endpoint to POST to. Real clients use
+    # POST /auth/sessions; this is never meant to be a second public way to log in.
+    result = await auth_service.login_user(
+        username=form_data.username,
+        plain_password=form_data.password,
+    )
+    set_refresh_token_cookie(response, result.refresh_token)
+    return AccessTokenResponse(access_token=result.access_token)
+
+
+@router.put(
+    "/sessions/current",
+    operation_id="rotateSession",
+    response_model=AccessTokenResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "Session rotated successfully. Old session invalidated; a new access token is returned in the "
+                "body and a new refresh cookie is set."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": (
+                "TokenMalformedError: Token payload parsing validation failed (corrupt or modified parameters)."
+            ),
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "TokenExpiredError: The validation timeframe window for the provided token signature has lapsed. "
+                "InvalidCredentialsError: The refresh cookie is missing, its payload is missing a subject, or "
+                "the token has already been revoked or invalidated."
+            ),
+            "content": error_example(TokenExpiredError, InvalidCredentialsError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database context mutation exception during token lifecycle rotation.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def rotate_session(
+    token_data: Annotated[RefreshTokenContext, Depends(get_user_id_from_valid_refresh_token)],
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+):
+    result = await auth_service.rotate_refresh_token(token_data.user_id, token_data.token)
+    set_refresh_token_cookie(response, result.refresh_token)
+    return AccessTokenResponse(access_token=result.access_token)
+
+
+@router.delete(
+    "/sessions/current",
+    operation_id="logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": (
+                "Current session logged out and its refresh cookie cleared. Also returned, as a no-op, when "
+                "there was no active session to end."
+            )
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def logout(
+    token_data: Annotated[RefreshTokenContext | None, Depends(get_optional_refresh_token_context)],
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> None:
+    clear_refresh_token_cookie(response)
+
+    if token_data is None:
+        return
+
+    await auth_service.logout(token_data.user_id, token_data.token)

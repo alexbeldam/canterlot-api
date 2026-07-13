@@ -55,6 +55,11 @@ class OAuthAccountCreationConflictError(AuthenticationError):
     status_code = status.HTTP_409_CONFLICT
 
 
+class OAuthLinkRequiredError(AuthenticationError):
+    error_code = ErrorCode.OAUTH_LINK_REQUIRED
+    status_code = status.HTTP_409_CONFLICT
+
+
 class AuthProviderNotLinkedError(AuthenticationError):
     error_code = ErrorCode.AUTH_PROVIDER_NOT_LINKED
     status_code = status.HTTP_404_NOT_FOUND

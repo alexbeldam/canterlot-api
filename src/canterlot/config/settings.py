@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str
     access_token_expiry_minutes: int = 15
+    refresh_token_expiry_days: int = 60
     mongodb_url: str
     mongodb_db_name: str
     redis_url: str

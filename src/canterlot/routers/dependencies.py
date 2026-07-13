@@ -6,11 +6,17 @@ import redis.asyncio as aioredis
 from beanie import PydanticObjectId
 from bson.errors import InvalidId
 from curl_cffi.requests import AsyncSession
-from fastapi import Depends
+from fastapi import Cookie, Depends
 from fastapi.security import OAuth2PasswordBearer
 
 from canterlot.config import get_settings
-from canterlot.exceptions import ClubNotFoundError, InvalidCredentialsError, RateLimitExceededError
+from canterlot.exceptions import (
+    ClubNotFoundError,
+    InvalidCredentialsError,
+    RateLimitExceededError,
+    TokenExpiredError,
+    TokenMalformedError,
+)
 from canterlot.exceptions.book import BookNotFoundError
 from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models import UserModel
@@ -28,11 +34,13 @@ from canterlot.repositories.beanie import (
     BeanieUserRepository,
 )
 from canterlot.repositories.redis import RedisCacheRepository
+from canterlot.routers.cookies import REFRESH_TOKEN_COOKIE_NAME
 from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService, UserService
 from canterlot.utils import decode_jwt_payload
 from canterlot.utils.format import ISBNStr
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+LOGIN_PATH = "/api/v1/auth/login"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
 
 
 async def get_redis_client() -> AsyncGenerator[aioredis.Redis]:
@@ -183,10 +191,7 @@ class RefreshTokenContext:
     token: str
 
 
-async def get_user_id_from_valid_refresh_token(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
-) -> RefreshTokenContext:
+def _decode_refresh_token(token: str) -> RefreshTokenContext:
     payload = decode_jwt_payload(token)
 
     user_id: str | None = payload.get("sub")
@@ -195,12 +200,28 @@ async def get_user_id_from_valid_refresh_token(
     if user_id is None or token_type != "refresh":
         raise InvalidCredentialsError("Invalid session refresh payload structure.")
 
-    pyid = _parse_subject_id(user_id)
-    refresh_tokens = await user_repo.find_refresh_tokens_by_id(pyid)
-    if refresh_tokens is None or token not in refresh_tokens:
-        raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
+    return RefreshTokenContext(user_id=_parse_subject_id(user_id), token=token)
 
-    return RefreshTokenContext(user_id=pyid, token=token)
+
+async def get_user_id_from_valid_refresh_token(
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_TOKEN_COOKIE_NAME)] = None,
+) -> RefreshTokenContext:
+    if refresh_token is None:
+        raise InvalidCredentialsError("Invalid session refresh payload structure.")
+
+    return _decode_refresh_token(refresh_token)
+
+
+async def get_optional_refresh_token_context(
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_TOKEN_COOKIE_NAME)] = None,
+) -> RefreshTokenContext | None:
+    if refresh_token is None:
+        return None
+
+    try:
+        return _decode_refresh_token(refresh_token)
+    except (TokenExpiredError, TokenMalformedError, InvalidCredentialsError):
+        return None
 
 
 async def get_current_user(

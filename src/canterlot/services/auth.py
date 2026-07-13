@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 
 from beanie import PydanticObjectId
+from pydantic import BaseModel
 
-from canterlot.dto.auth import ConnectedProvidersResponse, OAuthSignInResponse, TokenResponse, UserRegisterRequest
+from canterlot.dto.auth import ConnectedProvidersResponse, TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
@@ -12,6 +13,7 @@ from canterlot.exceptions import (
     InvalidCredentialsError,
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
+    OAuthLinkRequiredError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models import AuthOutcome, AuthProviderName, LinkedProviderSchema, UserModel
@@ -32,6 +34,13 @@ logger = get_logger(__name__)
 
 class RegisterResult(TokenResponse):
     user_id: PydanticObjectId
+
+
+class OAuthSignInResult(BaseModel):
+    outcome: AuthOutcome
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +121,10 @@ class AuthService:
         log = logger.bind(user_id=str(user_id))
         log.info("Executing stateful refresh token rotation schema")
 
-        await self.__user_repo.pull_refresh_token_by_id(user_id, old_token)
+        removed = await self.__user_repo.pull_refresh_token_by_id(user_id, old_token)
+        if not removed:
+            log.warn("Refresh rotation rejected: token already rotated, revoked, or unknown")
+            raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
 
         tokens = self.__create_tokens(user_id)
         await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
@@ -122,6 +134,17 @@ class AuthService:
             access_token=tokens.access_token,
             refresh_token=tokens.refresh_token,
         )
+
+    async def logout(self, user_id: PydanticObjectId, token: str) -> None:
+        log = logger.bind(user_id=str(user_id))
+        log.info("Attempting to log out current session")
+
+        removed = await self.__user_repo.pull_refresh_token_by_id(user_id, token)
+        if not removed:
+            log.warn("Logout no-op: refresh token already invalidated")
+            return
+
+        log.info("Session logged out successfully")
 
     def __create_tokens(self, user_id: PydanticObjectId) -> TokenPair:
         return TokenPair(
@@ -136,15 +159,13 @@ class AuthService:
             logger.bind(provider=provider).warn("Requested authentication provider is not configured")
             raise GatewayConfigurationError(f"The '{provider}' authentication provider is not available.") from None
 
-    async def __issue_login_tokens(self, user_id: PydanticObjectId, outcome: AuthOutcome) -> OAuthSignInResponse:
+    async def __issue_login_tokens(self, user_id: PydanticObjectId, outcome: AuthOutcome) -> OAuthSignInResult:
         tokens = self.__create_tokens(user_id)
         await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
 
-        return OAuthSignInResponse(
-            outcome=outcome, access_token=tokens.access_token, refresh_token=tokens.refresh_token
-        )
+        return OAuthSignInResult(outcome=outcome, access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
-    async def sign_in_with_provider(self, provider: AuthProviderName, credential: str) -> OAuthSignInResponse:
+    async def sign_in_with_provider(self, provider: AuthProviderName, credential: str) -> OAuthSignInResult:
         log = logger.bind(provider=provider)
         log.info("Attempting OAuth provider sign-in")
 
@@ -156,8 +177,8 @@ class AuthService:
             return await self.__issue_login_tokens(existing_id, AuthOutcome.LOGGED_IN)
 
         if await self.__user_repo.find_by_email(identity.email):
-            log.info("OAuth identity's email matches an existing account with a different auth method")
-            return OAuthSignInResponse(outcome=AuthOutcome.LINK_REQUIRED)
+            log.warn("OAuth sign-in rejected: identity's email matches an account under a different auth method")
+            raise OAuthLinkRequiredError("An account with this email already exists using a different sign-in method.")
 
         username_seed = identity.name or identity.email.split("@")[0]
         username = await make_username(username_seed, self.__user_repo.exists_by_username)

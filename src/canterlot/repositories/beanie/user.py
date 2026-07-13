@@ -22,10 +22,6 @@ class IdProjection(BaseModel):
     id: PydanticObjectId = Field(alias="_id")
 
 
-class RefreshTokensProjection(BaseModel):
-    refresh_tokens: list[str]
-
-
 class BeanieUserRepository(UserRepository):
     async def find_by_id(self, user_id: PydanticObjectId) -> UserModel | None:
         return await UserModel.get(user_id)
@@ -67,13 +63,6 @@ class BeanieUserRepository(UserRepository):
             return None
         return projection.id
 
-    async def find_refresh_tokens_by_id(self, user_id: PydanticObjectId) -> list[str] | None:
-        projection = await UserModel.find_one(UserModel.id == user_id).project(RefreshTokensProjection)
-
-        if not projection:
-            return None
-        return projection.refresh_tokens
-
     async def exists_by_username(self, username: UsernameStr) -> bool:
         return await UserModel.find(UserModel.username == username).count() > 0
 
@@ -98,8 +87,11 @@ class BeanieUserRepository(UserRepository):
     async def push_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.refresh_tokens: token}))
 
-    async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None:
-        await UserModel.find_one(UserModel.id == user_id).update_one(Pull({UserModel.refresh_tokens: token}))
+    async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id, {"refresh_tokens": token}).update_one(
+            Pull({UserModel.refresh_tokens: token})
+        )
+        return cast(UpdateResult, result).matched_count > 0
 
     async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> bool:
         try:

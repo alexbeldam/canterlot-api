@@ -20,6 +20,7 @@ from canterlot.routers.dependencies import (
     get_current_user,
     get_current_user_id,
     get_invite_service,
+    get_optional_refresh_token_context,
     get_redis_client,
     get_user_id_from_valid_refresh_token,
     get_user_repository,
@@ -123,6 +124,9 @@ def client(
     app.dependency_overrides[get_current_user] = lambda: current_user
     app.dependency_overrides[get_redis_client] = lambda: redis_client
     app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: RefreshTokenContext(
+        user_id=current_user.id, token="old-refresh-token"
+    )
+    app.dependency_overrides[get_optional_refresh_token_context] = lambda: RefreshTokenContext(
         user_id=current_user.id, token="old-refresh-token"
     )
 

@@ -1,86 +1,168 @@
+from typing import cast
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
+from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from canterlot.dto.auth import OAuthSignInResponse, TokenResponse
-from canterlot.dto.club import ClubOnboarding
+from canterlot.dto.auth import TokenResponse
 from canterlot.exceptions import (
     GatewayConfigurationError,
     InvalidCredentialsError,
     InvalidOAuthCredentialError,
-    UsernameAlreadyExistsError,
+    OAuthLinkRequiredError,
 )
-from canterlot.models.enums import AuthOutcome, AuthProviderName, ClubOnboardingStatus
-from canterlot.services.auth import RegisterResult
-from canterlot.services.invite import InviteValidationResult
+from canterlot.models.enums import AuthOutcome, AuthProviderName
+from canterlot.routers.dependencies import get_optional_refresh_token_context
+from canterlot.services.auth import OAuthSignInResult
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
-SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 
 
-def _register_payload(**overrides) -> dict:
-    defaults = {"name": "Alice Smith", "username": "alice_1", "email": "alice@example.com", "password": "secret1"}
-    return {**defaults, **overrides}
+def _assert_refresh_cookie_set(response, expected_value: str):
+    set_cookie = response.headers.get("set-cookie", "")
+    assert f"refresh_token={expected_value}" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Secure" in set_cookie
+    assert "samesite=strict" in set_cookie.lower()
+    assert "Path=/api/v1/auth" in set_cookie
 
 
-def describe_register():
-    def it_registers_a_user_without_an_invite(client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock):
-        auth_service.register_user.return_value = RegisterResult(
-            access_token="access", refresh_token="refresh", user_id=SOME_USER_ID
+def describe_create_session():
+    def it_logs_in_with_a_password_session(client: TestClient, auth_service: AsyncMock):
+        auth_service.login_user.return_value = TokenResponse(access_token="access", refresh_token="refresh")
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "PASSWORD", "username": "alice_1", "password": "secret1"},
         )
 
-        response = client.post("/api/v1/auth/register", json=_register_payload())
-
-        assert response.status_code == 201
+        assert response.status_code == 200
         body = response.json()
         assert body["access_token"] == "access"
-        assert body["onboarding"] is None
-        invite_service.validate_incoming_invite.assert_not_called()
-        call_args = auth_service.register_user.call_args
-        assert call_args.args[0].username == "alice_1"
-        assert call_args.args[1] is None
+        assert "refresh_token" not in body
+        _assert_refresh_cookie_set(response, "refresh")
+        auth_service.login_user.assert_awaited_once_with(username="alice_1", plain_password="secret1")
 
-    def it_registers_a_user_and_onboards_them_via_an_invite(
-        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock, club_service: AsyncMock
-    ):
-        auth_service.register_user.return_value = RegisterResult(
-            access_token="access", refresh_token="refresh", user_id=SOME_USER_ID
+    def it_returns_401_for_invalid_password_credentials(client: TestClient, auth_service: AsyncMock):
+        auth_service.login_user.side_effect = InvalidCredentialsError("nope")
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "PASSWORD", "username": "alice_1", "password": "wrong"},
         )
-        invite_service.validate_incoming_invite.return_value = InviteValidationResult(
-            club_id=SOME_CLUB_ID, club_name="Book Club", invited_by="referrer_1", is_direct=False
-        )
-        club_service.admit_user.return_value = ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED)
 
-        response = client.post("/api/v1/auth/register", json=_register_payload(invite_id="some-invite-id"))
+        assert response.status_code == 401
+        assert response.json()["error"]["error_code"] == "INVALID_CREDENTIALS"
 
-        assert response.status_code == 201
-        assert response.json()["onboarding"]["status"] == "JOINED"
-        invite_service.register_invite_usage.assert_awaited_once_with("some-invite-id")
-
-    def it_returns_409_when_the_username_is_taken(client: TestClient, auth_service: AsyncMock):
-        auth_service.register_user.side_effect = UsernameAlreadyExistsError("taken")
-
-        response = client.post("/api/v1/auth/register", json=_register_payload())
-
-        assert response.status_code == 409
-        assert response.json()["error"]["error_code"] == "USERNAME_ALREADY_EXISTS"
-
-    def it_returns_422_for_a_password_that_is_too_short(client: TestClient, auth_service: AsyncMock):
-        response = client.post("/api/v1/auth/register", json=_register_payload(password="short"))
+    def it_returns_422_for_a_password_session_missing_the_password(client: TestClient, auth_service: AsyncMock):
+        response = client.post("/api/v1/auth/sessions", json={"type": "PASSWORD", "username": "alice_1"})
 
         assert response.status_code == 422
-        auth_service.register_user.assert_not_called()
+        auth_service.login_user.assert_not_called()
+
+    def it_logs_in_via_oauth_when_the_identity_is_already_linked(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.LOGGED_IN, access_token="access", refresh_token="refresh"
+        )
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["access_token"] == "access"
+        assert "refresh_token" not in body
+        _assert_refresh_cookie_set(response, "refresh")
+        auth_service.sign_in_with_provider.assert_awaited_once_with(AuthProviderName.GOOGLE, "some-id-token")
+
+    def it_returns_created_for_a_brand_new_oauth_account(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
+        )
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["access_token"] == "access"
+        _assert_refresh_cookie_set(response, "refresh")
+
+    def it_returns_409_when_the_identity_requires_linking_to_an_existing_account(
+        client: TestClient, auth_service: AsyncMock
+    ):
+        auth_service.sign_in_with_provider.side_effect = OAuthLinkRequiredError("linking required")
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "OAUTH_LINK_REQUIRED"
+        assert "set-cookie" not in response.headers
+
+    def it_returns_401_for_an_invalid_oauth_credential(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.side_effect = InvalidOAuthCredentialError("bad token")
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "garbage"},
+        )
+
+        assert response.status_code == 401
+        assert response.json()["error"]["error_code"] == "INVALID_OAUTH_CREDENTIAL"
+
+    def it_returns_503_when_the_oauth_provider_is_not_configured(client: TestClient, auth_service: AsyncMock):
+        auth_service.sign_in_with_provider.side_effect = GatewayConfigurationError("disabled")
+
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 503
+        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"
+
+    def it_returns_422_for_an_unrecognized_provider(client: TestClient, auth_service: AsyncMock):
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "FACEBOOK", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 422
+        auth_service.sign_in_with_provider.assert_not_called()
+
+    def it_returns_422_for_an_oauth_session_missing_the_credential(client: TestClient, auth_service: AsyncMock):
+        response = client.post(
+            "/api/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE"},
+        )
+
+        assert response.status_code == 422
+        auth_service.sign_in_with_provider.assert_not_called()
 
 
-def describe_login():
-    def it_returns_a_token_pair_for_valid_credentials(client: TestClient, auth_service: AsyncMock):
+def describe_login_swagger_shim():
+    def it_is_hidden_from_the_openapi_schema(client: TestClient):
+        schema = client.get("/openapi.json").json()
+
+        assert "/auth/login" not in schema["paths"]
+
+    def it_still_logs_in_via_the_form_encoded_oauth2_password_flow(client: TestClient, auth_service: AsyncMock):
         auth_service.login_user.return_value = TokenResponse(access_token="access", refresh_token="refresh")
 
         response = client.post("/api/v1/auth/login", data={"username": "alice_1", "password": "secret1"})
 
         assert response.status_code == 200
-        assert response.json()["access_token"] == "access"
+        body = response.json()
+        assert body["access_token"] == "access"
+        assert "refresh_token" not in body
+        _assert_refresh_cookie_set(response, "refresh")
 
     def it_returns_401_for_invalid_credentials(client: TestClient, auth_service: AsyncMock):
         auth_service.login_user.side_effect = InvalidCredentialsError("nope")
@@ -91,72 +173,36 @@ def describe_login():
         assert response.json()["error"]["error_code"] == "INVALID_CREDENTIALS"
 
 
-def describe_refresh_token_rotation():
-    def it_returns_a_rotated_token_pair(client: TestClient, auth_service: AsyncMock):
+def describe_rotate_session():
+    def it_returns_a_rotated_access_token_and_sets_a_new_refresh_cookie(client: TestClient, auth_service: AsyncMock):
         auth_service.rotate_refresh_token.return_value = TokenResponse(
             access_token="new-access", refresh_token="new-refresh"
         )
 
-        response = client.post("/api/v1/auth/refresh")
+        response = client.put("/api/v1/auth/sessions/current")
 
         assert response.status_code == 200
-        assert response.json()["access_token"] == "new-access"
+        body = response.json()
+        assert body["access_token"] == "new-access"
+        assert "refresh_token" not in body
+        _assert_refresh_cookie_set(response, "new-refresh")
         auth_service.rotate_refresh_token.assert_awaited_once_with(SOME_USER_ID, "old-refresh-token")
 
 
-def describe_sign_in_with_provider():
-    def it_returns_a_token_pair_when_logged_in(client: TestClient, auth_service: AsyncMock):
-        auth_service.sign_in_with_provider.return_value = OAuthSignInResponse(
-            outcome=AuthOutcome.LOGGED_IN, access_token="access", refresh_token="refresh"
-        )
+def describe_logout():
+    def it_logs_out_the_current_session_and_clears_the_cookie(client: TestClient, auth_service: AsyncMock):
+        response = client.delete("/api/v1/auth/sessions/current")
 
-        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
+        assert response.status_code == 204
+        auth_service.logout.assert_awaited_once_with(SOME_USER_ID, "old-refresh-token")
+        set_cookie = response.headers.get("set-cookie", "")
+        assert 'refresh_token=""' in set_cookie
+        assert "Max-Age=0" in set_cookie
 
-        assert response.status_code == 200
-        body = response.json()
-        assert body["outcome"] == "LOGGED_IN"
-        assert body["access_token"] == "access"
-        auth_service.sign_in_with_provider.assert_awaited_once_with(AuthProviderName.GOOGLE, "some-id-token")
+    def it_is_a_no_op_when_there_is_no_session_cookie(client: TestClient, auth_service: AsyncMock):
+        cast(FastAPI, client.app).dependency_overrides[get_optional_refresh_token_context] = lambda: None
 
-    def it_returns_created_with_tokens_for_a_new_account(client: TestClient, auth_service: AsyncMock):
-        auth_service.sign_in_with_provider.return_value = OAuthSignInResponse(
-            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
-        )
+        response = client.delete("/api/v1/auth/sessions/current")
 
-        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
-
-        assert response.status_code == 201
-        assert response.json()["outcome"] == "CREATED"
-
-    def it_returns_link_required_with_no_tokens(client: TestClient, auth_service: AsyncMock):
-        auth_service.sign_in_with_provider.return_value = OAuthSignInResponse(outcome=AuthOutcome.LINK_REQUIRED)
-
-        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
-
-        assert response.status_code == 409
-        body = response.json()
-        assert body["outcome"] == "LINK_REQUIRED"
-        assert body["access_token"] is None
-        assert body["refresh_token"] is None
-
-    def it_returns_401_for_an_invalid_credential(client: TestClient, auth_service: AsyncMock):
-        auth_service.sign_in_with_provider.side_effect = InvalidOAuthCredentialError("bad token")
-
-        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "garbage"})
-
-        assert response.status_code == 401
-        assert response.json()["error"]["error_code"] == "INVALID_OAUTH_CREDENTIAL"
-
-    def it_returns_503_when_the_provider_is_not_configured(client: TestClient, auth_service: AsyncMock):
-        auth_service.sign_in_with_provider.side_effect = GatewayConfigurationError("disabled")
-
-        response = client.post("/api/v1/auth/GOOGLE", json={"credential": "some-id-token"})
-
-        assert response.status_code == 503
-        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"
-
-    def it_returns_422_for_an_unrecognized_provider(client: TestClient, auth_service: AsyncMock):
-        response = client.post("/api/v1/auth/FACEBOOK", json={"credential": "some-id-token"})
-
-        assert response.status_code == 422
-        auth_service.sign_in_with_provider.assert_not_called()
+        assert response.status_code == 204
+        auth_service.logout.assert_not_called()

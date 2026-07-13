@@ -1,11 +1,15 @@
 from datetime import timedelta
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 from beanie import PydanticObjectId
 from curl_cffi.requests import AsyncSession
+from fastapi.openapi.models import OAuth2
+from fastapi.routing import iter_route_contexts
 
+from canterlot.app import create_app
 from canterlot.config import get_settings
 from canterlot.exceptions import InvalidCredentialsError, RateLimitExceededError, TokenExpiredError, TokenMalformedError
 from canterlot.models.enums import AuthProviderName
@@ -21,6 +25,7 @@ from canterlot.repositories.beanie import (
 )
 from canterlot.repositories.redis import RedisCacheRepository
 from canterlot.routers.dependencies import (
+    LOGIN_PATH,
     RefreshTokenContext,
     _enforce_rate_limit,
     _parse_subject_id,
@@ -39,9 +44,11 @@ from canterlot.routers.dependencies import (
     get_invite_service,
     get_link_providers,
     get_oauth_providers,
+    get_optional_refresh_token_context,
     get_redis_client,
     get_user_id_from_valid_refresh_token,
     get_user_repository,
+    oauth2_scheme,
     rate_limit_club_owner_action,
 )
 from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
@@ -95,35 +102,57 @@ def describe_get_current_user_id():
 
 
 def describe_get_user_id_from_valid_refresh_token():
-    async def it_returns_the_user_id_and_token_for_a_valid_refresh_token(user_repo: AsyncMock):
+    async def it_returns_the_user_id_and_token_for_a_valid_refresh_token():
         token = create_refresh_token(SOME_USER_ID)
-        user_repo.find_refresh_tokens_by_id.return_value = [token]
 
-        result = await get_user_id_from_valid_refresh_token(token, user_repo)
+        result = await get_user_id_from_valid_refresh_token(token)
 
         assert result == RefreshTokenContext(user_id=SOME_USER_ID, token=token)
 
-    async def it_raises_for_an_access_token_used_as_a_refresh_token(user_repo: AsyncMock):
+    async def it_raises_when_the_cookie_is_missing():
+        with pytest.raises(InvalidCredentialsError):
+            await get_user_id_from_valid_refresh_token(None)
+
+    async def it_raises_for_an_access_token_used_as_a_refresh_token():
         token = create_access_token(SOME_USER_ID)
 
         with pytest.raises(InvalidCredentialsError):
-            await get_user_id_from_valid_refresh_token(token, user_repo)
+            await get_user_id_from_valid_refresh_token(token)
 
-        user_repo.find_refresh_tokens_by_id.assert_not_called()
+    async def it_raises_token_expired_for_an_expired_refresh_token():
+        token = create_jwt_token({"sub": str(SOME_USER_ID), "type": "refresh"}, timedelta(seconds=-1))
 
-    async def it_raises_when_the_user_no_longer_exists(user_repo: AsyncMock):
+        with pytest.raises(TokenExpiredError):
+            await get_user_id_from_valid_refresh_token(token)
+
+    async def it_raises_token_malformed_for_a_garbage_token():
+        with pytest.raises(TokenMalformedError):
+            await get_user_id_from_valid_refresh_token("not.a.jwt")
+
+
+def describe_get_optional_refresh_token_context():
+    async def it_returns_the_context_for_a_valid_refresh_token():
         token = create_refresh_token(SOME_USER_ID)
-        user_repo.find_refresh_tokens_by_id.return_value = None
 
-        with pytest.raises(InvalidCredentialsError):
-            await get_user_id_from_valid_refresh_token(token, user_repo)
+        result = await get_optional_refresh_token_context(token)
 
-    async def it_raises_when_the_refresh_token_has_been_revoked(user_repo: AsyncMock):
-        token = create_refresh_token(SOME_USER_ID)
-        user_repo.find_refresh_tokens_by_id.return_value = ["some-other-token"]
+        assert result == RefreshTokenContext(user_id=SOME_USER_ID, token=token)
 
-        with pytest.raises(InvalidCredentialsError):
-            await get_user_id_from_valid_refresh_token(token, user_repo)
+    async def it_returns_none_when_the_cookie_is_missing():
+        assert await get_optional_refresh_token_context(None) is None
+
+    async def it_returns_none_for_an_access_token_used_as_a_refresh_token():
+        token = create_access_token(SOME_USER_ID)
+
+        assert await get_optional_refresh_token_context(token) is None
+
+    async def it_returns_none_for_an_expired_refresh_token():
+        token = create_jwt_token({"sub": str(SOME_USER_ID), "type": "refresh"}, timedelta(seconds=-1))
+
+        assert await get_optional_refresh_token_context(token) is None
+
+    async def it_returns_none_for_a_garbage_token():
+        assert await get_optional_refresh_token_context("not.a.jwt") is None
 
 
 def describe_get_current_user():
@@ -238,7 +267,9 @@ def describe_rate_limit_club_owner_action():
 
         assert isinstance(providers[AuthProviderName.GOOGLE], GoogleAuthProvider)
 
-    def it_returns_no_oauth_providers_when_none_are_configured():
+    def it_returns_no_oauth_providers_when_none_are_configured(monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(get_settings(), "google_oauth_client_id", None)
+
         assert get_oauth_providers() == {}
 
 
@@ -278,3 +309,17 @@ def describe_service_factories():
             user_repo=AsyncMock(spec=UserRepository),
         )
         assert isinstance(service, InviteService)
+
+
+def describe_oauth2_scheme():
+    def it_points_at_a_real_registered_post_route():
+        app = create_app()
+
+        model = cast(OAuth2, oauth2_scheme.model)
+        assert model.flows.password is not None
+        assert model.flows.password.tokenUrl == LOGIN_PATH
+
+        matching_routes = [ctx for ctx in iter_route_contexts(app.routes) if ctx.path == LOGIN_PATH]
+
+        assert matching_routes, f"no route registered at {LOGIN_PATH}"
+        assert any("POST" in (ctx.methods or set()) for ctx in matching_routes)

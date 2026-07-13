@@ -88,21 +88,23 @@ A documentação interativa e completa (Swagger UI) fica disponível em `/docs` 
 
 ### Autenticação
 
-Rotas protegidas exigem um header de autorização: `Authorization: Bearer <token>`
+Rotas protegidas exigem um header de autorização: `Authorization: Bearer <token>`. O access token é devolvido no corpo da resposta; o refresh token nunca aparece no corpo — ele é setado como cookie `httpOnly`, `Secure`, `SameSite=Strict`, restrito ao path `/auth`, e não deve ser lido ou manipulado pelo frontend.
 
-| Rota                              | Descrição                                                                                                                     |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| <kbd>POST /auth/register</kbd>    | Cria uma nova conta com usuário/senha, com suporte a convite embutido no corpo.                                              |
-| <kbd>POST /auth/login</kbd>       | Autentica por usuário/senha e devolve o par de tokens de acesso e refresh.                                                   |
-| <kbd>POST /auth/refresh</kbd>     | Rotaciona o refresh token e emite um novo par de tokens.                                                                      |
-| <kbd>POST /auth/{provider}</kbd>  | Login/cadastro via provedor OAuth (ex. `GOOGLE`) — devolve se logou, criou conta, ou precisa vincular a uma conta existente. |
+| Rota                                     | Descrição                                                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| <kbd>POST /users</kbd>                   | Cria uma nova conta com usuário/senha, com suporte a convite embutido no corpo.                                              |
+| <kbd>POST /auth/sessions</kbd>           | Cria uma sessão (login por senha ou OAuth, discriminado pelo campo `type: PASSWORD \| OAUTH` no corpo) — devolve o access token; o refresh token é setado como cookie. Para OAuth, o status code distingue o resultado: `200` login em conta existente, `201` conta nova criada, `409` quando a identidade já pertence a uma conta com outro método de login (é preciso logar por lá e então vincular este provedor). |
+| <kbd>PUT /auth/sessions/current</kbd>    | Rotaciona o refresh token (lido do cookie) e emite um novo access token e um novo cookie.                                    |
+| <kbd>DELETE /auth/sessions/current</kbd> | Encerra a sessão atual e limpa o cookie de refresh (idempotente — também retorna sucesso se não havia sessão ativa).         |
+
+Há ainda uma rota oculta `POST /auth/login` (form-encoded, fora do schema OpenAPI) que existe apenas para alimentar o fluxo "Authorize" nativo do Swagger UI — não é uma via pública alternativa de login, e clientes reais devem sempre usar `POST /auth/sessions`.
 
 ### Perfil & Conta
 
 | Rota                                                    | Descrição                                                                                                            |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | <kbd>PATCH /users/me</kbd>                              | Atualiza nome de exibição e/ou nome de usuário.                                                                     |
-| <kbd>PUT /users/me/password</kbd>                       | Troca a senha (ou define a primeira senha de uma conta só-OAuth); revoga sessões antigas e devolve um novo par de tokens. |
+| <kbd>PUT /users/me/password</kbd>                       | Troca a senha (ou define a primeira senha de uma conta só-OAuth); revoga sessões antigas e devolve um novo access token (novo cookie de refresh). |
 | <kbd>GET /users/me/auth-providers</kbd>                 | Lista provedores de login conectados e se há senha cadastrada.                                                       |
 | <kbd>POST /users/me/auth-providers/{provider}</kbd>     | Vincula um novo provedor OAuth à conta autenticada.                                                                   |
 | <kbd>DELETE /users/me/auth-providers/{provider}</kbd>   | Desvincula um provedor OAuth (bloqueado se for a única forma de login restante).                                     |
