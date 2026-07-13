@@ -20,6 +20,7 @@
  <a href="#logica-de-funcionamento">Lógica de Funcionamento</a> •
  <a href="#primeiros-passos">Primeiros Passos</a> •
  <a href="#rotas-principais">Rotas Principais</a> •
+ <a href="#roadmap">Roadmap</a> •
  <a href="#frontend">Frontend</a>
 </p>
 
@@ -27,21 +28,18 @@
 
 <h2 id="sobre-o-projeto">📖 Sobre o Projeto</h2>
 
-O **CanterlotAPI** é o motor backend para um aplicativo moderno de gestão de clubes do livro. Ele cobre todo o ciclo de vida de um clube de leitura: desde a criação do grupo e rotação segura de convites, até a sugestão de livros no catálogo e a orquestração de sessões de leitura (via votação ranqueada ou sorteio randômico).
+O **CanterlotAPI** é o motor backend para um aplicativo moderno de gestão de clubes do livro. Hoje ele cobre a criação e administração de clubes, o convite e gerenciamento de membros com hierarquia de papéis, o catálogo colaborativo de sugestões de livros, e a conta/perfil de cada usuário (autenticação por senha ou Google, troca de senha, e histórico pessoal de leitura).
 
-O foco é fornecer uma infraestrutura rápida e descentralizada para organizar leituras conjuntas, permitindo integrações com redes sociais externas (como Discord ou WhatsApp) para a comunicação direta dos membros.
+A orquestração de rodadas de leitura em si (votação ranqueada ou sorteio randômico) está **planejada, mas ainda não implementada** — veja o [Roadmap](#roadmap) mais abaixo para o que já está desenhado mas ainda não construído.
 
 <h2 id="logica-de-funcionamento">🧠 Lógica de Funcionamento</h2>
 
-O sistema é guiado por quatro pilares de regras de negócio fundamentais que gerenciam a dinâmica de convivência e engajamento dos leitores:
+O sistema é guiado por dois pilares de regras de negócio fundamentais, já implementados, que gerenciam a dinâmica de convivência dos leitores:
 
-- **Controle de Acesso Concorrente e Hierárquico:** Cada workspace de clube possui papéis bem definidos (`OWNER`, `ADMIN`, `MEMBER`). As ações administrativas cruciais — como gerenciamento de cargos, moderação de membros e controle do status das sessões de leitura — seguem uma cadeia estrita de comando para blindar o clube contra ações não autorizadas.
-- **Gestão Autónoma de Admissão:** A entrada de novos participantes é controlada por chaves únicas de convite emitidas pelo clube. Administradores mantêm o controle total sobre o fluxo de novos membros, podendo rotacionar ou revogar credenciais de acesso público instantaneamente, mitigando entradas indesejadas sem afetar os membros ativos.
-- **Ciclo de Vida da Sessão de Leitura:** O engajamento baseia-se em ciclos fechados divididos em três etapas sequenciais:
-  - _Curadoria:_ Membros alimentam o catálogo sugerindo obras literárias com dados validados.
-  - _Deliberação:_ A escolha do próximo livro da rodada pode ocorrer de forma democrática (votação ponderada por preferência) ou por sorteio automatizado.
-  - _Metrificação:_ Durante a rodada ativa, o progresso individual de cada participante é monitorado pelo sistema para fornecer relatórios de engajamento em tempo real aos moderadores.
-- **Integração de Comunicação Descentralizada:** Para manter o MVP focado no desempenho operacional de dados, a API não encapsula canais de mensagens internas, fornecendo em vez disso suporte nativo para vinculação direta de pontes sociais (links para servidores ou grupos externos), centralizando o ponto de encontro da comunidade.
+- **Controle de Acesso Concorrente e Hierárquico:** Cada workspace de clube possui papéis bem definidos (`OWNER`, `ADMIN`, `MEMBER`). Ações administrativas — gerenciamento de cargos, remoção/banimento de membros, transferência de posse — seguem uma cadeia estrita de comando: um `ADMIN` nunca pode agir sobre outro `ADMIN` ou o `OWNER`, blindando o clube contra ações não autorizadas.
+- **Gestão Autónoma de Admissão:** A entrada de novos participantes é controlada por convites emitidos pelo clube — um link público (rotacionável a qualquer momento) ou um convite direto por e-mail. Administradores mantêm controle total sobre o fluxo de novos membros, incluindo aprovação manual em clubes restritos e banimento.
+
+A orquestração de sessões de leitura (curadoria → deliberação → acompanhamento de progresso) é o próximo pilar planejado — o catálogo colaborativo já existe hoje como a etapa de curadoria; deliberação (voto/sorteio) e acompanhamento de progresso ainda não foram construídos (ver [Roadmap](#roadmap)).
 
 ---
 
@@ -86,37 +84,85 @@ Toda a gestão do projeto é centralizada via `just`. Você não precisa ativar 
 
 <h2 id="rotas-principais">📍 Endpoints Principais da API</h2>
 
-A documentação interativa e completa (Swagger UI) fica disponível em `/docs` com o servidor rodando. Abaixo estão os contratos de negócio essenciais da arquitetura.
+A documentação interativa e completa (Swagger UI) fica disponível em `/docs` com o servidor rodando — é sempre a fonte da verdade sobre o contrato exato de cada rota. A tabela abaixo reflete apenas o que está **realmente implementado hoje**, com testes automatizados. Todas as rotas são montadas sob o prefixo `/api/v1`.
 
-### Autenticação & Usuários
+### Autenticação
 
 Rotas protegidas exigem um header de autorização: `Authorization: Bearer <token>`
 
-| Rota                           | Descrição                                                              |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| <kbd>POST /auth/register</kbd> | Cria uma nova conta de usuário. Pode receber um `invite_token` nativo. |
-| <kbd>POST /auth/login</kbd>    | Autentica e devolve os tokens de acesso e refresh.                     |
-| <kbd>POST /auth/refresh</kbd>  | Emite um novo Access Token sem exigir relogin manual.                  |
-| <kbd>GET /users/me</kbd>       | Retorna o perfil completo e histórico do usuário autenticado.          |
+| Rota                              | Descrição                                                                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| <kbd>POST /auth/register</kbd>    | Cria uma nova conta com usuário/senha, com suporte a convite embutido no corpo.                                              |
+| <kbd>POST /auth/login</kbd>       | Autentica por usuário/senha e devolve o par de tokens de acesso e refresh.                                                   |
+| <kbd>POST /auth/refresh</kbd>     | Rotaciona o refresh token e emite um novo par de tokens.                                                                      |
+| <kbd>POST /auth/{provider}</kbd>  | Login/cadastro via provedor OAuth (ex. `GOOGLE`) — devolve se logou, criou conta, ou precisa vincular a uma conta existente. |
+
+### Perfil & Conta
+
+| Rota                                                    | Descrição                                                                                                            |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| <kbd>PATCH /users/me</kbd>                              | Atualiza nome de exibição e/ou nome de usuário.                                                                     |
+| <kbd>PUT /users/me/password</kbd>                       | Troca a senha (ou define a primeira senha de uma conta só-OAuth); revoga sessões antigas e devolve um novo par de tokens. |
+| <kbd>GET /users/me/auth-providers</kbd>                 | Lista provedores de login conectados e se há senha cadastrada.                                                       |
+| <kbd>POST /users/me/auth-providers/{provider}</kbd>     | Vincula um novo provedor OAuth à conta autenticada.                                                                   |
+| <kbd>DELETE /users/me/auth-providers/{provider}</kbd>   | Desvincula um provedor OAuth (bloqueado se for a única forma de login restante).                                     |
+| <kbd>PUT /users/me/read-books/{identifier}</kbd>        | Marca um livro como lido no histórico pessoal do usuário.                                                            |
 
 ### Clubes & Controle de Acesso
 
-| Rota                                           | Descrição                                                      |
-| ---------------------------------------------- | -------------------------------------------------------------- |
-| <kbd>POST /clubs</kbd>                         | Cria um novo clube (Autor = `OWNER`).                          |
-| <kbd>POST /clubs/{id}/invites/rotate</kbd>     | Invalida os links públicos antigos e gera um novo `shortuuid`. |
-| <kbd>PUT /clubs/{id}/members/{user}/role</kbd> | Promove ou rebaixa membros (Engine de Rank Protection).        |
-| <kbd>DELETE /clubs/{id}/members/{user}</kbd>   | Expulsa o membro e limpa seu acesso ao catálogo.               |
+| Rota                                                         | Descrição                                                                 |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| <kbd>POST /clubs</kbd>                                       | Cria um novo clube (autor = `OWNER`).                                        |
+| <kbd>GET /clubs/{slug}</kbd>                                 | Detalhes do clube; aprovações pendentes visíveis só para `OWNER`/`ADMIN`.    |
+| <kbd>PATCH /clubs/{slug}/settings</kbd>                      | Atualiza configurações do clube (nome, descrição, política de entrada, idiomas). |
+| <kbd>DELETE /clubs/{slug}</kbd>                              | Dissolve e apaga o clube (somente `OWNER`).                                  |
+| <kbd>POST /clubs/{slug}/invites</kbd>                        | Cria um convite público ou direto (corpo discriminado por `type`).          |
+| <kbd>GET /clubs/{slug}/invites/public</kbd>                  | Retorna o link de convite público ativo do clube.                           |
+| <kbd>PATCH /clubs/{slug}/pending-approvals/{user}</kbd>      | Aprova uma solicitação pendente de entrada (clube restrito).                |
+| <kbd>DELETE /clubs/{slug}/pending-approvals/{user}</kbd>     | Rejeita uma solicitação pendente de entrada.                                |
+| <kbd>DELETE /clubs/{slug}/members/me</kbd>                   | O próprio membro sai do clube.                                              |
+| <kbd>DELETE /clubs/{slug}/members/{user}</kbd>               | Remove (e bane) um membro — `Engine de Rank Protection` aplicado.           |
+| <kbd>PUT /clubs/{slug}/members/{user}/role</kbd>             | Promove ou rebaixa um membro.                                               |
+| <kbd>POST /clubs/{slug}/ownership-transfers</kbd>            | Inicia a transferência de posse do clube para outro membro.                |
+| <kbd>DELETE /clubs/{slug}/ownership-transfers/current</kbd>  | Reclama a posse de volta, dentro da janela de 24h.                          |
 
-### Sessões de Leitura & Catálogo
+### Convites
 
-| Rota                                         | Descrição                                                        |
-| -------------------------------------------- | ---------------------------------------------------------------- |
-| <kbd>GET /clubs/{id}/catalog/search</kbd>    | Faz proxy com a API do Google Books para buscar obras.           |
-| <kbd>POST /clubs/{id}/catalog/suggest</kbd>  | Adiciona um livro ao repositório de leituras pendentes do clube. |
-| <kbd>POST /clubs/{id}/sessions</kbd>         | Inicia uma nova rodada (`VOTE` ou `RANDOM`).                     |
-| <kbd>POST /clubs/{id}/sessions/votes</kbd>   | Envia o array ranqueado de votos do membro para a rodada ativa.  |
-| <kbd>GET /clubs/{id}/sessions/progress</kbd> | Retorna o mural atualizado de quem já concluiu a meta do mês.    |
+| Rota                                            | Descrição                                                                    |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| <kbd>GET /invites/{invite_id}/preview</kbd>     | Pré-visualiza um convite (nome do clube, tipo) antes de decidir aceitar.        |
+| <kbd>PATCH /invites/{invite_id}</kbd>           | Aceita um convite — entrou direto, ficou pendente de aprovação, ou banido.       |
+
+### Catálogo
+
+| Rota                                                     | Descrição                                        |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| <kbd>POST /clubs/{slug}/catalog</kbd>                    | Sugere um livro ao catálogo do clube.              |
+| <kbd>GET /clubs/{slug}/catalog</kbd>                     | Lista o catálogo do clube, paginado e ordenável.   |
+| <kbd>DELETE /clubs/{slug}/catalog/{identifier}</kbd>     | Remove um livro do catálogo do clube.              |
+
+### Livros
+
+| Rota                                             | Descrição                                                                                |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| <kbd>GET /books/external</kbd>                   | Busca livros na Google Books API (requer `club_slug`, já que toda busca existe para alimentar um clube). |
+| <kbd>GET /books/external/{identifier}</kbd>      | Detalhes de um livro direto do provedor externo, sem persistir.                             |
+| <kbd>GET /books/{identifier}</kbd>               | Detalhes de um livro já persistido (ISBN ou id do provedor); `404` se ainda não existir na base — busca ao vivo é só via `/books/external`. |
+
+---
+
+<h2 id="roadmap">🗺️ Roadmap</h2>
+
+Funcionalidades com as regras de negócio já desenhadas, mas **ainda não implementadas**:
+
+- **Sessões de Leitura & Votação:** o ciclo completo de rodadas de leitura — iniciar uma rodada (sorteio automático ou pool curado), votação ponderada por membro, acompanhamento de progresso individual, e conclusão/cancelamento da rodada.
+- **Verificação e troca de e-mail:** confirmação de e-mail no cadastro, e um fluxo para trocar o e-mail de uma conta existente.
+- **Perfil estendido:** consultar o próprio perfil (hoje só é possível atualizá-lo, não vê-lo) e o perfil de outro membro do mesmo clube; consultar e remover entradas do histórico de leitura pessoal (hoje só é possível adicionar).
+- **Logout de todos os dispositivos:** encerrar todas as sessões ativas de uma vez, como ação deliberada e independente da troca de senha.
+- **Lembretes automáticos de prazo de leitura:** notificação por e-mail um dia antes e no dia do prazo de uma rodada, disparado por um cron externo.
+- **Seleção de avatar:** gerado automaticamente, importado do Google, ou via Gravatar. Upload de imagem própria **não está nos planos** — o projeto não possui infraestrutura de armazenamento de arquivos.
+
+Vinculação de pontes sociais externas (Discord/WhatsApp) foi cogitada, mas **descartada**: hoje não há forma de verificar se um link enviado por um administrador de clube leva a um conteúdo apropriado, e sem uma equipe de moderação, o risco de abuso (conteúdo impróprio, malware, spam) foi considerado inaceitável.
 
 ---
 
