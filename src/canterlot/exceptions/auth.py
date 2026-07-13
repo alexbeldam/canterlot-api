@@ -63,3 +63,8 @@ class AuthProviderNotLinkedError(AuthenticationError):
 class LastAuthenticationMethodError(AuthenticationError):
     error_code = ErrorCode.LAST_AUTHENTICATION_METHOD
     status_code = status.HTTP_409_CONFLICT
+
+
+class IncorrectPasswordError(AuthenticationError):
+    error_code = ErrorCode.INCORRECT_PASSWORD
+    status_code = status.HTTP_401_UNAUTHORIZED

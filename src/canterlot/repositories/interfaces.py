@@ -17,7 +17,7 @@ from canterlot.models import (
 )
 from canterlot.models.book import BookProviderIdentifier, ReadBook, UrlList
 from canterlot.models.club import ClubNameStr, ClubSlugStr
-from canterlot.models.user import UsernameStr
+from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.pagination import Page, SortDirection
 from canterlot.utils.format import ISBN10Str, ISBN13Str, LanguageStr, NormalizedEmailStr
 
@@ -151,6 +151,18 @@ class UserRepository(Protocol):
     async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None: ...
     async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> bool: ...
     async def remove_linked_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None: ...
+    async def update_profile(
+        self,
+        user_id: PydanticObjectId,
+        name: PersonNameStr | None = None,
+        username: UsernameStr | None = None,
+    ) -> bool: ...
+    async def change_password(
+        self,
+        user_id: PydanticObjectId,
+        hashed_password: str,
+        new_refresh_token: str,
+    ) -> None: ...
 
 
 class InviteRepository(Protocol):

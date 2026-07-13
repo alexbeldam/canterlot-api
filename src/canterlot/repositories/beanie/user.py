@@ -1,10 +1,13 @@
+from typing import cast
+
 from beanie import PydanticObjectId
 from beanie.operators import ElemMatch, In, Pull, Push
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo.errors import DuplicateKeyError
+from pymongo.results import UpdateResult
 
 from canterlot.models import AuthProviderName, LinkedProviderSchema, UserModel
-from canterlot.models.user import UsernameStr
+from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.repositories import UserRepository
 from canterlot.utils.format import NormalizedEmailStr
 
@@ -108,4 +111,30 @@ class BeanieUserRepository(UserRepository):
     async def remove_linked_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(
             Pull({UserModel.linked_providers: {"provider": provider}})
+        )
+
+    async def update_profile(
+        self,
+        user_id: PydanticObjectId,
+        name: PersonNameStr | None = None,
+        username: UsernameStr | None = None,
+    ) -> bool:
+        updates: dict[str, object] = {}
+        if name is not None:
+            updates["name"] = name
+        if username is not None:
+            updates["username"] = username
+
+        result = await UserModel.find_one(UserModel.id == user_id).update_one({"$set": updates})
+
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def change_password(self, user_id: PydanticObjectId, hashed_password: str, new_refresh_token: str) -> None:
+        await UserModel.find_one(UserModel.id == user_id).update_one(
+            {
+                "$set": {
+                    UserModel.hashed_password: hashed_password,
+                    UserModel.refresh_tokens: [new_refresh_token],
+                }
+            }
         )

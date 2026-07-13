@@ -10,6 +10,7 @@ from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     EmailAlreadyExistsError,
     GatewayConfigurationError,
+    IncorrectPasswordError,
     InvalidCredentialsError,
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
@@ -324,3 +325,71 @@ def describe_list_connected_providers():
 
         assert result.has_password is True
         assert result.linked_providers[0].provider == AuthProviderName.GOOGLE
+
+
+def describe_change_password():
+    async def it_issues_a_fresh_token_pair_and_revokes_other_sessions(user_repo: AsyncMock):
+        hashed = hash_password("current-secret")
+        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
+        service = AuthService(user_repo, {})
+
+        result = await service.change_password(SOME_USER_ID, "current-secret", "new-secret-1")
+
+        assert result.access_token
+        assert result.refresh_token
+        user_repo.change_password.assert_awaited_once()
+        call_args = user_repo.change_password.call_args.args
+        assert call_args[0] == SOME_USER_ID
+        assert call_args[1] != "current-secret"
+        assert call_args[2] == result.refresh_token
+
+    async def it_rejects_an_incorrect_current_password(user_repo: AsyncMock):
+        hashed = hash_password("current-secret")
+        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
+        service = AuthService(user_repo, {})
+
+        with pytest.raises(IncorrectPasswordError):
+            await service.change_password(SOME_USER_ID, "wrong-secret", "new-secret-1")
+
+        user_repo.change_password.assert_not_called()
+
+    async def it_rejects_a_missing_current_password_when_one_already_exists(user_repo: AsyncMock):
+        hashed = hash_password("current-secret")
+        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
+        service = AuthService(user_repo, {})
+
+        with pytest.raises(IncorrectPasswordError):
+            await service.change_password(SOME_USER_ID, None, "new-secret-1")
+
+        user_repo.change_password.assert_not_called()
+
+    async def it_sets_an_initial_password_for_an_oauth_only_account(user_repo: AsyncMock):
+        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None)
+        service = AuthService(user_repo, {})
+
+        result = await service.change_password(SOME_USER_ID, None, "new-secret-1")
+
+        assert result.access_token
+        assert result.refresh_token
+        user_repo.change_password.assert_awaited_once()
+        call_args = user_repo.change_password.call_args.args
+        assert call_args[0] == SOME_USER_ID
+        assert call_args[2] == result.refresh_token
+
+    async def it_ignores_a_submitted_current_password_for_an_oauth_only_account(user_repo: AsyncMock):
+        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None)
+        service = AuthService(user_repo, {})
+
+        result = await service.change_password(SOME_USER_ID, "anything", "new-secret-1")
+
+        assert result.access_token
+        user_repo.change_password.assert_awaited_once()
+
+    async def it_raises_when_the_authenticated_user_no_longer_exists(user_repo: AsyncMock):
+        user_repo.find_by_id.return_value = None
+        service = AuthService(user_repo, {})
+
+        with pytest.raises(InvalidCredentialsError):
+            await service.change_password(SOME_USER_ID, "current-secret", "new-secret-1")
+
+        user_repo.change_password.assert_not_called()

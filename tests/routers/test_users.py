@@ -4,15 +4,18 @@ from unittest.mock import AsyncMock
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
-from canterlot.dto.auth import ConnectedProvidersResponse, LinkedProviderDTO
+from canterlot.dto.auth import ConnectedProvidersResponse, LinkedProviderDTO, TokenResponse
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
     GatewayConfigurationError,
+    IncorrectPasswordError,
     InvalidOAuthCredentialError,
     LastAuthenticationMethodError,
+    UsernameAlreadyExistsError,
 )
 from canterlot.models.enums import AuthProviderName
+from canterlot.models.user import UserModel
 
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
@@ -92,6 +95,83 @@ def describe_disconnect_provider():
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "LAST_AUTHENTICATION_METHOD"
+
+
+def describe_update_profile():
+    def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
+        user_service.update_profile.return_value = UserModel(
+            name="Alice Sparkle", username="new_alice", email="alice@example.com"
+        )
+
+        response = client.patch("/api/v1/users/me", json={"name": "Alice Sparkle", "username": "new_alice"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["name"] == "Alice Sparkle"
+        assert body["username"] == "new_alice"
+
+    def it_returns_409_when_the_username_is_taken(client: TestClient, user_service: AsyncMock):
+        user_service.update_profile.side_effect = UsernameAlreadyExistsError("taken")
+
+        response = client.patch("/api/v1/users/me", json={"username": "taken"})
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "USERNAME_ALREADY_EXISTS"
+
+    def it_returns_422_when_no_fields_are_provided(client: TestClient, user_service: AsyncMock):
+        response = client.patch("/api/v1/users/me", json={})
+
+        assert response.status_code == 422
+        user_service.update_profile.assert_not_called()
+
+
+def describe_change_password():
+    def it_returns_a_fresh_token_pair_on_success(client: TestClient, auth_service: AsyncMock):
+        auth_service.change_password.return_value = TokenResponse(
+            access_token="new-access-token", refresh_token="new-refresh-token"
+        )
+
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "old-secret", "new_password": "new-secret-1"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["access_token"] == "new-access-token"
+        assert body["refresh_token"] == "new-refresh-token"
+
+    def it_returns_401_for_an_incorrect_current_password(client: TestClient, auth_service: AsyncMock):
+        auth_service.change_password.side_effect = IncorrectPasswordError("wrong")
+
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "wrong-secret", "new_password": "new-secret-1"},
+        )
+
+        assert response.status_code == 401
+        assert response.json()["error"]["error_code"] == "INCORRECT_PASSWORD"
+
+    def it_returns_422_when_the_new_password_is_too_short(client: TestClient, auth_service: AsyncMock):
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "old-secret", "new_password": "short"},
+        )
+
+        assert response.status_code == 422
+        auth_service.change_password.assert_not_called()
+
+    def it_returns_200_when_setting_a_password_with_no_current_password(
+        client: TestClient, auth_service: AsyncMock, current_user
+    ):
+        auth_service.change_password.return_value = TokenResponse(
+            access_token="new-access-token", refresh_token="new-refresh-token"
+        )
+
+        response = client.put("/api/v1/users/me/password", json={"new_password": "new-secret-1"})
+
+        assert response.status_code == 200
+        auth_service.change_password.assert_awaited_once_with(current_user.id, None, "new-secret-1")
 
 
 def describe_mark_book_read():

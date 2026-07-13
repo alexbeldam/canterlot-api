@@ -3,17 +3,20 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, status
 
-from canterlot.dto.auth import ConnectedProvidersResponse, LinkProviderRequest
+from canterlot.dto.auth import ConnectedProvidersResponse, LinkProviderRequest, TokenResponse
+from canterlot.dto.user import ChangePasswordRequest, UpdateProfileRequest, UserProfileResponse
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
     BookNotFoundError,
     GatewayConfigurationError,
+    IncorrectPasswordError,
     InvalidCredentialsError,
     InvalidOAuthCredentialError,
     LastAuthenticationMethodError,
     TokenExpiredError,
     TokenMalformedError,
+    UsernameAlreadyExistsError,
 )
 from canterlot.models import ErrorResponseModel
 from canterlot.models.enums import AuthProviderName
@@ -26,8 +29,94 @@ from canterlot.routers.dependencies import (
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService, UserService
 
+profile_router = APIRouter(prefix="/users/me", tags=["Users"])
 auth_providers_router = APIRouter(prefix="/users/me/auth-providers", tags=["Users"])
 read_books_router = APIRouter(prefix="/users/me/read-books", tags=["Users"])
+
+
+@profile_router.patch(
+    "",
+    operation_id="updateProfile",
+    response_model=UserProfileResponse,
+    responses={
+        status.HTTP_200_OK: {"description": "The profile was updated successfully."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": "UsernameAlreadyExistsError: The requested username is already taken.",
+            "content": error_example(UsernameAlreadyExistsError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. No fields provided, or a field violates its constraints."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def update_profile(
+    payload: UpdateProfileRequest,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserProfileResponse:
+    updated = await user_service.update_profile(current_user_id, name=payload.name, username=payload.username)
+    return UserProfileResponse.from_model(updated)
+
+
+@profile_router.put(
+    "/password",
+    operation_id="changePassword",
+    response_model=TokenResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "Password changed, or set for the first time on an OAuth-only account (`current_password` is "
+                "only required/verified when the account already has a password). Every other refresh token on "
+                "the account is revoked and a fresh token pair is returned for the caller's own session."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired. "
+                "IncorrectPasswordError: The submitted current password does not match."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError, IncorrectPasswordError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. `new_password` is shorter than the minimum length."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> TokenResponse:
+    return await auth_service.change_password(current_user_id, payload.current_password, payload.new_password)
 
 
 @auth_providers_router.get(
