@@ -273,3 +273,46 @@ def describe_remove_linked_provider():
         found = await repo.find_by_id(_id(user))
         assert found is not None
         assert found.linked_providers == []
+
+
+def describe_update_profile():
+    async def it_updates_both_fields():
+        user = await _user(name="Original Name")
+
+        changed = await repo.update_profile(_id(user), name="New Name", username="new_profile_username")
+
+        assert changed is True
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.name == "New Name"
+        assert found.username == "new_profile_username"
+
+    async def it_updates_only_the_provided_field():
+        user = await _user(name="Original Name")
+
+        changed = await repo.update_profile(_id(user), name="Updated Name Only")
+
+        assert changed is True
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.name == "Updated Name Only"
+        assert found.username == user.username
+
+    async def it_returns_false_for_a_nonexistent_user():
+        changed = await repo.update_profile(PydanticObjectId(), name="Nobody")
+
+        assert changed is False
+
+
+def describe_change_password():
+    async def it_stores_the_hash_and_replaces_all_refresh_tokens():
+        user = await _user()
+        await repo.push_refresh_token_by_id(_id(user), "old-token-1")
+        await repo.push_refresh_token_by_id(_id(user), "old-token-2")
+
+        await repo.change_password(_id(user), "new-hashed-password", "brand-new-refresh-token")
+
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.hashed_password == "new-hashed-password"
+        assert found.refresh_tokens == ["brand-new-refresh-token"]

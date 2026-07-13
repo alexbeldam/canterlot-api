@@ -8,6 +8,7 @@ from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     EmailAlreadyExistsError,
     GatewayConfigurationError,
+    IncorrectPasswordError,
     InvalidCredentialsError,
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
@@ -223,6 +224,30 @@ class AuthService:
 
         await self.__user_repo.remove_linked_provider(user_id, provider)
         log.info("Authentication provider disconnected successfully")
+
+    async def change_password(
+        self, user_id: PydanticObjectId, current_password: str | None, new_password: str
+    ) -> TokenResponse:
+        log = logger.bind(user_id=str(user_id))
+        log.info("Attempting password change")
+
+        user = await self.__user_repo.find_by_id(user_id)
+        if not user:
+            log.warn("Password change aborted: authenticated user profile record no longer exists")
+            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
+
+        if user.hashed_password is not None:
+            if not current_password or not verify_password(current_password, user.hashed_password):
+                log.warn("Password change rejected: current password verification failed")
+                raise IncorrectPasswordError("The current password provided is incorrect.")
+        else:
+            log.info("Setting an initial password for an OAuth-only account")
+
+        tokens = self.__create_tokens(user_id)
+        await self.__user_repo.change_password(user_id, hash_password(new_password), tokens.refresh_token)
+
+        log.info("Password changed successfully, all other sessions revoked, new session token issued")
+        return TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
     async def list_connected_providers(self, user_id: PydanticObjectId) -> ConnectedProvidersResponse:
         log = logger.bind(user_id=str(user_id))
