@@ -38,11 +38,11 @@ def describe_suggest_book_to_club():
             book_external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "ext-1"),
         )
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
+        response = client.post(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
 
         assert response.status_code == 201
         assert response.json()["status"] == "SUCCESS"
-        assert response.headers["Location"] == f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1"
+        assert response.headers["Location"] == f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1"
 
     def it_returns_200_when_the_book_already_exists_in_the_catalog(
         client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock
@@ -53,7 +53,7 @@ def describe_suggest_book_to_club():
             book_external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "ext-1"),
         )
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
+        response = client.post(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
 
         assert response.status_code == 200
         assert response.json()["status"] == "ALREADY_EXISTS"
@@ -65,7 +65,7 @@ def describe_suggest_book_to_club():
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.side_effect = UnauthorizedClubMemberError("not a member")
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
+        response = client.post(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
 
         assert response.status_code == 403
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
@@ -76,7 +76,7 @@ def describe_suggest_book_to_club():
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.side_effect = ClubSuggestionsClosedError("closed")
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
+        response = client.post(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
 
         assert response.status_code == 403
         assert response.json()["error"]["error_code"] == "CLUB_SUGGESTIONS_CLOSED"
@@ -86,7 +86,7 @@ def describe_suggest_book_to_club():
     ):
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json={"source_id": "google-books__ext-1"})
+        response = client.post(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json={"source_id": "google-books__ext-1"})
 
         assert response.status_code == 422
         catalog_service.suggest_book_to_club.assert_not_called()
@@ -96,7 +96,7 @@ def describe_suggest_book_to_club():
     ):
         club_repo.find_id_by_slug.return_value = None
 
-        response = client.post(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
+        response = client.post(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", json=_suggestion_payload())
 
         assert response.status_code == 404
         catalog_service.suggest_book_to_club.assert_not_called()
@@ -121,7 +121,7 @@ def describe_get_club_catalog():
             items=[_entry_response()], total_items=1, current_page=1, page_size=20
         )
 
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
 
         assert response.status_code == 200
         body = response.json()
@@ -134,7 +134,7 @@ def describe_get_club_catalog():
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.side_effect = UnauthorizedClubMemberError("not a member")
 
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
 
         assert response.status_code == 403
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
@@ -144,7 +144,7 @@ def describe_get_club_catalog():
     ):
         club_repo.find_id_by_slug.return_value = None
 
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/")
 
         assert response.status_code == 404
         catalog_service.get_catalog_page.assert_not_called()
@@ -158,7 +158,7 @@ def describe_get_club_catalog():
         )
 
         response = client.get(
-            f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/",
+            f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/",
             params={"sort_by": "title", "suggested_by": "alice_1", "page": 2, "limit": 10},
         )
 
@@ -173,7 +173,7 @@ def describe_get_club_catalog():
     def it_returns_422_for_an_invalid_sort_field(client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock):
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
 
-        response = client.get(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/", params={"sort_by": "not-a-real-field"})
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/", params={"sort_by": "not-a-real-field"})
 
         assert response.status_code == 422
         catalog_service.get_catalog_page.assert_not_called()
@@ -186,7 +186,7 @@ def describe_remove_from_club():
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
 
-        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+        response = client.delete(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
 
         assert response.status_code == 204
         catalog_service.remove_book_from_club.assert_awaited_once()
@@ -198,7 +198,7 @@ def describe_remove_from_club():
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
         catalog_service.remove_book_from_club.side_effect = UnauthorizedClubMemberError("not allowed")
 
-        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+        response = client.delete(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
 
         assert response.status_code == 403
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
@@ -210,7 +210,7 @@ def describe_remove_from_club():
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
         catalog_service.remove_book_from_club.side_effect = BookNotFoundError("not in catalog")
 
-        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+        response = client.delete(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
@@ -221,7 +221,7 @@ def describe_remove_from_club():
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
         book_repo.find_id_by_identifier.return_value = None
 
-        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__missing")
+        response = client.delete(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__missing")
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
@@ -232,7 +232,7 @@ def describe_remove_from_club():
     ):
         club_repo.find_id_by_slug.return_value = None
 
-        response = client.delete(f"/api/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
+        response = client.delete(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1")
 
         assert response.status_code == 404
         catalog_service.remove_book_from_club.assert_not_called()

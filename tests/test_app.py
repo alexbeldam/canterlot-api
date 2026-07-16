@@ -30,7 +30,7 @@ def describe_custom_openapi():
         schema = custom_openapi(app)
 
         assert "/users" in schema["paths"]
-        assert not any(path.startswith("/api/v1") for path in schema["paths"])
+        assert not any(path.startswith("/v1") for path in schema["paths"])
 
     def it_excludes_the_hidden_swagger_only_login_shim():
         app = create_app()
@@ -42,7 +42,7 @@ def describe_custom_openapi():
     def it_maps_the_bare_api_v1_root_path_to_a_slash():
         app = FastAPI()
 
-        @app.get("/api/v1")
+        @app.get("/v1")
         async def _root():
             return {}
 
@@ -55,7 +55,7 @@ def describe_custom_openapi():
 
         schema = custom_openapi(app)
 
-        assert schema["servers"] == [{"url": "/api/v1", "description": "v1 Base Environment"}]
+        assert schema["servers"] == [{"url": "/v1", "description": "v1 Base Environment"}]
 
 
 def describe_operation_ids():
@@ -81,6 +81,22 @@ def describe_operation_ids():
         assert not duplicates, f"operation_id(s) reused across routes: {duplicates}"
 
 
+def describe_custom_docs():
+    def it_serves_the_swagger_ui_with_the_branded_favicon():
+        with _client_without_lifespan(create_app()) as client:
+            response = client.get("/docs")
+
+        assert response.status_code == 200
+        assert "/static/favicon.svg" in response.text
+
+    def it_serves_the_redoc_ui_with_the_branded_favicon():
+        with _client_without_lifespan(create_app()) as client:
+            response = client.get("/redoc")
+
+        assert response.status_code == 200
+        assert "/static/favicon.svg" in response.text
+
+
 def describe_root_redirects():
     def it_redirects_the_bare_root_to_the_docs():
         with _client_without_lifespan(create_app()) as client:
@@ -91,7 +107,7 @@ def describe_root_redirects():
 
     def it_redirects_the_api_v1_root_to_the_docs():
         with _client_without_lifespan(create_app()) as client:
-            response = client.get("/api/v1", follow_redirects=False)
+            response = client.get("/v1", follow_redirects=False)
 
         assert response.status_code == 307
         assert response.headers["location"] == "/docs"

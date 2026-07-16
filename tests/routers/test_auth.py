@@ -25,7 +25,7 @@ def _assert_refresh_cookie_set(response, expected_value: str):
     assert "HttpOnly" in set_cookie
     assert "Secure" in set_cookie
     assert "samesite=strict" in set_cookie.lower()
-    assert "Path=/api/v1/auth" in set_cookie
+    assert "Path=/v1/auth" in set_cookie
 
 
 def describe_create_session():
@@ -33,7 +33,7 @@ def describe_create_session():
         auth_service.login_user.return_value = TokenResponse(access_token="access", refresh_token="refresh")
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "PASSWORD", "username": "alice_1", "password": "secret1"},
         )
 
@@ -48,7 +48,7 @@ def describe_create_session():
         auth_service.login_user.side_effect = InvalidCredentialsError("nope")
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "PASSWORD", "username": "alice_1", "password": "wrong"},
         )
 
@@ -56,7 +56,7 @@ def describe_create_session():
         assert response.json()["error"]["error_code"] == "INVALID_CREDENTIALS"
 
     def it_returns_422_for_a_password_session_missing_the_password(client: TestClient, auth_service: AsyncMock):
-        response = client.post("/api/v1/auth/sessions", json={"type": "PASSWORD", "username": "alice_1"})
+        response = client.post("/v1/auth/sessions", json={"type": "PASSWORD", "username": "alice_1"})
 
         assert response.status_code == 422
         auth_service.login_user.assert_not_called()
@@ -67,7 +67,7 @@ def describe_create_session():
         )
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
         )
 
@@ -84,7 +84,7 @@ def describe_create_session():
         )
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
         )
 
@@ -98,7 +98,7 @@ def describe_create_session():
         auth_service.sign_in_with_provider.side_effect = OAuthLinkRequiredError("linking required")
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
         )
 
@@ -110,7 +110,7 @@ def describe_create_session():
         auth_service.sign_in_with_provider.side_effect = InvalidOAuthCredentialError("bad token")
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "GOOGLE", "credential": "garbage"},
         )
 
@@ -121,7 +121,7 @@ def describe_create_session():
         auth_service.sign_in_with_provider.side_effect = GatewayConfigurationError("disabled")
 
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
         )
 
@@ -130,7 +130,7 @@ def describe_create_session():
 
     def it_returns_422_for_an_unrecognized_provider(client: TestClient, auth_service: AsyncMock):
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "FACEBOOK", "credential": "some-id-token"},
         )
 
@@ -139,7 +139,7 @@ def describe_create_session():
 
     def it_returns_422_for_an_oauth_session_missing_the_credential(client: TestClient, auth_service: AsyncMock):
         response = client.post(
-            "/api/v1/auth/sessions",
+            "/v1/auth/sessions",
             json={"type": "OAUTH", "provider": "GOOGLE"},
         )
 
@@ -156,7 +156,7 @@ def describe_login_swagger_shim():
     def it_still_logs_in_via_the_form_encoded_oauth2_password_flow(client: TestClient, auth_service: AsyncMock):
         auth_service.login_user.return_value = TokenResponse(access_token="access", refresh_token="refresh")
 
-        response = client.post("/api/v1/auth/login", data={"username": "alice_1", "password": "secret1"})
+        response = client.post("/v1/auth/login", data={"username": "alice_1", "password": "secret1"})
 
         assert response.status_code == 200
         body = response.json()
@@ -167,7 +167,7 @@ def describe_login_swagger_shim():
     def it_returns_401_for_invalid_credentials(client: TestClient, auth_service: AsyncMock):
         auth_service.login_user.side_effect = InvalidCredentialsError("nope")
 
-        response = client.post("/api/v1/auth/login", data={"username": "alice_1", "password": "wrong"})
+        response = client.post("/v1/auth/login", data={"username": "alice_1", "password": "wrong"})
 
         assert response.status_code == 401
         assert response.json()["error"]["error_code"] == "INVALID_CREDENTIALS"
@@ -179,7 +179,7 @@ def describe_rotate_session():
             access_token="new-access", refresh_token="new-refresh"
         )
 
-        response = client.put("/api/v1/auth/sessions/current")
+        response = client.put("/v1/auth/sessions/current")
 
         assert response.status_code == 200
         body = response.json()
@@ -191,7 +191,7 @@ def describe_rotate_session():
 
 def describe_logout():
     def it_logs_out_the_current_session_and_clears_the_cookie(client: TestClient, auth_service: AsyncMock):
-        response = client.delete("/api/v1/auth/sessions/current")
+        response = client.delete("/v1/auth/sessions/current")
 
         assert response.status_code == 204
         auth_service.logout.assert_awaited_once_with(SOME_USER_ID, "old-refresh-token")
@@ -202,7 +202,7 @@ def describe_logout():
     def it_is_a_no_op_when_there_is_no_session_cookie(client: TestClient, auth_service: AsyncMock):
         cast(FastAPI, client.app).dependency_overrides[get_optional_refresh_token_context] = lambda: None
 
-        response = client.delete("/api/v1/auth/sessions/current")
+        response = client.delete("/v1/auth/sessions/current")
 
         assert response.status_code == 204
         auth_service.logout.assert_not_called()

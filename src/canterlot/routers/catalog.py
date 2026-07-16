@@ -90,7 +90,7 @@ async def suggest_book_to_club(
     if result.status == SuggestionStatus.ALREADY_EXISTS:
         response.status_code = status.HTTP_200_OK
     else:
-        response.headers["Location"] = f"/api/v1/clubs/{club_slug}/catalog/{result.book_external_id}"
+        response.headers["Location"] = f"/v1/clubs/{club_slug}/catalog/{result.book_external_id}"
 
     return result
 

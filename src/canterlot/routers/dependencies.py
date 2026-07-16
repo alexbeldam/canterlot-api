@@ -12,6 +12,7 @@ from fastapi.security import OAuth2PasswordBearer
 from canterlot.config import get_settings
 from canterlot.exceptions import (
     ClubNotFoundError,
+    GatewayConfigurationError,
     InvalidCredentialsError,
     RateLimitExceededError,
     TokenExpiredError,
@@ -26,6 +27,7 @@ from canterlot.models.enums import AuthProviderName
 from canterlot.models.user import UsernameStr
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
 from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
+from canterlot.providers.risc import GoogleRiscVerifier
 from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
@@ -39,7 +41,7 @@ from canterlot.services import AuthService, BookService, CatalogService, ClubSer
 from canterlot.utils import decode_jwt_payload
 from canterlot.utils.format import ISBNStr
 
-LOGIN_PATH = "/api/v1/auth/login"
+LOGIN_PATH = "/v1/auth/login"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
 
 
@@ -106,6 +108,17 @@ async def get_catalog_service(
 
 def get_oauth_providers() -> dict[AuthProviderName, OAuthProvider]:
     return get_all_oauth_providers()
+
+
+def get_google_risc_verifier(
+    session: Annotated[AsyncSession, Depends(get_curl_cffi_session)],
+) -> GoogleRiscVerifier:
+    client_id = get_settings().google_oauth_client_id
+
+    if not client_id:
+        raise GatewayConfigurationError("Google RISC event verification is not configured.")
+
+    return GoogleRiscVerifier(client_id, session)
 
 
 async def get_auth_service(

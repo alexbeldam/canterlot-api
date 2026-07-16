@@ -225,6 +225,21 @@ class AuthService:
 
         log.info("Authentication provider linked successfully")
 
+    async def revoke_provider_link(self, provider: AuthProviderName, external_id: str) -> None:
+        log = logger.bind(provider=provider)
+        log.info("Processing a provider-side revocation event")
+
+        user_id = await self.__user_repo.find_id_by_linked_provider(provider, external_id)
+        if not user_id:
+            log.info("Revocation event matched no linked account, nothing to do")
+            return
+
+        # The revocation already happened on the provider's side regardless of our own rules, so this
+        # unconditionally removes the link -- unlike disconnect_provider, it does not guard against being
+        # the account's last remaining authentication method.
+        await self.__user_repo.remove_linked_provider(user_id, provider)
+        log.info("Authentication provider unlinked following a provider-side revocation", user_id=str(user_id))
+
     async def disconnect_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:
         log = logger.bind(user_id=str(user_id), provider=provider)
         log.info("Attempting to disconnect an authentication provider")

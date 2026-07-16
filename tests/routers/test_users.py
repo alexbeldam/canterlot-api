@@ -36,7 +36,7 @@ def describe_register():
             access_token="access", refresh_token="refresh", user_id=SOME_USER_ID
         )
 
-        response = client.post("/api/v1/users", json=_register_payload())
+        response = client.post("/v1/users", json=_register_payload())
 
         assert response.status_code == 201
         body = response.json()
@@ -62,7 +62,7 @@ def describe_register():
         )
         club_service.admit_user.return_value = ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED)
 
-        response = client.post("/api/v1/users", json=_register_payload(invite_id="some-invite-id"))
+        response = client.post("/v1/users", json=_register_payload(invite_id="some-invite-id"))
 
         assert response.status_code == 201
         assert response.json()["onboarding"]["status"] == "JOINED"
@@ -71,13 +71,13 @@ def describe_register():
     def it_returns_409_when_the_username_is_taken(client: TestClient, auth_service: AsyncMock):
         auth_service.register_user.side_effect = UsernameAlreadyExistsError("taken")
 
-        response = client.post("/api/v1/users", json=_register_payload())
+        response = client.post("/v1/users", json=_register_payload())
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "USERNAME_ALREADY_EXISTS"
 
     def it_returns_422_for_a_password_that_is_too_short(client: TestClient, auth_service: AsyncMock):
-        response = client.post("/api/v1/users", json=_register_payload(password="short"))
+        response = client.post("/v1/users", json=_register_payload(password="short"))
 
         assert response.status_code == 422
         auth_service.register_user.assert_not_called()
@@ -90,7 +90,7 @@ def describe_get_connected_providers():
             linked_providers=[LinkedProviderDTO(provider=AuthProviderName.GOOGLE, linked_at=datetime.now(UTC))],
         )
 
-        response = client.get("/api/v1/users/me/auth-providers")
+        response = client.get("/v1/users/me/auth-providers")
 
         assert response.status_code == 200
         body = response.json()
@@ -102,21 +102,21 @@ def describe_link_provider():
     def it_returns_204_when_linked(client: TestClient, auth_service: AsyncMock):
         auth_service.link_provider.return_value = None
 
-        response = client.post("/api/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
+        response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
 
         assert response.status_code == 204
 
     def it_returns_401_for_an_invalid_credential(client: TestClient, auth_service: AsyncMock):
         auth_service.link_provider.side_effect = InvalidOAuthCredentialError("bad token")
 
-        response = client.post("/api/v1/users/me/auth-providers/GOOGLE", json={"credential": "garbage"})
+        response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "garbage"})
 
         assert response.status_code == 401
 
     def it_returns_409_when_already_linked_to_a_different_account(client: TestClient, auth_service: AsyncMock):
         auth_service.link_provider.side_effect = AuthProviderAlreadyLinkedError("taken")
 
-        response = client.post("/api/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
+        response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "AUTH_PROVIDER_ALREADY_LINKED"
@@ -124,12 +124,12 @@ def describe_link_provider():
     def it_returns_503_when_the_provider_is_not_configured(client: TestClient, auth_service: AsyncMock):
         auth_service.link_provider.side_effect = GatewayConfigurationError("disabled")
 
-        response = client.post("/api/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
+        response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
 
         assert response.status_code == 503
 
     def it_returns_422_for_an_unrecognized_provider(client: TestClient, auth_service: AsyncMock):
-        response = client.post("/api/v1/users/me/auth-providers/FACEBOOK", json={"credential": "some-id-token"})
+        response = client.post("/v1/users/me/auth-providers/FACEBOOK", json={"credential": "some-id-token"})
 
         assert response.status_code == 422
         auth_service.link_provider.assert_not_called()
@@ -139,14 +139,14 @@ def describe_disconnect_provider():
     def it_returns_204_when_disconnected(client: TestClient, auth_service: AsyncMock):
         auth_service.disconnect_provider.return_value = None
 
-        response = client.delete("/api/v1/users/me/auth-providers/GOOGLE")
+        response = client.delete("/v1/users/me/auth-providers/GOOGLE")
 
         assert response.status_code == 204
 
     def it_returns_404_when_not_linked(client: TestClient, auth_service: AsyncMock):
         auth_service.disconnect_provider.side_effect = AuthProviderNotLinkedError("not linked")
 
-        response = client.delete("/api/v1/users/me/auth-providers/GOOGLE")
+        response = client.delete("/v1/users/me/auth-providers/GOOGLE")
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "AUTH_PROVIDER_NOT_LINKED"
@@ -154,7 +154,7 @@ def describe_disconnect_provider():
     def it_returns_409_when_it_is_the_last_authentication_method(client: TestClient, auth_service: AsyncMock):
         auth_service.disconnect_provider.side_effect = LastAuthenticationMethodError("last one")
 
-        response = client.delete("/api/v1/users/me/auth-providers/GOOGLE")
+        response = client.delete("/v1/users/me/auth-providers/GOOGLE")
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "LAST_AUTHENTICATION_METHOD"
@@ -166,7 +166,7 @@ def describe_update_profile():
             name="Alice Sparkle", username="new_alice", email="alice@example.com"
         )
 
-        response = client.patch("/api/v1/users/me", json={"name": "Alice Sparkle", "username": "new_alice"})
+        response = client.patch("/v1/users/me", json={"name": "Alice Sparkle", "username": "new_alice"})
 
         assert response.status_code == 200
         body = response.json()
@@ -176,13 +176,13 @@ def describe_update_profile():
     def it_returns_409_when_the_username_is_taken(client: TestClient, user_service: AsyncMock):
         user_service.update_profile.side_effect = UsernameAlreadyExistsError("taken")
 
-        response = client.patch("/api/v1/users/me", json={"username": "taken"})
+        response = client.patch("/v1/users/me", json={"username": "taken"})
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "USERNAME_ALREADY_EXISTS"
 
     def it_returns_422_when_no_fields_are_provided(client: TestClient, user_service: AsyncMock):
-        response = client.patch("/api/v1/users/me", json={})
+        response = client.patch("/v1/users/me", json={})
 
         assert response.status_code == 422
         user_service.update_profile.assert_not_called()
@@ -197,7 +197,7 @@ def describe_change_password():
         )
 
         response = client.put(
-            "/api/v1/users/me/password",
+            "/v1/users/me/password",
             json={"current_password": "old-secret", "new_password": "new-secret-1"},
         )
 
@@ -213,7 +213,7 @@ def describe_change_password():
         auth_service.change_password.side_effect = IncorrectPasswordError("wrong")
 
         response = client.put(
-            "/api/v1/users/me/password",
+            "/v1/users/me/password",
             json={"current_password": "wrong-secret", "new_password": "new-secret-1"},
         )
 
@@ -222,7 +222,7 @@ def describe_change_password():
 
     def it_returns_422_when_the_new_password_is_too_short(client: TestClient, auth_service: AsyncMock):
         response = client.put(
-            "/api/v1/users/me/password",
+            "/v1/users/me/password",
             json={"current_password": "old-secret", "new_password": "short"},
         )
 
@@ -236,7 +236,7 @@ def describe_change_password():
             access_token="new-access-token", refresh_token="new-refresh-token"
         )
 
-        response = client.put("/api/v1/users/me/password", json={"new_password": "new-secret-1"})
+        response = client.put("/v1/users/me/password", json={"new_password": "new-secret-1"})
 
         assert response.status_code == 200
         auth_service.change_password.assert_awaited_once_with(current_user.id, None, "new-secret-1")
@@ -246,7 +246,7 @@ def describe_mark_book_read():
     def it_returns_204_on_success(client: TestClient, user_service: AsyncMock, book_repo: AsyncMock):
         book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
 
-        response = client.put("/api/v1/users/me/read-books/google-books__ext-1")
+        response = client.put("/v1/users/me/read-books/google-books__ext-1")
 
         assert response.status_code == 204
         user_service.mark_book_read.assert_awaited_once()
@@ -256,7 +256,7 @@ def describe_mark_book_read():
     ):
         book_repo.find_id_by_identifier.return_value = None
 
-        response = client.put("/api/v1/users/me/read-books/google-books__missing")
+        response = client.put("/v1/users/me/read-books/google-books__missing")
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
