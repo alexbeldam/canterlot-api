@@ -336,7 +336,7 @@ def _print_summary(summary: SeedSummary) -> None:
     print(f"  password: {SEED_PASSWORD}")
     print(f"  {LINKED_GOOGLE_USERNAME} also has a fake linked Google provider (GET/DELETE /users/me/auth-providers)")
     print()
-    print(f'  curl -X POST /api/v1/auth/login -d "username=rarity&password={SEED_PASSWORD}"')
+    print(f'  curl -X POST /v1/auth/login -d "username=rarity&password={SEED_PASSWORD}"')
     print()
 
     for club in (summary.club_a, summary.club_b, summary.club_c, summary.club_d):
@@ -355,20 +355,20 @@ def _print_summary(summary: SeedSummary) -> None:
     print()
 
     print("Try it out, e.g.:")
-    print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=title&sort_direction=ASC")
-    print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=year&sort_direction=DESC")
-    print(f"  GET /api/v1/clubs/{summary.club_a.slug}/catalog/?sort_by=suggested_at&page=2")
-    print(f"  PATCH /api/v1/clubs/{summary.club_b.slug}/pending-approvals/twilightsparkle (as applejack -> approve)")
-    print(f"  DELETE /api/v1/clubs/{summary.club_b.slug}/ownership-transfers/current (as rarity, within 24h)")
-    print(f"  PATCH /api/v1/invites/{summary.club_b.public_invite_id} (as pinkiepie -> 202 PENDING_APPROVAL)")
+    print(f"  GET /v1/clubs/{summary.club_a.slug}/catalog/?sort_by=title&sort_direction=ASC")
+    print(f"  GET /v1/clubs/{summary.club_a.slug}/catalog/?sort_by=year&sort_direction=DESC")
+    print(f"  GET /v1/clubs/{summary.club_a.slug}/catalog/?sort_by=suggested_at&page=2")
+    print(f"  PATCH /v1/clubs/{summary.club_b.slug}/pending-approvals/twilightsparkle (as applejack -> approve)")
+    print(f"  DELETE /v1/clubs/{summary.club_b.slug}/ownership-transfers/current (as rarity, within 24h)")
+    print(f"  PATCH /v1/invites/{summary.club_b.public_invite_id} (as pinkiepie -> 202 PENDING_APPROVAL)")
     print(
-        f'  POST /api/v1/auth/register -d \'{{"invite_id": "{summary.direct_invite_id}", ...}}\' '
+        f'  POST /v1/auth/register -d \'{{"invite_id": "{summary.direct_invite_id}", ...}}\' '
         f"(email={DIRECT_INVITE_EMAIL} -> JOINED)"
     )
-    print(f"  POST /api/v1/clubs/{summary.club_c.slug}/catalog/ (as pinkiepie -> 403 ClubSuggestionsClosedError)")
-    print(f"  PUT /api/v1/clubs/{summary.club_b.slug}/members/rainbowdash/role (as applejack -> promote to ADMIN)")
-    print(f"  DELETE /api/v1/clubs/{summary.club_a.slug}/members/me (as pinkiepie -> leaves voluntarily)")
-    print(f"  DELETE /api/v1/clubs/{summary.club_d.slug} (as rainbowdash -> dissolves the club entirely)")
+    print(f"  POST /v1/clubs/{summary.club_c.slug}/catalog/ (as pinkiepie -> 403 ClubSuggestionsClosedError)")
+    print(f"  PUT /v1/clubs/{summary.club_b.slug}/members/rainbowdash/role (as applejack -> promote to ADMIN)")
+    print(f"  DELETE /v1/clubs/{summary.club_a.slug}/members/me (as pinkiepie -> leaves voluntarily)")
+    print(f"  DELETE /v1/clubs/{summary.club_d.slug} (as rainbowdash -> dissolves the club entirely)")
 
 
 async def seed() -> None:

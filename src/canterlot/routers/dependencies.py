@@ -41,7 +41,7 @@ from canterlot.services import AuthService, BookService, CatalogService, ClubSer
 from canterlot.utils import decode_jwt_payload
 from canterlot.utils.format import ISBNStr
 
-LOGIN_PATH = "/api/v1/auth/login"
+LOGIN_PATH = "/v1/auth/login"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
 
 

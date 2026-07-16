@@ -7,7 +7,7 @@ from .clubs import router as clubs
 from .invites import router as invites
 from .users import auth_providers_router, profile_router, read_books_router, users_router
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/v1")
 
 router.include_router(auth)
 router.include_router(books)

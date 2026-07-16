@@ -16,7 +16,7 @@ def describe_set_refresh_token_cookie():
         assert "HttpOnly" in set_cookie
         assert "Secure" in set_cookie
         assert "samesite=strict" in set_cookie.lower()
-        assert "Path=/api/v1/auth" in set_cookie
+        assert "Path=/v1/auth" in set_cookie
         assert f"Max-Age={expected_max_age}" in set_cookie
 
 
@@ -29,5 +29,5 @@ def describe_clear_refresh_token_cookie():
         set_cookie = response.headers.get("set-cookie", "")
         assert 'refresh_token=""' in set_cookie
         assert "Max-Age=0" in set_cookie
-        assert "Path=/api/v1/auth" in set_cookie
+        assert "Path=/v1/auth" in set_cookie
         assert "samesite=strict" in set_cookie.lower()

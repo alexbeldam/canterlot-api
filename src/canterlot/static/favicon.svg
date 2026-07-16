@@ -1,0 +1,12 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="midnight" x1="10%" y1="0%" x2="75%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#2E1065"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="128" fill="url(#midnight)"/>
+  <g transform="translate(128 128) scale(0.62) translate(-128 -128)">
+    <path d="M87.2266 13C75.1118 31.7917 68.0811 54.1706 68.0811 78.1914C68.0813 144.727 122.02 198.665 188.556 198.665C206.489 198.665 223.507 194.745 238.801 187.717C217.358 220.976 179.989 243 137.475 243C70.9387 243 17 189.062 17 122.525C17.0001 73.924 45.7802 32.046 87.2266 13Z" fill="#F7F5FA"/>
+  </g>
+</svg>

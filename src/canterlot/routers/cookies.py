@@ -3,7 +3,7 @@ from fastapi import Response
 from canterlot.config import get_settings
 
 REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
-REFRESH_TOKEN_COOKIE_PATH = "/api/v1/auth"
+REFRESH_TOKEN_COOKIE_PATH = "/v1/auth"
 
 
 def set_refresh_token_cookie(response: Response, token: str) -> None:

@@ -145,6 +145,8 @@ async def register(
             await invite_service.register_invite_usage(payload.invite_id)
 
     set_refresh_token_cookie(response, res.refresh_token)
+    response.headers["Location"] = "/v1/users/me"
+
     return RegisterResponse(access_token=res.access_token, onboarding=onboarding)
 
 

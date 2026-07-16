@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://img.icons8.com/color/128/000000/book.png" width="100" alt="Canterlot Logo">
+  <img src="src/canterlot/static/favicon.svg" width="100" alt="Canterlot Logo">
 </p>
 
-<h1 align="center"><strong>Canterlot API 📚</strong></h1>
+<h1 align="center"><strong>Canterlot API 🌙</strong></h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" />
@@ -84,7 +84,7 @@ Toda a gestão do projeto é centralizada via `just`. Você não precisa ativar 
 
 <h2 id="rotas-principais">📍 Endpoints Principais da API</h2>
 
-A documentação interativa e completa (Swagger UI) fica disponível em `/docs` com o servidor rodando — é sempre a fonte da verdade sobre o contrato exato de cada rota. A tabela abaixo reflete apenas o que está **realmente implementado hoje**, com testes automatizados. Todas as rotas são montadas sob o prefixo `/api/v1`.
+A documentação interativa e completa (Swagger UI) fica disponível em `/docs` com o servidor rodando — é sempre a fonte da verdade sobre o contrato exato de cada rota. A tabela abaixo reflete apenas o que está **realmente implementado hoje**, com testes automatizados. Todas as rotas são montadas sob o prefixo `/v1`.
 
 ### Autenticação
 
@@ -183,4 +183,4 @@ Essa restrição converte-se automaticamente, na "Change Date" especificada no f
 
 ---
 
-<p align="center">Feito com 📖</p>
+<p align="center">Feito com ⭐</p>

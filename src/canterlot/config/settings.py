@@ -7,7 +7,12 @@ from .enums import Environment
 
 class Settings(BaseSettings):
     environment: Environment = Environment.LOCAL
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = [
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
     google_books_api_key: str
     google_oauth_client_id: str | None = None
     jwt_secret_key: str
