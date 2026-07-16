@@ -5,11 +5,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from canterlot.dto.auth import AccessTokenResponse, CreateSessionRequest
 from canterlot.exceptions import (
+    ClubNotFoundError,
     GatewayConfigurationError,
     InvalidCredentialsError,
+    InvalidInviteTokenError,
     InvalidOAuthCredentialError,
+    InviteLinkDeactivatedError,
     OAuthAccountCreationConflictError,
     OAuthLinkRequiredError,
+    RateLimitExceededError,
     TokenExpiredError,
     TokenMalformedError,
 )
@@ -20,11 +24,17 @@ from canterlot.routers.cookies import clear_refresh_token_cookie, set_refresh_to
 from canterlot.routers.dependencies import (
     RefreshTokenContext,
     get_auth_service,
+    get_invite_service,
     get_optional_refresh_token_context,
     get_user_id_from_valid_refresh_token,
+    rate_limit_login_attempt,
+    rate_limit_refresh_attempt,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import AuthService
+from canterlot.services import AuthService, InviteService
+from canterlot.utils import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -33,6 +43,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     "/sessions",
     operation_id="createSession",
     response_model=AccessTokenResponse,
+    dependencies=[Depends(rate_limit_login_attempt)],
     responses={
         status.HTTP_200_OK: {
             "description": (
@@ -72,6 +83,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
                 "requires provider+credential), or `provider` is not a recognized authentication provider."
             )
         },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": (
+                "RateLimitExceededError: Too many sign-in attempts, either from this IP address or "
+                "against this account (PASSWORD sessions only -- OAUTH is limited by IP alone)."
+            ),
+            "content": error_example(RateLimitExceededError),
+        },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
             "description": "Unexpected global backend execution failure or persistence error.",
@@ -88,6 +107,7 @@ async def create_session(
     payload: CreateSessionRequest,
     response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    invite_service: Annotated[InviteService, Depends(get_invite_service)],
 ) -> AccessTokenResponse:
     if payload.type is SessionType.PASSWORD:
         login_result = await auth_service.login_user(
@@ -106,9 +126,29 @@ async def create_session(
         response.status_code = status.HTTP_201_CREATED
         response.headers["Location"] = "/v1/users/me"
 
+        if payload.invite_id:
+            await _attribute_oauth_referral(payload.invite_id, payload.invited_by, invite_service, auth_service)
+
     set_refresh_token_cookie(response, oauth_result.refresh_token)
 
     return AccessTokenResponse(access_token=oauth_result.access_token)
+
+
+async def _attribute_oauth_referral(
+    invite_id: str,
+    invited_by: UsernameStr | None,
+    invite_service: InviteService,
+    auth_service: AuthService,
+) -> None:
+    log = logger.bind(invite_id=invite_id)
+    try:
+        preview = await invite_service.get_preview_metadata(invite_id, invited_by=invited_by)
+    except (InvalidInviteTokenError, InviteLinkDeactivatedError, ClubNotFoundError):
+        log.warn("Skipping referral attribution: invite could not be resolved for this new account")
+        return
+
+    if preview.invited_by_username:
+        await auth_service.attribute_referral(preview.invited_by_username)
 
 
 @router.post(
@@ -135,6 +175,7 @@ async def login(
     "/sessions/current",
     operation_id="rotateSession",
     response_model=AccessTokenResponse,
+    dependencies=[Depends(rate_limit_refresh_attempt)],
     responses={
         status.HTTP_200_OK: {
             "description": (
@@ -157,6 +198,11 @@ async def login(
                 "the token has already been revoked or invalidated."
             ),
             "content": error_example(TokenExpiredError, InvalidCredentialsError),
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": "RateLimitExceededError: Too many session-refresh attempts from this IP address.",
+            "content": error_example(RateLimitExceededError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,

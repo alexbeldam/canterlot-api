@@ -1,0 +1,79 @@
+
+name: "Pipeline | Prepare Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview the next version/changelog only - no commit, tag, push, or promotion to main"
+        type: boolean
+        default: true
+      force_major:
+        description: "Force a major version bump (e.g. cutting 1.0.0) regardless of commit analysis"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Version, Tag, and Promote to Main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Release App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install uv Ecosystem Manager
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Dependencies
+        run: uv sync --dev
+
+      - name: Preview Next Version and Changelog
+        if: ${{ inputs.dry_run }}
+        run: |
+          uv run semantic-release --noop version --print
+          uv run semantic-release --noop changelog
+
+      - name: Bump Version, Update Changelog, Commit, Tag, Push, and Publish Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BOT_NAME: "${{ steps.app-token.outputs.app-slug }}[bot]"
+          BOT_EMAIL: "${{ secrets.RELEASE_APP_ID }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+          export GIT_COMMIT_AUTHOR="$BOT_NAME <$BOT_EMAIL>"
+
+          uv run semantic-release version \
+            --commit --tag --changelog --push --vcs-release --skip-build \
+            ${{ inputs.force_major && '--major' || '' }}
+
+      - name: Promote develop to Main
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git fetch origin main
+          if git merge-base --is-ancestor origin/main HEAD; then
+            git push origin HEAD:main
+          else
+            echo "main has commits not present on develop - refusing to fast-forward." >&2
+            exit 1
+          fi

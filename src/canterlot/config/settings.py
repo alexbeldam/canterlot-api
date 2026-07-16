@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     redis_url: str
     club_ownership_action_rate_limit: int = 10
     club_ownership_action_rate_limit_window_seconds: int = 3600
+    auth_register_rate_limit: int = 5
+    auth_register_rate_limit_window_seconds: int = 3600
+    auth_oauth_signin_rate_limit: int = 20
+    auth_oauth_signin_rate_limit_window_seconds: int = 3600
+    auth_login_ip_rate_limit: int = 20
+    auth_login_account_rate_limit: int = 10
+    auth_login_rate_limit_window_seconds: int = 900
+    auth_refresh_rate_limit: int = 30
+    auth_refresh_rate_limit_window_seconds: int = 60
     current_terms_version: int = 1
     current_privacy_version: int = 1
 

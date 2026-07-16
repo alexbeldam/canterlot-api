@@ -101,8 +101,7 @@ class AuthService:
         log = log.bind(user_id=str(user_id))
 
         if invited_by:
-            log.info("Processing referral growth attribution")
-            await self.__user_repo.increment_referral_count_by_username(invited_by)
+            await self.attribute_referral(invited_by)
 
         tokens = self.__create_tokens(user_id)
         await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
@@ -113,6 +112,11 @@ class AuthService:
             refresh_token=tokens.refresh_token,
             user_id=user_id,
         )
+
+    async def attribute_referral(self, username: UsernameStr) -> None:
+        log = logger.bind(invited_by=username)
+        log.info("Processing referral growth attribution")
+        await self.__user_repo.increment_referral_count_by_username(username)
 
     async def login_user(self, username: UsernameStr, plain_password: str) -> TokenResponse:
         log = logger.bind(username=username)

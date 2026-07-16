@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from beanie import PydanticObjectId
@@ -457,3 +457,43 @@ def describe_set_generated_avatar_seed():
 
     async def it_returns_false_for_a_nonexistent_user():
         assert await repo.set_generated_avatar_seed(PydanticObjectId(), "new-seed") is False
+
+
+def describe_touch_last_seen():
+    async def it_stamps_last_seen_at_for_a_user_who_was_never_seen_before():
+        user = await _user()
+        now = datetime.now(UTC)
+
+        await repo.touch_last_seen(_id(user), now)
+
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.last_seen_at is not None
+        assert abs((found.last_seen_at.replace(tzinfo=UTC) - now).total_seconds()) < 5
+
+    async def it_updates_last_seen_at_once_the_prior_stamp_is_more_than_a_day_old():
+        stale = datetime.now(UTC) - timedelta(days=2)
+        user = await _user(last_seen_at=stale)
+        now = datetime.now(UTC)
+
+        await repo.touch_last_seen(_id(user), now)
+
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.last_seen_at is not None
+        assert abs((found.last_seen_at.replace(tzinfo=UTC) - now).total_seconds()) < 5
+
+    async def it_does_not_overwrite_a_stamp_from_earlier_today():
+        recent = datetime.now(UTC) - timedelta(hours=1)
+        user = await _user(last_seen_at=recent)
+        before = await repo.find_by_id(_id(user))
+        assert before is not None
+
+        await repo.touch_last_seen(_id(user), datetime.now(UTC))
+
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.last_seen_at == before.last_seen_at
+
+    async def it_is_a_no_op_for_a_nonexistent_user():
+        await repo.touch_last_seen(PydanticObjectId(), datetime.now(UTC))

@@ -137,6 +137,7 @@ async def get_club_catalog(
         sort_by=filters.sort_by,
         sort_direction=filters.sort_direction,
         suggested_by=filters.suggested_by,
+        q=filters.q,
     )
 
 

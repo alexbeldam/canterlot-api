@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from beanie import Document, Indexed, PydanticObjectId
@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 from canterlot.utils.format import LanguageStr, NonEmptyStr
 
 from .enums import JoinPolicy, MemberRole
+
+OWNERSHIP_TRANSFER_COOLDOWN = timedelta(days=30)
+OWNERSHIP_RECLAIM_WINDOW = timedelta(hours=24)
 
 type ClubNameStr = Annotated[
     NonEmptyStr,

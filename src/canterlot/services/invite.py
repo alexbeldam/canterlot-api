@@ -118,7 +118,7 @@ class InviteService:
     def __assert_not_expired(self, invite: InviteModel, log) -> None:
         if invite.expires_at and invite.expires_at < datetime.now(UTC):
             log.warn("Validation failed: ticket lifetime exceeded")
-            raise InviteLinkDeactivatedError("This direct invitation has expired.")
+            raise InviteLinkDeactivatedError("This invitation link has expired.")
 
     def __assert_direct_identity_matches(
         self,

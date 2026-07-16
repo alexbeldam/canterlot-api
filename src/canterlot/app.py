@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from importlib.metadata import version as get_distribution_version
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
+from canterlot.middleware import LastSeenMiddleware
 from canterlot.routers import router
 from canterlot.routers.errors import register_error_handlers
 from canterlot.routers.health import health_router
@@ -59,7 +61,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="CanterlotAPI",
         description="API for a Book Club management system",
-        version="0.1.0",
+        version=get_distribution_version("CanterlotAPI"),
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
@@ -73,6 +75,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(LastSeenMiddleware)
 
     register_error_handlers(app)
     app.include_router(router)

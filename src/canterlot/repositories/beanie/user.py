@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import cast
 
 from beanie import PydanticObjectId
@@ -184,3 +184,10 @@ class BeanieUserRepository(UserRepository):
                 }
             }
         )
+
+    async def touch_last_seen(self, user_id: PydanticObjectId, now: datetime) -> None:
+        stale_before = now - timedelta(days=1)
+        await UserModel.find_one(
+            UserModel.id == user_id,
+            {"$or": [{"last_seen_at": None}, {"last_seen_at": {"$lt": stale_before}}]},
+        ).update_one({"$set": {UserModel.last_seen_at: now}})

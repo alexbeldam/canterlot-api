@@ -145,6 +145,35 @@ def describe_create_session_request():
                 username="alice_1",
             )
 
+    def it_accepts_an_oauth_session_with_invite_context():
+        request = CreateSessionRequest(
+            type=SessionType.OAUTH,
+            provider=AuthProviderName.GOOGLE,
+            credential="some-id-token",
+            invite_id="some-invite-id",
+            invited_by="alice_1",
+        )
+        assert request.invite_id == "some-invite-id"
+        assert request.invited_by == "alice_1"
+
+    def it_rejects_a_password_session_with_invite_id_set():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(
+                type=SessionType.PASSWORD,
+                username="alice_1",
+                password="secret1",
+                invite_id="some-invite-id",
+            )
+
+    def it_rejects_a_password_session_with_invited_by_set():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(
+                type=SessionType.PASSWORD,
+                username="alice_1",
+                password="secret1",
+                invited_by="bob_2",
+            )
+
 
 def describe_access_token_response():
     def it_defaults_the_token_type_to_bearer():

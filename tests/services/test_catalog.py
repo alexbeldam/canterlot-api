@@ -353,6 +353,26 @@ def describe_get_catalog_page():
             sort_by=None,
             sort_direction=SortDirection.DESC,
             suggested_by=SOME_USER_ID,
+            q=None,
+        )
+
+    async def it_passes_the_free_text_query_through_to_the_repository(
+        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.exists_by_club_id_and_member_user_id.return_value = True
+        club_repo.find_catalog_page_by_club_id.return_value = _page([])
+        service = _service(book_repo, club_repo, link_provider, user_repo)
+
+        await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC, q="gatsby")
+
+        club_repo.find_catalog_page_by_club_id.assert_awaited_once_with(
+            club_id=SOME_CLUB_ID,
+            page=1,
+            limit=20,
+            sort_by=None,
+            sort_direction=SortDirection.DESC,
+            suggested_by=None,
+            q="gatsby",
         )
 
     async def it_returns_an_empty_page_when_the_suggested_by_filter_does_not_resolve(
