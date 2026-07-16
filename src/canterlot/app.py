@@ -9,6 +9,7 @@ from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
 from canterlot.routers import router
 from canterlot.routers.errors import register_error_handlers
+from canterlot.routers.webhooks import webhooks_router
 from canterlot.utils import setup_logging
 
 
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
     app.include_router(router)
+    app.include_router(webhooks_router, include_in_schema=False)
     app.openapi = lambda: custom_openapi(app)  # type: ignore[method-assign]
 
     @app.get("/", include_in_schema=False)
