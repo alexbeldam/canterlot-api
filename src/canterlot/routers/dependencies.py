@@ -28,16 +28,32 @@ from canterlot.models.user import UsernameStr
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
 from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
 from canterlot.providers.risc import GoogleRiscVerifier
-from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
+from canterlot.repositories import (
+    BookRepository,
+    CacheRepository,
+    ClubRepository,
+    DatabaseRepository,
+    InviteRepository,
+    UserRepository,
+)
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
     BeanieClubRepository,
+    BeanieDatabaseRepository,
     BeanieInviteRepository,
     BeanieUserRepository,
 )
-from canterlot.repositories.redis import RedisCacheRepository
+from canterlot.repositories.redis import RedisRepository
 from canterlot.routers.cookies import REFRESH_TOKEN_COOKIE_NAME
-from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService, UserService
+from canterlot.services import (
+    AuthService,
+    BookService,
+    CatalogService,
+    ClubService,
+    HealthService,
+    InviteService,
+    UserService,
+)
 from canterlot.utils import decode_jwt_payload
 from canterlot.utils.format import ISBNStr
 
@@ -62,7 +78,7 @@ async def get_curl_cffi_session() -> AsyncGenerator[AsyncSession]:
 
 
 def get_cache_repository(redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)]) -> CacheRepository:
-    return RedisCacheRepository(redis_client)
+    return RedisRepository(redis_client)
 
 
 def get_book_repository() -> BookRepository:
@@ -79,6 +95,12 @@ def get_user_repository() -> UserRepository:
 
 def get_invite_repository() -> InviteRepository:
     return BeanieInviteRepository()
+
+
+def get_database_repositories(
+    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+) -> list[DatabaseRepository]:
+    return [BeanieDatabaseRepository(), RedisRepository(redis_client)]
 
 
 def get_book_providers(session: Annotated[AsyncSession, Depends(get_curl_cffi_session)]) -> list[BookProvider]:
@@ -147,6 +169,12 @@ async def get_invite_service(
 
 async def get_user_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]):
     return UserService(user_repo)
+
+
+async def get_health_service(
+    database_repos: Annotated[list[DatabaseRepository], Depends(get_database_repositories)],
+) -> HealthService:
+    return HealthService(database_repos)
 
 
 async def get_club_id_from_slug(

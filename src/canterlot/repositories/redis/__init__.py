@@ -1,5 +1,5 @@
-from .cache import RedisCacheRepository
+from .repository import RedisRepository
 
 __all__ = [
-    "RedisCacheRepository",
+    "RedisRepository",
 ]
