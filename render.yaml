@@ -13,7 +13,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: prod
       - key: CURRENT_TERMS_VERSION
         value: "1"
       - key: CURRENT_PRIVACY_VERSION
