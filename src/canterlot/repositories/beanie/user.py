@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import cast
 
 from beanie import PydanticObjectId
@@ -150,6 +151,28 @@ class BeanieUserRepository(UserRepository):
 
         result = await UserModel.find_one(UserModel.id == user_id).update_one({"$set": updates})
 
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def set_legal_acceptance(
+        self,
+        user_id: PydanticObjectId,
+        terms_version: int,
+        terms_at: datetime,
+        privacy_version: int,
+        privacy_at: datetime,
+        profile_completed_at: datetime,
+    ) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id).update_one(
+            {
+                "$set": {
+                    UserModel.accepted_terms_version: terms_version,
+                    UserModel.accepted_terms_at: terms_at,
+                    UserModel.accepted_privacy_version: privacy_version,
+                    UserModel.accepted_privacy_at: privacy_at,
+                    UserModel.profile_completed_at: profile_completed_at,
+                }
+            }
+        )
         return cast(UpdateResult, result).matched_count > 0
 
     async def change_password(self, user_id: PydanticObjectId, hashed_password: str, new_refresh_token: str) -> None:

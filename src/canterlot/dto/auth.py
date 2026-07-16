@@ -13,6 +13,8 @@ class UserRegisterRequest(BaseModel):
     username: UsernameStr
     email: NormalizedEmailStr
     password: str = Field(..., min_length=6, examples=["super_secret_password_123"])
+    terms_version: int = Field(..., description="The `**Version:** N` of the Terms of Service being accepted.")
+    privacy_version: int = Field(..., description="The `**Version:** N` of the Privacy Policy being accepted.")
     invite_id: str | None = None
     invited_by: UsernameStr | None = None
 

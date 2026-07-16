@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     redis_url: str
     club_ownership_action_rate_limit: int = 10
     club_ownership_action_rate_limit_window_seconds: int = 3600
+    current_terms_version: int = 1
+    current_privacy_version: int = 1
 
     model_config = SettingsConfigDict(
         env_file=".env",

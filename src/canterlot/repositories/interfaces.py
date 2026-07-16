@@ -173,6 +173,15 @@ class UserRepository(Protocol):
     async def set_avatar(self, user_id: PydanticObjectId, avatar: AvatarSchema) -> bool: ...
     async def clear_avatar(self, user_id: PydanticObjectId) -> bool: ...
     async def set_generated_avatar_seed(self, user_id: PydanticObjectId, seed: str) -> bool: ...
+    async def set_legal_acceptance(
+        self,
+        user_id: PydanticObjectId,
+        terms_version: int,
+        terms_at: datetime,
+        privacy_version: int,
+        privacy_at: datetime,
+        profile_completed_at: datetime,
+    ) -> bool: ...
 
 
 class InviteRepository(Protocol):

@@ -53,6 +53,11 @@ class UserModel(Document):
     refresh_tokens: list[str] = Field(default_factory=list)
     books_read: list[ReadBook] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    accepted_terms_version: int | None = None
+    accepted_terms_at: datetime | None = None
+    accepted_privacy_version: int | None = None
+    accepted_privacy_at: datetime | None = None
+    profile_completed_at: datetime | None = None
 
     class Settings:
         name = "users"

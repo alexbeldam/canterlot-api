@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
 from pydantic import BaseModel, HttpUrl
 
+from canterlot.config import get_settings
 from canterlot.dto.auth import ConnectedProvidersResponse, TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
@@ -14,6 +16,7 @@ from canterlot.exceptions import (
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
     OAuthLinkRequiredError,
+    StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models import AuthOutcome, AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
@@ -71,11 +74,25 @@ class AuthService:
             log.warn("Registration rejected: email conflict", reason="email_registered")
             raise EmailAlreadyExistsError(f"Email '{request.email}' is already registered.")
 
+        settings = get_settings()
+        if (
+            request.terms_version != settings.current_terms_version
+            or request.privacy_version != settings.current_privacy_version
+        ):
+            log.warn("Registration rejected: submitted legal document version is stale")
+            raise StaleLegalVersionError("The submitted terms/privacy version is out of date; reload and try again.")
+
+        now = datetime.now(UTC)
         user = UserModel(
             name=request.name,
             username=request.username,
             email=request.email,
             hashed_password=hash_password(request.password),
+            accepted_terms_version=request.terms_version,
+            accepted_terms_at=now,
+            accepted_privacy_version=request.privacy_version,
+            accepted_privacy_at=now,
+            profile_completed_at=now,
         )
 
         saved_user = await self.__user_repo.save(user)
