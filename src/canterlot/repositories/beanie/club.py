@@ -209,9 +209,6 @@ class BeanieClubRepository(ClubRepository):
 
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.pending_approvals: entry}))
 
-    async def add_to_banned_users(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
-        await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.banned_users: user_id}))
-
     async def add_to_catalog(self, club_id: PydanticObjectId, entry: CatalogEntryModel) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).update_one(Push({ClubModel.catalog: entry}))
 

@@ -339,18 +339,6 @@ def describe_add_to_pending_approvals():
         assert [p.user_id for p in found.pending_approvals] == [user_id]
 
 
-def describe_add_to_banned_users():
-    async def it_appends_a_banned_user():
-        club = await _club()
-        user_id = PydanticObjectId()
-
-        await repo.add_to_banned_users(_id(club), user_id)
-
-        found = await repo.find_by_id(_id(club))
-        assert found is not None
-        assert found.banned_users == [user_id]
-
-
 def describe_add_to_catalog():
     async def it_appends_a_catalog_entry():
         club = await _club()
