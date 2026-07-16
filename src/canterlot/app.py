@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="CanterlotAPI",
         description="API for a Book Club management system",
-        version="1.0.0",
+        version="0.1.0",
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
