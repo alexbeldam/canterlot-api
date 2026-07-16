@@ -2,7 +2,7 @@ services:
   - type: web
     name: canterlot-api
     runtime: python
-    plan: starter
+    plan: free
     branch: main
     autoDeploy: true
     buildCommand: |
