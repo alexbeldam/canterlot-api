@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "API for a Book Club management system"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "AGPL-3.0-or-later" }
+license = { text = "BUSL-1.1" }
 
 authors = [{ name = "Alex Beldam Souza", email = "alex.beldam@gmail.com" }]
 
