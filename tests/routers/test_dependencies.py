@@ -16,14 +16,22 @@ from canterlot.models.enums import AuthProviderName
 from canterlot.providers import BookProvider, GoogleBookProvider, LinkProvider
 from canterlot.providers.annas import AnnaLinkProvider
 from canterlot.providers.auth import GoogleAuthProvider
-from canterlot.repositories import BookRepository, CacheRepository, ClubRepository, InviteRepository, UserRepository
+from canterlot.repositories import (
+    BookRepository,
+    CacheRepository,
+    ClubRepository,
+    DatabaseRepository,
+    InviteRepository,
+    UserRepository,
+)
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
     BeanieClubRepository,
+    BeanieDatabaseRepository,
     BeanieInviteRepository,
     BeanieUserRepository,
 )
-from canterlot.repositories.redis import RedisCacheRepository
+from canterlot.repositories.redis import RedisRepository
 from canterlot.routers.dependencies import (
     LOGIN_PATH,
     RefreshTokenContext,
@@ -40,6 +48,8 @@ from canterlot.routers.dependencies import (
     get_curl_cffi_session,
     get_current_user,
     get_current_user_id,
+    get_database_repositories,
+    get_health_service,
     get_invite_repository,
     get_invite_service,
     get_link_providers,
@@ -51,7 +61,7 @@ from canterlot.routers.dependencies import (
     oauth2_scheme,
     rate_limit_club_owner_action,
 )
-from canterlot.services import AuthService, BookService, CatalogService, ClubService, InviteService
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, HealthService, InviteService
 from canterlot.utils.security import create_access_token, create_jwt_token, create_refresh_token
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -240,13 +250,20 @@ def describe_rate_limit_club_owner_action():
             await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, redis_client=redis_client)
 
     def it_builds_a_redis_backed_cache_repository():
-        assert isinstance(get_cache_repository(AsyncMock()), RedisCacheRepository)
+        assert isinstance(get_cache_repository(AsyncMock()), RedisRepository)
 
     def it_builds_beanie_backed_repositories():
         assert isinstance(get_book_repository(), BeanieBookRepository)
         assert isinstance(get_club_repository(), BeanieClubRepository)
         assert isinstance(get_user_repository(), BeanieUserRepository)
         assert isinstance(get_invite_repository(), BeanieInviteRepository)
+
+    def it_builds_the_database_repositories_used_for_health_checks():
+        repos = get_database_repositories(AsyncMock())
+
+        assert len(repos) == 2
+        assert any(isinstance(repo, BeanieDatabaseRepository) for repo in repos)
+        assert any(isinstance(repo, RedisRepository) for repo in repos)
 
     def it_builds_the_configured_book_providers():
         providers = get_book_providers(AsyncMock(spec=AsyncSession))
@@ -313,6 +330,10 @@ def describe_service_factories():
             user_repo=AsyncMock(spec=UserRepository),
         )
         assert isinstance(service, InviteService)
+
+    async def it_builds_a_health_service():
+        service = await get_health_service(database_repos=[AsyncMock(spec=DatabaseRepository)])
+        assert isinstance(service, HealthService)
 
 
 def describe_oauth2_scheme():
