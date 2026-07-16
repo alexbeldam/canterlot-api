@@ -58,6 +58,7 @@ class UserModel(Document):
     accepted_privacy_version: int | None = None
     accepted_privacy_at: datetime | None = None
     profile_completed_at: datetime | None = None
+    last_seen_at: datetime | None = None
 
     class Settings:
         name = "users"

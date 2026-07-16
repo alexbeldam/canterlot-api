@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
+from canterlot.middleware import LastSeenMiddleware
 from canterlot.routers import router
 from canterlot.routers.errors import register_error_handlers
 from canterlot.routers.health import health_router
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(LastSeenMiddleware)
 
     register_error_handlers(app)
     app.include_router(router)
