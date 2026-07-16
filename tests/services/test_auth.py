@@ -138,6 +138,15 @@ def describe_register_user():
         assert saved_user.badges[0].earned_at is not None
 
 
+def describe_attribute_referral():
+    async def it_increments_the_inviters_referral_count(user_repo: AsyncMock):
+        service = AuthService(user_repo, {})
+
+        await service.attribute_referral("referrer_1")
+
+        user_repo.increment_referral_count_by_username.assert_awaited_once_with("referrer_1")
+
+
 def describe_login_user():
     async def it_issues_tokens_for_valid_credentials(user_repo: AsyncMock):
         hashed = hash_password("secret1")

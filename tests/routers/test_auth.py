@@ -1,18 +1,23 @@
 from typing import cast
 from unittest.mock import AsyncMock
 
+import pytest
 from beanie import PydanticObjectId
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from canterlot.dto.auth import TokenResponse
+from canterlot.dto.invite import InvitePreviewResponse
 from canterlot.exceptions import (
+    ClubNotFoundError,
     GatewayConfigurationError,
     InvalidCredentialsError,
+    InvalidInviteTokenError,
     InvalidOAuthCredentialError,
+    InviteLinkDeactivatedError,
     OAuthLinkRequiredError,
 )
-from canterlot.models.enums import AuthOutcome, AuthProviderName
+from canterlot.models.enums import AuthOutcome, AuthProviderName, InviteType, JoinPolicy
 from canterlot.routers.dependencies import get_optional_refresh_token_context
 from canterlot.services.auth import OAuthSignInResult
 
@@ -91,6 +96,124 @@ def describe_create_session():
         assert response.status_code == 201
         assert response.json()["access_token"] == "access"
         _assert_refresh_cookie_set(response, "refresh")
+
+    def it_attributes_a_referral_when_a_new_oauth_account_resolves_an_inviter(
+        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock
+    ):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
+        )
+        invite_service.get_preview_metadata.return_value = InvitePreviewResponse(
+            club_slug="book-club",
+            club_name="Book Club",
+            join_policy=JoinPolicy.PUBLIC,
+            invite_type=InviteType.PUBLIC,
+            invited_by_username="referrer_1",
+        )
+
+        response = client.post(
+            "/v1/auth/sessions",
+            json={
+                "type": "OAUTH",
+                "provider": "GOOGLE",
+                "credential": "some-id-token",
+                "invite_id": "some-invite-id",
+            },
+        )
+
+        assert response.status_code == 201
+        invite_service.get_preview_metadata.assert_awaited_once_with("some-invite-id", invited_by=None)
+        auth_service.attribute_referral.assert_awaited_once_with("referrer_1")
+
+    def it_does_not_attribute_a_referral_when_the_invite_has_no_resolvable_inviter(
+        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock
+    ):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
+        )
+        invite_service.get_preview_metadata.return_value = InvitePreviewResponse(
+            club_slug="book-club",
+            club_name="Book Club",
+            join_policy=JoinPolicy.PUBLIC,
+            invite_type=InviteType.PUBLIC,
+            invited_by_username=None,
+        )
+
+        response = client.post(
+            "/v1/auth/sessions",
+            json={
+                "type": "OAUTH",
+                "provider": "GOOGLE",
+                "credential": "some-id-token",
+                "invite_id": "some-invite-id",
+            },
+        )
+
+        assert response.status_code == 201
+        auth_service.attribute_referral.assert_not_called()
+
+    def it_does_not_resolve_an_invite_when_none_is_provided(
+        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock
+    ):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
+        )
+
+        response = client.post(
+            "/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 201
+        invite_service.get_preview_metadata.assert_not_called()
+        auth_service.attribute_referral.assert_not_called()
+
+    def it_does_not_resolve_an_invite_for_an_existing_logged_in_oauth_account(
+        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock
+    ):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.LOGGED_IN, access_token="access", refresh_token="refresh"
+        )
+
+        response = client.post(
+            "/v1/auth/sessions",
+            json={
+                "type": "OAUTH",
+                "provider": "GOOGLE",
+                "credential": "some-id-token",
+                "invite_id": "some-invite-id",
+            },
+        )
+
+        assert response.status_code == 200
+        invite_service.get_preview_metadata.assert_not_called()
+        auth_service.attribute_referral.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "resolution_error",
+        [InvalidInviteTokenError("nope"), InviteLinkDeactivatedError("expired"), ClubNotFoundError("gone")],
+    )
+    def it_still_creates_the_account_when_the_invite_cannot_be_resolved(
+        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock, resolution_error: Exception
+    ):
+        auth_service.sign_in_with_provider.return_value = OAuthSignInResult(
+            outcome=AuthOutcome.CREATED, access_token="access", refresh_token="refresh"
+        )
+        invite_service.get_preview_metadata.side_effect = resolution_error
+
+        response = client.post(
+            "/v1/auth/sessions",
+            json={
+                "type": "OAUTH",
+                "provider": "GOOGLE",
+                "credential": "some-id-token",
+                "invite_id": "some-invite-id",
+            },
+        )
+
+        assert response.status_code == 201
+        assert response.json()["access_token"] == "access"
+        auth_service.attribute_referral.assert_not_called()
 
     def it_returns_409_when_the_identity_requires_linking_to_an_existing_account(
         client: TestClient, auth_service: AsyncMock

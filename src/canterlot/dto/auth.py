@@ -49,6 +49,18 @@ class CreateSessionRequest(BaseModel):
         default=None,
         description="The provider's opaque proof-of-ownership token (e.g. a Google ID token).",
     )
+    invite_id: str | None = Field(
+        default=None,
+        description=(
+            "An invitation token this OAuth sign-in arrived from. When it resolves and this sign-in creates a "
+            "new account, the inviter is credited with a referral -- this does not join the club itself, which "
+            "still requires the existing PATCH /invites/{invite_id} once authenticated."
+        ),
+    )
+    invited_by: UsernameStr | None = Field(
+        default=None,
+        description="Fallback inviter username for a public link invite whose creator can't be resolved directly.",
+    )
 
     @model_validator(mode="after")
     def check_required_fields_present(self) -> "CreateSessionRequest":
@@ -64,6 +76,8 @@ class CreateSessionRequest(BaseModel):
         if self.type is SessionType.PASSWORD:
             if self.provider is not None or self.credential is not None:
                 raise ValueError("provider and credential must not be provided for a PASSWORD session")
+            if self.invite_id is not None or self.invited_by is not None:
+                raise ValueError("invite_id and invited_by must not be provided for a PASSWORD session")
         elif self.username is not None or self.password is not None:
             raise ValueError("username and password must not be provided for an OAUTH session")
         return self

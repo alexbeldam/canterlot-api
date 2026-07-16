@@ -5,9 +5,12 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from canterlot.dto.auth import AccessTokenResponse, CreateSessionRequest
 from canterlot.exceptions import (
+    ClubNotFoundError,
     GatewayConfigurationError,
     InvalidCredentialsError,
+    InvalidInviteTokenError,
     InvalidOAuthCredentialError,
+    InviteLinkDeactivatedError,
     OAuthAccountCreationConflictError,
     OAuthLinkRequiredError,
     RateLimitExceededError,
@@ -21,13 +24,17 @@ from canterlot.routers.cookies import clear_refresh_token_cookie, set_refresh_to
 from canterlot.routers.dependencies import (
     RefreshTokenContext,
     get_auth_service,
+    get_invite_service,
     get_optional_refresh_token_context,
     get_user_id_from_valid_refresh_token,
     rate_limit_login_attempt,
     rate_limit_refresh_attempt,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import AuthService
+from canterlot.services import AuthService, InviteService
+from canterlot.utils import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -100,6 +107,7 @@ async def create_session(
     payload: CreateSessionRequest,
     response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    invite_service: Annotated[InviteService, Depends(get_invite_service)],
 ) -> AccessTokenResponse:
     if payload.type is SessionType.PASSWORD:
         login_result = await auth_service.login_user(
@@ -118,9 +126,29 @@ async def create_session(
         response.status_code = status.HTTP_201_CREATED
         response.headers["Location"] = "/v1/users/me"
 
+        if payload.invite_id:
+            await _attribute_oauth_referral(payload.invite_id, payload.invited_by, invite_service, auth_service)
+
     set_refresh_token_cookie(response, oauth_result.refresh_token)
 
     return AccessTokenResponse(access_token=oauth_result.access_token)
+
+
+async def _attribute_oauth_referral(
+    invite_id: str,
+    invited_by: UsernameStr | None,
+    invite_service: InviteService,
+    auth_service: AuthService,
+) -> None:
+    log = logger.bind(invite_id=invite_id)
+    try:
+        preview = await invite_service.get_preview_metadata(invite_id, invited_by=invited_by)
+    except (InvalidInviteTokenError, InviteLinkDeactivatedError, ClubNotFoundError):
+        log.warn("Skipping referral attribution: invite could not be resolved for this new account")
+        return
+
+    if preview.invited_by_username:
+        await auth_service.attribute_referral(preview.invited_by_username)
 
 
 @router.post(
