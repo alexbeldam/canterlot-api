@@ -8,10 +8,12 @@ from datetime import UTC, datetime, timedelta
 import structlog
 from beanie import PydanticObjectId
 from beanie.operators import In, Or, RegEx
+from pydantic import HttpUrl
 
 from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
 from canterlot.config.enums import Environment
+from canterlot.dto.auth import UserRegisterRequest
 from canterlot.dto.club import ClubCreateRequest, ClubSettingsUpdateRequest
 from canterlot.models import BookModel, ClubModel, InviteModel, JoinPolicy, MemberRole, UserModel
 from canterlot.models.book import BookProviderIdentifier
@@ -24,8 +26,7 @@ from canterlot.repositories.beanie import (
     BeanieInviteRepository,
     BeanieUserRepository,
 )
-from canterlot.services import ClubService, InviteService
-from canterlot.utils.security import hash_password
+from canterlot.services import AuthService, ClubService, InviteService
 
 # This goes through the same ClubService/InviteService calls the real routers use, so a freshly
 # seeded club ends up in exactly the state a club created through the API would be in (e.g. it
@@ -34,6 +35,7 @@ from canterlot.utils.security import hash_password
 SEED_PASSWORD = "Password123!"
 SEED_EMAIL_DOMAIN = "seed.canterlot.dev"
 LINKED_GOOGLE_USERNAME = "rarity"
+LINKED_GOOGLE_PICTURE_URL = HttpUrl("https://seed.canterlot.dev/avatars/rarity.jpg")
 DIRECT_INVITE_EMAIL = f"new.reader@{SEED_EMAIL_DOMAIN}"
 
 SEED_USERS: list[tuple[str, str]] = [
@@ -142,29 +144,41 @@ async def _clear_previous_seed() -> None:
     await BookModel.find(In(BookModel.external_id, book_ids)).delete()
 
 
-async def _seed_users() -> dict[str, PydanticObjectId]:
-    hashed = hash_password(SEED_PASSWORD)
+async def _seed_users(auth_service: AuthService, user_repo: BeanieUserRepository) -> dict[str, PydanticObjectId]:
+    settings = get_settings()
     user_ids: dict[str, PydanticObjectId] = {}
 
     for username, name in SEED_USERS:
-        linked_providers = (
-            [LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id=f"seed-google-{username}")]
-            if username == LINKED_GOOGLE_USERNAME
-            else []
+        result = await auth_service.register_user(
+            UserRegisterRequest(
+                name=name,
+                username=username,
+                email=f"{username}@{SEED_EMAIL_DOMAIN}",
+                password=SEED_PASSWORD,
+                terms_version=settings.current_terms_version,
+                privacy_version=settings.current_privacy_version,
+            )
         )
-        user = UserModel(
-            name=name,
-            username=username,
-            email=f"{username}@{SEED_EMAIL_DOMAIN}",
-            hashed_password=hashed,
-            linked_providers=linked_providers,
-        )
-        saved = await user.insert()
-        user_ids[username] = PydanticObjectId(saved.id)
+        user_ids[username] = result.user_id
+
+        if username == LINKED_GOOGLE_USERNAME:
+            # No endpoint links a provider without a real OAuth credential to verify, so this one
+            # falls back to the repository directly, same as the other documented seed exceptions.
+            await user_repo.add_linked_provider(
+                result.user_id,
+                LinkedProviderSchema(
+                    provider=AuthProviderName.GOOGLE,
+                    external_id=f"seed-google-{username}",
+                    picture_url=LINKED_GOOGLE_PICTURE_URL,
+                ),
+            )
 
     return user_ids
 
 
+# CatalogService.suggest_book_to_club is the only path that creates a BookModel, but it does so by
+# scraping live external link providers for missing formats -- unsuitable for deterministic, offline
+# seed data. No other service method creates a book, so this goes straight to the repository.
 async def _insert_books(book_repo: BeanieBookRepository, books: list[SeedBook], prefix: str) -> list[PydanticObjectId]:
     external_ids = _book_external_ids(books, prefix)
     book_ids = []
@@ -184,6 +198,10 @@ async def _insert_books(book_repo: BeanieBookRepository, books: list[SeedBook], 
     return book_ids
 
 
+# Same exception as _insert_books: CatalogService.suggest_book_to_club always stamps suggested_at as
+# datetime.now(), but the shuffled ordering above (see CLUB_A_BOOKS's comment) needs staggered
+# historical timestamps to make sort_by=suggested_at pagination demonstrable, so this writes directly
+# through the repository instead.
 async def _populate_catalog(
     club_repo: BeanieClubRepository,
     club_id: PydanticObjectId,
@@ -379,10 +397,11 @@ async def seed() -> None:
         club_repo = BeanieClubRepository()
         user_repo = BeanieUserRepository()
         invite_repo = BeanieInviteRepository()
+        auth_service = AuthService(user_repo, {})
         club_service = ClubService(club_repo, user_repo)
         invite_service = InviteService(invite_repo, club_repo, user_repo)
 
-        user_ids = await _seed_users()
+        user_ids = await _seed_users(auth_service, user_repo)
 
         club_a = await _build_club_a(club_service, invite_service, book_repo, club_repo, user_ids)
         club_b, direct_invite_id = await _build_club_b(club_service, invite_service, book_repo, club_repo, user_ids)
@@ -399,9 +418,6 @@ def main() -> int:
         print("Refusing to seed: environment is PROD.", file=sys.stderr)
         return 1
 
-    # ClubService/InviteService log their own .info()/.warn() as they go, which is meant for
-    # production log aggregation, not a one-shot CLI script -- the summary printed at the end is
-    # this script's actual output. A raised exception still surfaces via the except block below.
     structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.ERROR))
 
     asyncio.run(seed())

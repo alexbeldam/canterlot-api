@@ -10,10 +10,14 @@ class OAuthIdentity:
     external_id: str
     email: NormalizedEmailStr
     name: str | None = None
+    picture: str | None = None
 
 
 class OAuthProvider(Protocol):
     @property
     def name(self) -> AuthProviderName: ...
 
-    async def verify(self, credential: str) -> OAuthIdentity: ...
+    @property
+    def supports_avatar(self) -> bool: ...
+
+    async def verify(self, credential: str, redirect_uri: str | None = None) -> OAuthIdentity: ...

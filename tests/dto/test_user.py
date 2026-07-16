@@ -1,8 +1,18 @@
-import pytest
-from pydantic import ValidationError
+from datetime import UTC, datetime
 
-from canterlot.dto.user import ChangePasswordRequest, UpdateProfileRequest, UserProfileResponse
-from canterlot.models.user import UserModel
+import pytest
+from pydantic import HttpUrl, ValidationError
+
+from canterlot.config import get_settings
+from canterlot.dto.user import (
+    AvatarDTO,
+    ChangePasswordRequest,
+    SetAvatarRequest,
+    UpdateProfileRequest,
+    UserProfileResponse,
+)
+from canterlot.models.enums import AuthProviderName, BadgeReason
+from canterlot.models.user import AvatarSchema, UserModel
 
 
 def describe_update_profile_request():
@@ -35,14 +45,106 @@ def describe_update_profile_request():
             UpdateProfileRequest(name=bad_name)
 
 
+def describe_avatar_dto():
+    def it_reflects_source_and_value_from_the_model():
+        avatar = AvatarSchema(source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash"))
+
+        dto = AvatarDTO.from_model(avatar)
+
+        assert dto.source == AuthProviderName.GRAVATAR
+        assert str(dto.value) == "https://gravatar.com/avatar/somehash"
+
+
+def describe_set_avatar_request():
+    @pytest.mark.parametrize("source", [AuthProviderName.GOOGLE, AuthProviderName.GRAVATAR])
+    def it_accepts_each_recognized_source(source: AuthProviderName):
+        request = SetAvatarRequest(source=source)
+        assert request.source == source
+
+    def it_rejects_an_unrecognized_source():
+        with pytest.raises(ValidationError):
+            SetAvatarRequest.model_validate({"source": "NOT_A_SOURCE"})
+
+
 def describe_user_profile_response_from_model():
-    def it_reflects_the_users_name_and_username():
+    def it_reflects_the_users_name_username_and_email():
         user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
 
         response = UserProfileResponse.from_model(user)
 
         assert response.name == "Alice Smith"
         assert response.username == "alice_1"
+        assert response.email == "a@b.com"
+        assert response.avatar is None
+        assert response.generated_avatar_seed == user.generated_avatar_seed
+
+    def it_reflects_the_users_avatar_when_set():
+        user = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="a@b.com",
+            avatar=AvatarSchema(source=AuthProviderName.GOOGLE, value=HttpUrl("https://example.com/pic.jpg")),
+        )
+
+        response = UserProfileResponse.from_model(user)
+
+        assert response.avatar is not None
+        assert response.avatar.source == AuthProviderName.GOOGLE
+        assert str(response.avatar.value) == "https://example.com/pic.jpg"
+
+    def it_reflects_the_users_earned_badges():
+        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
+
+        response = UserProfileResponse.from_model(user)
+
+        assert len(response.badges) == 1
+        assert response.badges[0].reason == BadgeReason.JOINED
+
+    def it_needs_profile_completion_and_reacceptance_for_a_brand_new_account():
+        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
+
+        response = UserProfileResponse.from_model(user)
+
+        assert response.needs_profile_completion is True
+        assert response.needs_terms_reacceptance is True
+        assert response.needs_privacy_reacceptance is True
+
+    def it_needs_nothing_once_fully_accepted_at_the_current_version():
+        settings = get_settings()
+        user = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="a@b.com",
+            accepted_terms_version=settings.current_terms_version,
+            accepted_terms_at=datetime.now(UTC),
+            accepted_privacy_version=settings.current_privacy_version,
+            accepted_privacy_at=datetime.now(UTC),
+            profile_completed_at=datetime.now(UTC),
+        )
+
+        response = UserProfileResponse.from_model(user)
+
+        assert response.needs_profile_completion is False
+        assert response.needs_terms_reacceptance is False
+        assert response.needs_privacy_reacceptance is False
+
+    def it_needs_reacceptance_when_the_accepted_version_is_behind_current():
+        settings = get_settings()
+        user = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="a@b.com",
+            accepted_terms_version=settings.current_terms_version - 1,
+            accepted_terms_at=datetime.now(UTC),
+            accepted_privacy_version=settings.current_privacy_version,
+            accepted_privacy_at=datetime.now(UTC),
+            profile_completed_at=datetime.now(UTC),
+        )
+
+        response = UserProfileResponse.from_model(user)
+
+        assert response.needs_terms_reacceptance is True
+        assert response.needs_privacy_reacceptance is False
 
 
 def describe_change_password_request():

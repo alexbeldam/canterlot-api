@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
+from pydantic import HttpUrl
 from starlette.testclient import TestClient
 
 from canterlot.dto.auth import ConnectedProvidersResponse, LinkedProviderDTO, TokenResponse
@@ -13,10 +14,11 @@ from canterlot.exceptions import (
     IncorrectPasswordError,
     InvalidOAuthCredentialError,
     LastAuthenticationMethodError,
+    StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
-from canterlot.models.user import UserModel
+from canterlot.models.user import AvatarSchema, UserModel
 from canterlot.services.auth import RegisterResult
 from canterlot.services.invite import InviteValidationResult
 
@@ -26,7 +28,14 @@ SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
 def _register_payload(**overrides) -> dict:
-    defaults = {"name": "Alice Smith", "username": "alice_1", "email": "alice@example.com", "password": "secret1"}
+    defaults = {
+        "name": "Alice Smith",
+        "username": "alice_1",
+        "email": "alice@example.com",
+        "password": "secret1",
+        "terms_version": 1,
+        "privacy_version": 1,
+    }
     return {**defaults, **overrides}
 
 
@@ -43,6 +52,7 @@ def describe_register():
         assert body["access_token"] == "access"
         assert "refresh_token" not in body
         assert body["onboarding"] is None
+        assert response.headers["Location"] == "/v1/users/me"
         set_cookie = response.headers.get("set-cookie", "")
         assert "refresh_token=refresh" in set_cookie
         assert "HttpOnly" in set_cookie
@@ -82,12 +92,22 @@ def describe_register():
         assert response.status_code == 422
         auth_service.register_user.assert_not_called()
 
+    def it_returns_409_when_the_legal_version_is_stale(client: TestClient, auth_service: AsyncMock):
+        auth_service.register_user.side_effect = StaleLegalVersionError("stale")
+
+        response = client.post("/v1/users", json=_register_payload(terms_version=0))
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "STALE_LEGAL_VERSION"
+
 
 def describe_get_connected_providers():
     def it_returns_the_connected_providers(client: TestClient, auth_service: AsyncMock):
         auth_service.list_connected_providers.return_value = ConnectedProvidersResponse(
             has_password=True,
-            linked_providers=[LinkedProviderDTO(provider=AuthProviderName.GOOGLE, linked_at=datetime.now(UTC))],
+            linked_providers=[
+                LinkedProviderDTO(provider=AuthProviderName.GOOGLE, linked_at=datetime.now(UTC), has_picture=True)
+            ],
         )
 
         response = client.get("/v1/users/me/auth-providers")
@@ -96,6 +116,7 @@ def describe_get_connected_providers():
         body = response.json()
         assert body["has_password"] is True
         assert body["linked_providers"][0]["provider"] == "GOOGLE"
+        assert body["linked_providers"][0]["has_picture"] is True
 
 
 def describe_link_provider():
@@ -158,6 +179,40 @@ def describe_disconnect_provider():
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "LAST_AUTHENTICATION_METHOD"
+
+
+def describe_get_own_profile():
+    def it_returns_the_callers_profile_with_no_active_provider_avatar(client: TestClient, user_service: AsyncMock):
+        user_service.get_profile.return_value = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="alice@example.com",
+            generated_avatar_seed="some-seed",
+        )
+
+        response = client.get("/v1/users/me")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["name"] == "Alice Smith"
+        assert body["username"] == "alice_1"
+        assert body["email"] == "alice@example.com"
+        assert body["avatar"] is None
+        assert body["generated_avatar_seed"] == "some-seed"
+
+    def it_returns_the_active_provider_avatar_when_set(client: TestClient, user_service: AsyncMock):
+        user_service.get_profile.return_value = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="alice@example.com",
+            avatar=AvatarSchema(source=AuthProviderName.GOOGLE, value=HttpUrl("https://example.com/pic.jpg")),
+        )
+
+        response = client.get("/v1/users/me")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["avatar"] == {"source": "GOOGLE", "value": "https://example.com/pic.jpg"}
 
 
 def describe_update_profile():
@@ -240,6 +295,103 @@ def describe_change_password():
 
         assert response.status_code == 200
         auth_service.change_password.assert_awaited_once_with(current_user.id, None, "new-secret-1")
+
+
+def describe_set_avatar():
+    def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
+        user_service.set_avatar_source.return_value = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="alice@example.com",
+            avatar=AvatarSchema(
+                source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash")
+            ),
+        )
+
+        response = client.put("/v1/users/me/avatar", json={"source": "GRAVATAR"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["avatar"] == {"source": "GRAVATAR", "value": "https://gravatar.com/avatar/somehash"}
+        user_service.set_avatar_source.assert_awaited_once()
+
+    def it_returns_404_when_google_is_not_linked(client: TestClient, user_service: AsyncMock):
+        user_service.set_avatar_source.side_effect = AuthProviderNotLinkedError("not linked")
+
+        response = client.put("/v1/users/me/avatar", json={"source": "GOOGLE"})
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "AUTH_PROVIDER_NOT_LINKED"
+
+    def it_returns_422_for_an_unrecognized_source(client: TestClient, user_service: AsyncMock):
+        response = client.put("/v1/users/me/avatar", json={"source": "UPLOAD"})
+
+        assert response.status_code == 422
+        user_service.set_avatar_source.assert_not_called()
+
+
+def describe_clear_avatar():
+    def it_returns_204_on_success(client: TestClient, user_service: AsyncMock):
+        user_service.clear_avatar.return_value = UserModel(
+            name="Alice Smith", username="alice_1", email="alice@example.com"
+        )
+
+        response = client.delete("/v1/users/me/avatar")
+
+        assert response.status_code == 204
+        user_service.clear_avatar.assert_awaited_once()
+
+
+def describe_regenerate_avatar_seed():
+    def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
+        user_service.regenerate_avatar_seed.return_value = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="alice@example.com",
+            generated_avatar_seed="fresh-seed",
+        )
+
+        response = client.post("/v1/users/me/avatar/seed")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["generated_avatar_seed"] == "fresh-seed"
+        user_service.regenerate_avatar_seed.assert_awaited_once()
+
+
+def describe_accept_legal_documents():
+    def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
+        user_service.accept_legal_documents.return_value = UserModel(
+            name="Alice Smith",
+            username="alice_1",
+            email="alice@example.com",
+            accepted_terms_version=1,
+            accepted_privacy_version=1,
+            profile_completed_at=datetime.now(UTC),
+        )
+
+        response = client.post("/v1/users/me/legal-acceptance", json={"terms_version": 1, "privacy_version": 1})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["needs_profile_completion"] is False
+        assert body["needs_terms_reacceptance"] is False
+        assert body["needs_privacy_reacceptance"] is False
+        user_service.accept_legal_documents.assert_awaited_once_with(SOME_USER_ID, terms_version=1, privacy_version=1)
+
+    def it_returns_409_when_the_submitted_version_is_stale(client: TestClient, user_service: AsyncMock):
+        user_service.accept_legal_documents.side_effect = StaleLegalVersionError("stale")
+
+        response = client.post("/v1/users/me/legal-acceptance", json={"terms_version": 0, "privacy_version": 1})
+
+        assert response.status_code == 409
+        assert response.json()["error"]["error_code"] == "STALE_LEGAL_VERSION"
+
+    def it_returns_422_when_a_version_is_missing(client: TestClient, user_service: AsyncMock):
+        response = client.post("/v1/users/me/legal-acceptance", json={"terms_version": 1})
+
+        assert response.status_code == 422
+        user_service.accept_legal_documents.assert_not_called()
 
 
 def describe_mark_book_read():

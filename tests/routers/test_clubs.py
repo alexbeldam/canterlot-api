@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
+from pydantic import HttpUrl
 from starlette.testclient import TestClient
 
 from canterlot.exceptions import (
@@ -21,7 +22,8 @@ from canterlot.exceptions import (
     UserNotFoundError,
 )
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import MemberRole
+from canterlot.models.enums import AuthProviderName, MemberRole
+from canterlot.models.user import AvatarSchema, UserModel
 from canterlot.services.club import ClubView
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -353,6 +355,88 @@ def describe_leave_club():
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "FORMER_OWNER_PROTECTED"
+
+
+def describe_get_club_member():
+    def it_returns_the_target_members_profile(
+        client: TestClient,
+        club_service: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
+        user_service: AsyncMock,
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.get_member_profile.return_value = MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN)
+        user_service.find_profile_by_id.return_value = UserModel(
+            name="Carol Jones",
+            username=SOME_TARGET_USERNAME,
+            email="carol@example.com",
+            avatar=AvatarSchema(
+                source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash")
+            ),
+        )
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["username"] == SOME_TARGET_USERNAME
+        assert body["name"] == "Carol Jones"
+        assert body["role"] == "ADMIN"
+        assert body["avatar"] == {"source": "GRAVATAR", "value": "https://gravatar.com/avatar/somehash"}
+        assert "email" not in body
+        club_service.get_member_profile.assert_awaited_once_with(SOME_CLUB_ID, SOME_OWNER_ID, SOME_TARGET_ID)
+
+    def it_returns_403_when_the_caller_is_not_a_member(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.get_member_profile.side_effect = UnauthorizedClubMemberError("not a member")
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_target_is_not_a_member(
+        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.get_member_profile.side_effect = ClubMemberNotFoundError("not a member")
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
+
+    def it_returns_404_when_the_username_does_not_exist(client: TestClient, club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        user_repo.find_id_by_username.return_value = None
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+    def it_returns_404_when_the_target_users_record_vanished_after_the_membership_check(
+        client: TestClient,
+        club_service: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
+        user_service: AsyncMock,
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        user_repo.find_id_by_username.return_value = SOME_TARGET_ID
+        club_service.get_member_profile.return_value = MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER)
+        user_service.find_profile_by_id.return_value = None
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
 
 
 def describe_remove_club_member():

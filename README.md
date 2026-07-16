@@ -103,10 +103,12 @@ Há ainda uma rota oculta `POST /auth/login` (form-encoded, fora do schema OpenA
 
 | Rota                                                    | Descrição                                                                                                            |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| <kbd>GET /users/me</kbd>                                | Retorna o perfil do próprio usuário autenticado (nome, usuário, email, avatar).                                     |
 | <kbd>PATCH /users/me</kbd>                              | Atualiza nome de exibição e/ou nome de usuário.                                                                     |
+| <kbd>PATCH /users/me/avatar</kbd>                       | Define a fonte do avatar (`GENERATED`, `GOOGLE` ou `GRAVATAR`) — o servidor sempre resolve o valor, nunca aceita um valor enviado pelo cliente. |
 | <kbd>PUT /users/me/password</kbd>                       | Troca a senha (ou define a primeira senha de uma conta só-OAuth); revoga sessões antigas e devolve um novo access token (novo cookie de refresh). |
-| <kbd>GET /users/me/auth-providers</kbd>                 | Lista provedores de login conectados e se há senha cadastrada.                                                       |
-| <kbd>POST /users/me/auth-providers/{provider}</kbd>     | Vincula um novo provedor OAuth à conta autenticada.                                                                   |
+| <kbd>GET /users/me/auth-providers</kbd>                 | Lista provedores de login conectados, se há senha cadastrada, e se cada provedor vinculado tem foto disponível para uso como avatar. |
+| <kbd>POST /users/me/auth-providers/{provider}</kbd>     | Vincula um novo provedor OAuth à conta autenticada (`GOOGLE` ou `GRAVATAR`). `GRAVATAR` usa o fluxo de código de autorização do WordPress.com — o corpo precisa incluir `redirect_uri`, que deve ser o mesmo usado na autorização original. |
 | <kbd>DELETE /users/me/auth-providers/{provider}</kbd>   | Desvincula um provedor OAuth (bloqueado se for a única forma de login restante).                                     |
 | <kbd>PUT /users/me/read-books/{identifier}</kbd>        | Marca um livro como lido no histórico pessoal do usuário.                                                            |
 
@@ -122,6 +124,7 @@ Há ainda uma rota oculta `POST /auth/login` (form-encoded, fora do schema OpenA
 | <kbd>GET /clubs/{slug}/invites/public</kbd>                  | Retorna o link de convite público ativo do clube.                           |
 | <kbd>PATCH /clubs/{slug}/pending-approvals/{user}</kbd>      | Aprova uma solicitação pendente de entrada (clube restrito).                |
 | <kbd>DELETE /clubs/{slug}/pending-approvals/{user}</kbd>     | Rejeita uma solicitação pendente de entrada.                                |
+| <kbd>GET /clubs/{slug}/members/{user}</kbd>                  | Perfil de um colega de clube (nome, usuário, avatar, papel, data de entrada) — sempre restrito a um clube compartilhado, nunca um diretório global de usuários. |
 | <kbd>DELETE /clubs/{slug}/members/me</kbd>                   | O próprio membro sai do clube.                                              |
 | <kbd>DELETE /clubs/{slug}/members/{user}</kbd>               | Remove (e bane) um membro — `Engine de Rank Protection` aplicado.           |
 | <kbd>PUT /clubs/{slug}/members/{user}/role</kbd>             | Promove ou rebaixa um membro.                                               |
@@ -159,10 +162,9 @@ Funcionalidades com as regras de negócio já desenhadas, mas **ainda não imple
 
 - **Sessões de Leitura & Votação:** o ciclo completo de rodadas de leitura — iniciar uma rodada (sorteio automático ou pool curado), votação ponderada por membro, acompanhamento de progresso individual, e conclusão/cancelamento da rodada.
 - **Verificação e troca de e-mail:** confirmação de e-mail no cadastro, e um fluxo para trocar o e-mail de uma conta existente.
-- **Perfil estendido:** consultar o próprio perfil (hoje só é possível atualizá-lo, não vê-lo) e o perfil de outro membro do mesmo clube; consultar e remover entradas do histórico de leitura pessoal (hoje só é possível adicionar).
+- **Histórico de leitura navegável:** consultar (paginado) e remover entradas do histórico de leitura pessoal — hoje só é possível adicionar.
 - **Logout de todos os dispositivos:** encerrar todas as sessões ativas de uma vez, como ação deliberada e independente da troca de senha.
 - **Lembretes automáticos de prazo de leitura:** notificação por e-mail um dia antes e no dia do prazo de uma rodada, disparado por um cron externo.
-- **Seleção de avatar:** gerado automaticamente, importado do Google, ou via Gravatar. Upload de imagem própria **não está nos planos** — o projeto não possui infraestrutura de armazenamento de arquivos.
 
 Vinculação de pontes sociais externas (Discord/WhatsApp) foi cogitada, mas **descartada**: hoje não há forma de verificar se um link enviado por um administrador de clube leva a um conteúdo apropriado, e sem uma equipe de moderação, o risco de abuso (conteúdo impróprio, malware, spam) foi considerado inaceitável.
 

@@ -10,7 +10,13 @@ from canterlot.dto.auth import (
     RegisterResponse,
     UserRegisterRequest,
 )
-from canterlot.dto.user import ChangePasswordRequest, UpdateProfileRequest, UserProfileResponse
+from canterlot.dto.user import (
+    ChangePasswordRequest,
+    LegalAcceptanceRequest,
+    SetAvatarRequest,
+    UpdateProfileRequest,
+    UserProfileResponse,
+)
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
@@ -25,6 +31,7 @@ from canterlot.exceptions import (
     InvalidOAuthCredentialError,
     InviteLinkDeactivatedError,
     LastAuthenticationMethodError,
+    StaleLegalVersionError,
     TokenExpiredError,
     TokenMalformedError,
     UsernameAlreadyExistsError,
@@ -85,9 +92,10 @@ read_books_router = APIRouter(prefix="/users/me/read-books", tags=["Users"])
             "model": ErrorResponseModel,
             "description": (
                 "UsernameAlreadyExistsError or EmailAlreadyExistsError: The username or email string "
-                "is already bound to a different profile."
+                "is already bound to a different profile. StaleLegalVersionError: `terms_version`/"
+                "`privacy_version` don't match the currently published documents."
             ),
-            "content": error_example(UsernameAlreadyExistsError, EmailAlreadyExistsError),
+            "content": error_example(UsernameAlreadyExistsError, EmailAlreadyExistsError, StaleLegalVersionError),
         },
         status.HTTP_410_GONE: {
             "model": ErrorResponseModel,
@@ -148,6 +156,40 @@ async def register(
     response.headers["Location"] = "/v1/users/me"
 
     return RegisterResponse(access_token=res.access_token, onboarding=onboarding)
+
+
+@profile_router.get(
+    "",
+    operation_id="getOwnProfile",
+    response_model=UserProfileResponse,
+    responses={
+        status.HTTP_200_OK: {"description": "The caller's own profile, including email and avatar."},
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def get_own_profile(
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserProfileResponse:
+    user = await user_service.get_profile(current_user_id)
+
+    return UserProfileResponse.from_model(user)
 
 
 @profile_router.patch(
@@ -235,8 +277,191 @@ async def change_password(
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> AccessTokenResponse:
     result = await auth_service.change_password(current_user_id, payload.current_password, payload.new_password)
+
     set_refresh_token_cookie(response, result.refresh_token)
+
     return AccessTokenResponse(access_token=result.access_token)
+
+
+@profile_router.put(
+    "/avatar",
+    operation_id="setAvatar",
+    response_model=UserProfileResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "Avatar set to the requested linked provider's photo; the full updated profile is returned. "
+                "Calling this again with the same `source` re-resolves the value from whatever picture URL is "
+                "currently stored for that provider, effectively resyncing it."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "AuthProviderNotLinkedError: No linked account with a profile picture exists for the "
+                "requested `source`."
+            ),
+            "content": error_example(AuthProviderNotLinkedError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. `source` is not a recognized authentication provider."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def set_avatar(
+    payload: SetAvatarRequest,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserProfileResponse:
+    updated = await user_service.set_avatar_source(current_user_id, payload.source)
+
+    return UserProfileResponse.from_model(updated)
+
+
+@profile_router.delete(
+    "/avatar",
+    operation_id="clearAvatar",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_204_NO_CONTENT: {
+            "description": ("Active provider photo cleared; the generated avatar (unchanged seed) is now showing.")
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def clear_avatar(
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> None:
+    await user_service.clear_avatar(current_user_id)
+
+
+@profile_router.post(
+    "/avatar/seed",
+    operation_id="regenerateAvatarSeed",
+    response_model=UserProfileResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "The generated-avatar seed was regenerated; the full updated profile is returned. Only "
+                "visible immediately if no provider photo is currently active."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def regenerate_avatar_seed(
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserProfileResponse:
+    updated = await user_service.regenerate_avatar_seed(current_user_id)
+
+    return UserProfileResponse.from_model(updated)
+
+
+@profile_router.post(
+    "/legal-acceptance",
+    operation_id="acceptLegalDocuments",
+    response_model=UserProfileResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": (
+                "Acceptance recorded for both documents. If the account had no `profile_completed_at` yet "
+                "(a Google-created account that hasn't confirmed its profile), this call also sets it -- "
+                "there is no separate 'complete onboarding' endpoint."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "StaleLegalVersionError: `terms_version`/`privacy_version` don't match the currently "
+                "published documents -- reload the documents and retry."
+            ),
+            "content": error_example(StaleLegalVersionError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error. `terms_version`/`privacy_version` missing or not integers."
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def accept_legal_documents(
+    payload: LegalAcceptanceRequest,
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserProfileResponse:
+    updated = await user_service.accept_legal_documents(
+        current_user_id,
+        terms_version=payload.terms_version,
+        privacy_version=payload.privacy_version,
+    )
+
+    return UserProfileResponse.from_model(updated)
 
 
 @auth_providers_router.get(
@@ -288,7 +513,8 @@ async def get_connected_providers(
             "model": ErrorResponseModel,
             "description": (
                 "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired. "
-                "InvalidOAuthCredentialError: The provided credential failed cryptographic verification."
+                "InvalidOAuthCredentialError: The provided credential failed verification, for a "
+                "code-exchange provider (e.g. Gravatar), this also covers a missing/mismatched `redirect_uri`."
             ),
             "content": error_example(InvalidCredentialsError, TokenExpiredError, InvalidOAuthCredentialError),
         },
@@ -320,7 +546,7 @@ async def link_provider(
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> None:
-    await auth_service.link_provider(current_user_id, provider, payload.credential)
+    await auth_service.link_provider(current_user_id, provider, payload.credential, payload.redirect_uri)
 
 
 @auth_providers_router.delete(

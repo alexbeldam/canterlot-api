@@ -211,6 +211,32 @@ class ClubService:
         await self.__club_repo.remove_from_pending_approvals(club_id, target_user_id)
         log.info("Pending join request reviewed successfully", outcome="approved" if approve else "rejected")
 
+    async def get_member_profile(
+        self,
+        club_id: PydanticObjectId,
+        viewer_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+    ) -> MemberSchema:
+        log = logger.bind(club_id=str(club_id), viewer_id=str(viewer_id), target_user_id=str(target_user_id))
+        log.info("Fetching club member profile")
+
+        club = await self.__club_repo.find_by_id(club_id)
+        if not club:
+            log.warn("Member profile lookup rejected: club no longer exists")
+            raise ClubNotFoundError("This club no longer exists.")
+
+        if _find_member(club.members, viewer_id) is None:
+            log.warn("Member profile lookup rejected: caller is not a member of this club")
+            raise UnauthorizedClubMemberError("Only members of this club can view another member's profile.")
+
+        target = _find_member(club.members, target_user_id)
+        if target is None:
+            log.warn("Member profile lookup rejected: target user is not a member of this club")
+            raise ClubMemberNotFoundError("This user is not a member of this club.")
+
+        log.info("Club member profile resolved successfully")
+        return target
+
     async def remove_member(
         self,
         club_id: PydanticObjectId,

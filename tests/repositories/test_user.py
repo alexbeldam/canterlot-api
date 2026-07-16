@@ -2,10 +2,11 @@ from datetime import UTC, datetime
 
 import pytest
 from beanie import PydanticObjectId
+from pydantic import HttpUrl
 
 from canterlot.models.book import ReadBook
 from canterlot.models.enums import AuthProviderName
-from canterlot.models.user import LinkedProviderSchema, UserModel
+from canterlot.models.user import AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.repositories.beanie.user import BeanieUserRepository
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -322,3 +323,137 @@ def describe_change_password():
         assert found is not None
         assert found.hashed_password == "new-hashed-password"
         assert found.refresh_tokens == ["brand-new-refresh-token"]
+
+
+def describe_set_legal_acceptance():
+    async def it_sets_all_five_fields():
+        user = await _user()
+        now = datetime.now(UTC)
+
+        changed = await repo.set_legal_acceptance(
+            _id(user),
+            terms_version=1,
+            terms_at=now,
+            privacy_version=1,
+            privacy_at=now,
+            profile_completed_at=now,
+        )
+
+        assert changed is True
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.accepted_terms_version == 1
+        assert found.accepted_privacy_version == 1
+        assert found.profile_completed_at is not None
+
+    async def it_returns_false_for_a_nonexistent_user():
+        now = datetime.now(UTC)
+
+        changed = await repo.set_legal_acceptance(
+            PydanticObjectId(),
+            terms_version=1,
+            terms_at=now,
+            privacy_version=1,
+            privacy_at=now,
+            profile_completed_at=now,
+        )
+
+        assert changed is False
+
+
+def describe_update_linked_provider_picture():
+    async def it_updates_the_matching_providers_picture_url():
+        user = await _user(
+            linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="pic-update-id")]
+        )
+
+        await repo.update_linked_provider_picture(
+            _id(user), AuthProviderName.GOOGLE, HttpUrl("https://example.com/new.jpg")
+        )
+
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert str(found.linked_providers[0].picture_url) == "https://example.com/new.jpg"
+
+    async def it_is_a_no_op_for_a_nonexistent_user():
+        await repo.update_linked_provider_picture(
+            PydanticObjectId(), AuthProviderName.GOOGLE, HttpUrl("https://example.com/new.jpg")
+        )
+
+
+def describe_find_avatar_by_id():
+    async def it_returns_the_avatar():
+        user = await _user(
+            avatar=AvatarSchema(source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash"))
+        )
+
+        avatar = await repo.find_avatar_by_id(_id(user))
+
+        assert avatar is not None
+        assert avatar.source == AuthProviderName.GRAVATAR
+        assert str(avatar.value) == "https://gravatar.com/avatar/somehash"
+
+    async def it_returns_none_when_the_user_has_no_avatar_set():
+        user = await _user()
+
+        assert await repo.find_avatar_by_id(_id(user)) is None
+
+    async def it_returns_none_for_a_nonexistent_user():
+        assert await repo.find_avatar_by_id(PydanticObjectId()) is None
+
+
+def describe_set_avatar():
+    async def it_sets_the_avatar_without_touching_the_generated_seed():
+        user = await _user(generated_avatar_seed="original-seed")
+
+        changed = await repo.set_avatar(
+            _id(user),
+            AvatarSchema(source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash")),
+        )
+
+        assert changed is True
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.avatar is not None
+        assert found.avatar.source == AuthProviderName.GRAVATAR
+        assert found.generated_avatar_seed == "original-seed"
+
+    async def it_returns_false_for_a_nonexistent_user():
+        changed = await repo.set_avatar(
+            PydanticObjectId(),
+            AvatarSchema(source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/x")),
+        )
+
+        assert changed is False
+
+
+def describe_clear_avatar():
+    async def it_clears_the_avatar():
+        user = await _user(
+            avatar=AvatarSchema(source=AuthProviderName.GOOGLE, value=HttpUrl("https://example.com/pic.jpg"))
+        )
+
+        changed = await repo.clear_avatar(_id(user))
+
+        assert changed is True
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.avatar is None
+
+    async def it_returns_false_for_a_nonexistent_user():
+        assert await repo.clear_avatar(PydanticObjectId()) is False
+
+
+def describe_set_generated_avatar_seed():
+    async def it_updates_the_generated_seed():
+        user = await _user(generated_avatar_seed="original-seed")
+
+        changed = await repo.set_generated_avatar_seed(_id(user), "new-seed")
+
+        assert changed is True
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.generated_avatar_seed == "new-seed"
+
+    async def it_returns_false_for_a_nonexistent_user():
+        assert await repo.set_generated_avatar_seed(PydanticObjectId(), "new-seed") is False

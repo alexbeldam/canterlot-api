@@ -578,6 +578,45 @@ def describe_reclaim_ownership():
             await service.reclaim_ownership(SOME_CLUB_ID, SOME_FORMER_OWNER_ID)
 
 
+def describe_get_member_profile():
+    SOME_VIEWER_ID = PydanticObjectId("507f1f77bcf86cd799439019")
+
+    def _club(members: list[MemberSchema]) -> SimpleNamespace:
+        return SimpleNamespace(members=members)
+
+    async def it_raises_when_the_club_does_not_exist(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = None
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubNotFoundError):
+            await service.get_member_profile(SOME_CLUB_ID, SOME_VIEWER_ID, SOME_TARGET_ID)
+
+    async def it_raises_when_the_viewer_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(UnauthorizedClubMemberError):
+            await service.get_member_profile(SOME_CLUB_ID, SOME_VIEWER_ID, SOME_TARGET_ID)
+
+    async def it_raises_when_the_target_is_not_a_member(club_repo: AsyncMock, user_repo: AsyncMock):
+        club_repo.find_by_id.return_value = _club([MemberSchema(user_id=SOME_VIEWER_ID, role=MemberRole.MEMBER)])
+        service = ClubService(club_repo, user_repo)
+
+        with pytest.raises(ClubMemberNotFoundError):
+            await service.get_member_profile(SOME_CLUB_ID, SOME_VIEWER_ID, SOME_TARGET_ID)
+
+    async def it_returns_the_target_member_when_both_share_the_club(club_repo: AsyncMock, user_repo: AsyncMock):
+        target = MemberSchema(user_id=SOME_TARGET_ID, role=MemberRole.ADMIN)
+        club_repo.find_by_id.return_value = _club(
+            [MemberSchema(user_id=SOME_VIEWER_ID, role=MemberRole.MEMBER), target]
+        )
+        service = ClubService(club_repo, user_repo)
+
+        result = await service.get_member_profile(SOME_CLUB_ID, SOME_VIEWER_ID, SOME_TARGET_ID)
+
+        assert result is target
+
+
 def describe_remove_member():
     SOME_REMOVER_ID = PydanticObjectId("507f1f77bcf86cd799439018")
 

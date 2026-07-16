@@ -7,6 +7,7 @@ from canterlot.dto.club import (
     ChangeMemberRoleRequest,
     ClubCreateRequest,
     ClubDetailResponse,
+    ClubMemberProfileResponse,
     ClubResponse,
     ClubSettingsUpdateRequest,
     OwnershipTransferRequest,
@@ -41,10 +42,11 @@ from canterlot.routers.dependencies import (
     get_current_user_id,
     get_invite_service,
     get_user_id_from_username,
+    get_user_service,
     rate_limit_club_owner_action,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import ClubService, InviteService
+from canterlot.services import ClubService, InviteService, UserService
 from canterlot.utils.format import NormalizedEmailStr
 
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
@@ -496,6 +498,63 @@ async def leave_club(
     club_service: Annotated[ClubService, Depends(get_club_service)],
 ) -> None:
     await club_service.leave_club(club_id, current_user_id)
+
+
+@router.get(
+    "/{club_slug}/members/{username}",
+    operation_id="getClubMember",
+    response_model=ClubMemberProfileResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": "The target member's club-scoped profile: username, name, role, joined_at, and avatar."
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": "TokenMalformedError: The bearer token is corrupt, malformed, or altered.",
+            "content": error_example(TokenMalformedError),
+        },
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidCredentialsError or TokenExpiredError: The bearer token is missing, invalid, or expired."
+            ),
+            "content": error_example(InvalidCredentialsError, TokenExpiredError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": "UnauthorizedClubMemberError: The caller is not a member of this club.",
+            "content": error_example(UnauthorizedClubMemberError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": (
+                "ClubNotFoundError: No club exists with the given slug. "
+                "UserNotFoundError: No user exists with the given username. "
+                "ClubMemberNotFoundError: The target user is not a member of this club."
+            ),
+            "content": error_example(ClubNotFoundError, UserNotFoundError, ClubMemberNotFoundError),
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected database connectivity failure.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def get_club_member(
+    club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
+    target_user_id: Annotated[PydanticObjectId, Depends(get_user_id_from_username)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> ClubMemberProfileResponse:
+    member = await club_service.get_member_profile(club_id, current_user_id, target_user_id)
+    user = await user_service.find_profile_by_id(target_user_id)
+
+    if user is None:
+        raise ClubMemberNotFoundError("This user is not a member of this club.")
+
+    return ClubMemberProfileResponse.from_models(user, member)
 
 
 @router.delete(

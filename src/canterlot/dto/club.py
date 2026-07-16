@@ -5,9 +5,10 @@ from typing import Literal
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field, model_validator
 
-from canterlot.models.club import ClubModel, ClubNameStr, ClubSlugStr
+from canterlot.dto.user import AvatarDTO, BadgeDTO
+from canterlot.models.club import ClubModel, ClubNameStr, ClubSlugStr, MemberSchema
 from canterlot.models.enums import ClubOnboardingStatus, JoinPolicy, MemberRole
-from canterlot.models.user import UsernameStr
+from canterlot.models.user import PersonNameStr, UserModel, UsernameStr
 from canterlot.utils.format import LanguageStr
 
 
@@ -49,6 +50,28 @@ class ClubMemberDTO(BaseModel):
     username: UsernameStr
     role: MemberRole
     joined_at: datetime
+
+
+class ClubMemberProfileResponse(BaseModel):
+    username: UsernameStr
+    name: PersonNameStr
+    role: MemberRole
+    joined_at: datetime
+    avatar: AvatarDTO | None = None
+    generated_avatar_seed: str
+    badges: list[BadgeDTO] = Field(default_factory=list)
+
+    @classmethod
+    def from_models(cls, user: UserModel, member: MemberSchema) -> "ClubMemberProfileResponse":
+        return cls(
+            username=user.username,
+            name=user.name,
+            role=member.role,
+            joined_at=member.joined_at,
+            avatar=AvatarDTO.from_model(user.avatar) if user.avatar else None,
+            generated_avatar_seed=user.generated_avatar_seed,
+            badges=[BadgeDTO.from_model(badge) for badge in user.badges],
+        )
 
 
 class ChangeMemberRoleRequest(BaseModel):

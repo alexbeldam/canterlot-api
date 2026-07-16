@@ -16,6 +16,11 @@ def describe_name():
         assert provider.name == AuthProviderName.GOOGLE
 
 
+def describe_supports_avatar():
+    def it_reports_that_it_supports_avatars(provider: GoogleAuthProvider):
+        assert provider.supports_avatar is True
+
+
 def describe_verify():
     async def it_returns_the_identity_extracted_from_the_verified_claims(
         monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
@@ -36,6 +41,7 @@ def describe_verify():
         assert identity.external_id == "google-sub-123"
         assert identity.email == "alice@example.com"
         assert identity.name == "Alice"
+        assert identity.picture is None
 
     async def it_defaults_the_name_to_none_when_absent_from_the_claims(
         monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
@@ -49,6 +55,35 @@ def describe_verify():
         identity = await provider.verify("some-id-token")
 
         assert identity.name is None
+
+    async def it_extracts_the_picture_claim_when_present(monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider):
+        monkeypatch.setattr(
+            google_module.google_id_token,
+            "verify_oauth2_token",
+            lambda *_args, **_kwargs: {
+                "sub": "google-sub-123",
+                "email": "alice@example.com",
+                "email_verified": True,
+                "picture": "https://example.com/pic.jpg",
+            },
+        )
+
+        identity = await provider.verify("some-id-token")
+
+        assert identity.picture == "https://example.com/pic.jpg"
+
+    async def it_defaults_the_picture_to_none_when_absent_from_the_claims(
+        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+    ):
+        monkeypatch.setattr(
+            google_module.google_id_token,
+            "verify_oauth2_token",
+            lambda *_args, **_kwargs: {"sub": "google-sub-123", "email": "alice@example.com", "email_verified": True},
+        )
+
+        identity = await provider.verify("some-id-token")
+
+        assert identity.picture is None
 
     async def it_raises_invalid_oauth_credential_when_verification_fails(
         monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider

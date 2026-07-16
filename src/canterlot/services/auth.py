@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 
+from canterlot.config import get_settings
 from canterlot.dto.auth import ConnectedProvidersResponse, TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
@@ -14,11 +16,13 @@ from canterlot.exceptions import (
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
     OAuthLinkRequiredError,
+    StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models import AuthOutcome, AuthProviderName, LinkedProviderSchema, UserModel
+from canterlot.models import AuthOutcome, AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.models.user import UsernameStr
 from canterlot.providers.auth import OAuthProvider
+from canterlot.providers.auth.interfaces import OAuthIdentity
 from canterlot.repositories import UserRepository
 from canterlot.utils import (
     create_access_token,
@@ -70,11 +74,25 @@ class AuthService:
             log.warn("Registration rejected: email conflict", reason="email_registered")
             raise EmailAlreadyExistsError(f"Email '{request.email}' is already registered.")
 
+        settings = get_settings()
+        if (
+            request.terms_version != settings.current_terms_version
+            or request.privacy_version != settings.current_privacy_version
+        ):
+            log.warn("Registration rejected: submitted legal document version is stale")
+            raise StaleLegalVersionError("The submitted terms/privacy version is out of date; reload and try again.")
+
+        now = datetime.now(UTC)
         user = UserModel(
             name=request.name,
             username=request.username,
             email=request.email,
             hashed_password=hash_password(request.password),
+            accepted_terms_version=request.terms_version,
+            accepted_terms_at=now,
+            accepted_privacy_version=request.privacy_version,
+            accepted_privacy_at=now,
+            profile_completed_at=now,
         )
 
         saved_user = await self.__user_repo.save(user)
@@ -165,15 +183,40 @@ class AuthService:
 
         return OAuthSignInResult(outcome=outcome, access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
+    async def __sync_oauth_picture_metadata(
+        self,
+        user_id: PydanticObjectId,
+        provider: AuthProviderName,
+        identity: OAuthIdentity,
+    ) -> None:
+        # A sign-in/link with no picture claim leaves whatever was previously stored alone,
+        # rather than clearing it.
+        if not identity.picture:
+            return
+        picture = HttpUrl(identity.picture)
+
+        await self.__user_repo.update_linked_provider_picture(user_id, provider, picture)
+
+        oauth_provider = self.__oauth_providers.get(provider)
+        if oauth_provider is None or not oauth_provider.supports_avatar:
+            return
+
+        current_avatar = await self.__user_repo.find_avatar_by_id(user_id)
+        if current_avatar and current_avatar.source == provider:
+            refreshed = AvatarSchema(source=provider, value=picture)
+            await self.__user_repo.set_avatar(user_id, refreshed)
+
     async def sign_in_with_provider(self, provider: AuthProviderName, credential: str) -> OAuthSignInResult:
         log = logger.bind(provider=provider)
         log.info("Attempting OAuth provider sign-in")
 
-        identity = await self.__get_oauth_provider(provider).verify(credential)
+        oauth_provider = self.__get_oauth_provider(provider)
+        identity = await oauth_provider.verify(credential)
 
         existing_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
         if existing_id:
             log.info("OAuth identity matched an existing linked account", user_id=str(existing_id))
+            await self.__sync_oauth_picture_metadata(existing_id, provider, identity)
             return await self.__issue_login_tokens(existing_id, AuthOutcome.LOGGED_IN)
 
         if await self.__user_repo.find_by_email(identity.email):
@@ -182,11 +225,20 @@ class AuthService:
 
         username_seed = identity.name or identity.email.split("@")[0]
         username = await make_username(username_seed, self.__user_repo.exists_by_username)
+        picture = HttpUrl(identity.picture) if identity.picture else None
+        avatar = AvatarSchema(source=provider, value=picture) if picture and oauth_provider.supports_avatar else None
         user = UserModel(
             name=identity.name or username,
             username=username,
             email=identity.email,
-            linked_providers=[LinkedProviderSchema(provider=provider, external_id=identity.external_id)],
+            linked_providers=[
+                LinkedProviderSchema(
+                    provider=provider,
+                    external_id=identity.external_id,
+                    picture_url=picture,
+                )
+            ],
+            avatar=avatar,
         )
         saved_user = await self.__user_repo.save_new_oauth_account(user)
         if saved_user is None:
@@ -200,11 +252,17 @@ class AuthService:
         log.info("New account created from OAuth identity", user_id=str(saved_user.id))
         return await self.__issue_login_tokens(PydanticObjectId(saved_user.id), AuthOutcome.CREATED)
 
-    async def link_provider(self, user_id: PydanticObjectId, provider: AuthProviderName, credential: str) -> None:
+    async def link_provider(
+        self,
+        user_id: PydanticObjectId,
+        provider: AuthProviderName,
+        credential: str,
+        redirect_uri: str | None = None,
+    ) -> None:
         log = logger.bind(user_id=str(user_id), provider=provider)
         log.info("Attempting to link a new authentication provider")
 
-        identity = await self.__get_oauth_provider(provider).verify(credential)
+        identity = await self.__get_oauth_provider(provider).verify(credential, redirect_uri)
 
         existing_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
         if existing_id and existing_id != user_id:
@@ -212,12 +270,17 @@ class AuthService:
             raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
 
         if existing_id:
-            log.info("Provider already linked to this account, nothing to do")
+            log.info("Provider already linked to this account, resyncing stored profile metadata")
+            await self.__sync_oauth_picture_metadata(user_id, provider, identity)
             return
 
         linked = await self.__user_repo.add_linked_provider(
             user_id,
-            LinkedProviderSchema(provider=provider, external_id=identity.external_id),
+            LinkedProviderSchema(
+                provider=provider,
+                external_id=identity.external_id,
+                picture_url=HttpUrl(identity.picture) if identity.picture else None,
+            ),
         )
         if not linked:
             log.warn("Link rejected: a concurrent request linked this credential to a different account first")

@@ -42,7 +42,7 @@ from .club import (
 from .gateway import GatewayConfigurationError
 from .invite import DirectInviteIdentityMismatchError, InvalidInviteTokenError, InviteLinkDeactivatedError
 from .rate_limit import RateLimitExceededError
-from .user import UserDomainError, UserNotFoundError
+from .user import StaleLegalVersionError, UserDomainError, UserNotFoundError
 
 __all__ = [
     "AuthProviderAlreadyLinkedError",
@@ -80,6 +80,7 @@ __all__ = [
     "OwnershipTransferCooldownError",
     "PendingRequestNotFoundError",
     "RateLimitExceededError",
+    "StaleLegalVersionError",
     "TokenError",
     "TokenExpiredError",
     "TokenMalformedError",

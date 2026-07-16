@@ -2,11 +2,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from beanie import PydanticObjectId
-from pydantic import ValidationError
+from pydantic import HttpUrl, ValidationError
 
-from canterlot.dto.club import ClubCreateRequest, ClubDetailResponse, ClubResponse, ClubSettingsUpdateRequest
+from canterlot.dto.club import (
+    ClubCreateRequest,
+    ClubDetailResponse,
+    ClubMemberProfileResponse,
+    ClubResponse,
+    ClubSettingsUpdateRequest,
+)
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import JoinPolicy, MemberRole
+from canterlot.models.enums import AuthProviderName, JoinPolicy, MemberRole
+from canterlot.models.user import AvatarSchema, UserModel
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
@@ -92,6 +99,38 @@ def describe_club_response_from_model():
             (MemberRole.ADMIN, "bob"),
             (MemberRole.MEMBER, "zoe"),
         ]
+
+
+def describe_club_member_profile_response_from_models():
+    def it_combines_the_user_and_member_fields():
+        user = UserModel(name="Carol Jones", username="carol_3", email="carol@example.com")
+        member = MemberSchema(user_id=SOME_MEMBER_ID, role=MemberRole.ADMIN)
+
+        response = ClubMemberProfileResponse.from_models(user, member)
+
+        assert response.username == "carol_3"
+        assert response.name == "Carol Jones"
+        assert response.role == MemberRole.ADMIN
+        assert response.joined_at == member.joined_at
+        assert response.avatar is None
+        assert not hasattr(response, "email")
+
+    def it_reflects_the_users_avatar_when_set():
+        user = UserModel(
+            name="Carol Jones",
+            username="carol_3",
+            email="carol@example.com",
+            avatar=AvatarSchema(
+                source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash")
+            ),
+        )
+        member = MemberSchema(user_id=SOME_MEMBER_ID, role=MemberRole.MEMBER)
+
+        response = ClubMemberProfileResponse.from_models(user, member)
+
+        assert response.avatar is not None
+        assert response.avatar.source == AuthProviderName.GRAVATAR
+        assert str(response.avatar.value) == "https://gravatar.com/avatar/somehash"
 
 
 def describe_club_detail_response_from_model_with_pending():
