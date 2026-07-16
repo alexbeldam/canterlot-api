@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: canterlot-api
+    runtime: python
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: |
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      export PATH="$HOME/.local/bin:$PATH"
+      uv sync --frozen --no-dev
+    startCommand: uv run uvicorn canterlot.app:create_app --factory --host 0.0.0.0 --port $PORT
+    healthCheckPath: /docs
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: CURRENT_TERMS_VERSION
+        value: "1"
+      - key: CURRENT_PRIVACY_VERSION
+        value: "1"
+      - key: GOOGLE_BOOKS_API_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GRAVATAR_OAUTH_CLIENT_ID
+        sync: false
+      - key: GRAVATAR_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRY_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_EXPIRY_DAYS
+        value: "60"
+      - key: MONGODB_URL
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: canterlot_db
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: canterlot-redis
+          property: connectionString
+      - key: CLUB_OWNERSHIP_ACTION_RATE_LIMIT
+        value: "10"
+      - key: CLUB_OWNERSHIP_ACTION_RATE_LIMIT_WINDOW_SECONDS
+        value: "3600"
+
+  - type: redis
+    name: canterlot-redis
+    plan: free
+    ipAllowList: []
