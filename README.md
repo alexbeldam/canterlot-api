@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/uv-F15A24?style=for-the-badge&logo=rust&logoColor=white" />
   <img src="https://img.shields.io/badge/Just-000000?style=for-the-badge&logo=gnu-bash&logoColor=white" />
   <img src="https://img.shields.io/badge/Ruff-FCC21B?style=for-the-badge&logo=python&logoColor=black" />
-  <img src="https://img.shields.io/badge/License-AGPL_v3-333333?style=for-the-badge&logo=gnu&logoColor=white" />
+  <img src="https://img.shields.io/badge/License-BSL_1.1-333333?style=for-the-badge&logo=gnu&logoColor=white" />
 </p>
 
 <p align="center">
@@ -177,9 +177,9 @@ O frontend que consome esta API pode ser encontrado neste repositório:
 
 <h2 id="licenca">📄 Licença</h2>
 
-Este projeto está licenciado sob a licença **GNU Affero General Public License v3 (AGPLv3)**. Isto significa que qualquer pessoa pode hospedar, modificar e interagir com este software, mas todas as modificações em ambientes de rede (SaaS) são **legalmente obrigadas** a manter o código-fonte aberto sob esta mesma licença.
+Este projeto está licenciado sob a **Business Source License 1.1 (BSL)**. Isto significa que qualquer pessoa pode usar, modificar e redistribuir este código, inclusive para fins comerciais, **exceto** para operar um serviço hospedado concorrente que ofereça funcionalidade de clube de leitura substancialmente similar à do Canterlot a terceiros.
 
-Consulte o ficheiro [LICENSE](LICENSE) para obter mais detalhes.
+Essa restrição converte-se automaticamente, na "Change Date" especificada no ficheiro [LICENSE](LICENSE), na **GNU Affero General Public License v3 (AGPLv3)**: irrestrita e totalmente de código aberto, incluindo a obrigação de manter aberto o código-fonte de qualquer modificação hospedada em rede (SaaS).
 
 ---
 
