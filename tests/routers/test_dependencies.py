@@ -262,15 +262,19 @@ def describe_rate_limit_club_owner_action():
 
     def it_builds_the_configured_oauth_providers(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(get_settings(), "google_oauth_client_id", "some-client-id")
+        monkeypatch.setattr(get_settings(), "gravatar_oauth_client_id", None)
+        monkeypatch.setattr(get_settings(), "gravatar_oauth_client_secret", None)
 
-        providers = get_oauth_providers()
+        providers = get_oauth_providers(AsyncMock(spec=AsyncSession))
 
         assert isinstance(providers[AuthProviderName.GOOGLE], GoogleAuthProvider)
 
     def it_returns_no_oauth_providers_when_none_are_configured(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(get_settings(), "google_oauth_client_id", None)
+        monkeypatch.setattr(get_settings(), "gravatar_oauth_client_id", None)
+        monkeypatch.setattr(get_settings(), "gravatar_oauth_client_secret", None)
 
-        assert get_oauth_providers() == {}
+        assert get_oauth_providers(AsyncMock(spec=AsyncSession)) == {}
 
 
 def describe_service_factories():

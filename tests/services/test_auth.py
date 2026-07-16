@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from beanie import PydanticObjectId
+from pydantic import HttpUrl
 
 from canterlot.dto.auth import UserRegisterRequest
 from canterlot.exceptions import (
@@ -15,10 +16,11 @@ from canterlot.exceptions import (
     LastAuthenticationMethodError,
     OAuthAccountCreationConflictError,
     OAuthLinkRequiredError,
+    StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models.enums import AuthOutcome, AuthProviderName
-from canterlot.models.user import LinkedProviderSchema
+from canterlot.models.enums import AuthOutcome, AuthProviderName, BadgeReason
+from canterlot.models.user import AvatarSchema, LinkedProviderSchema
 from canterlot.providers.auth import OAuthIdentity, OAuthProvider
 from canterlot.services.auth import AuthService
 from canterlot.utils.security import hash_password
@@ -28,7 +30,14 @@ SOME_OTHER_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 
 
 def _register_request(**overrides) -> UserRegisterRequest:
-    defaults = {"name": "Alice Smith", "username": "alice_1", "email": "alice@example.com", "password": "secret1"}
+    defaults = {
+        "name": "Alice Smith",
+        "username": "alice_1",
+        "email": "alice@example.com",
+        "password": "secret1",
+        "terms_version": 1,
+        "privacy_version": 1,
+    }
     return UserRegisterRequest(**{**defaults, **overrides})
 
 
@@ -54,6 +63,16 @@ def describe_register_user():
         with pytest.raises(EmailAlreadyExistsError):
             await service.register_user(_register_request())
 
+    async def it_rejects_registration_when_the_legal_version_is_stale(user_repo: AsyncMock):
+        user_repo.exists_by_username.return_value = False
+        user_repo.exists_by_email.return_value = False
+        service = AuthService(user_repo, {})
+
+        with pytest.raises(StaleLegalVersionError):
+            await service.register_user(_register_request(terms_version=0))
+
+        user_repo.save.assert_not_called()
+
     async def it_persists_a_new_user_and_returns_issued_tokens(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
@@ -68,6 +87,21 @@ def describe_register_user():
         user_repo.push_refresh_token_by_id.assert_awaited_once_with(SOME_USER_ID, result.refresh_token)
         user_repo.increment_referral_count_by_username.assert_not_called()
 
+    async def it_records_legal_acceptance_and_completes_the_profile_immediately(user_repo: AsyncMock):
+        user_repo.exists_by_username.return_value = False
+        user_repo.exists_by_email.return_value = False
+        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        service = AuthService(user_repo, {})
+
+        await service.register_user(_register_request(terms_version=1, privacy_version=1))
+
+        persisted_user = user_repo.save.call_args.args[0]
+        assert persisted_user.accepted_terms_version == 1
+        assert persisted_user.accepted_privacy_version == 1
+        assert persisted_user.accepted_terms_at is not None
+        assert persisted_user.accepted_privacy_at is not None
+        assert persisted_user.profile_completed_at is not None
+
     async def it_credits_the_referring_user_when_invited_by_is_given(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
@@ -77,6 +111,31 @@ def describe_register_user():
         await service.register_user(_register_request(), invited_by="referrer_1")
 
         user_repo.increment_referral_count_by_username.assert_awaited_once_with("referrer_1")
+
+    async def it_defaults_a_new_account_to_no_avatar_with_a_generated_seed_available(user_repo: AsyncMock):
+        user_repo.exists_by_username.return_value = False
+        user_repo.exists_by_email.return_value = False
+        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        service = AuthService(user_repo, {})
+
+        await service.register_user(_register_request())
+
+        saved_user = user_repo.save.call_args.args[0]
+        assert saved_user.avatar is None
+        assert saved_user.generated_avatar_seed is not None
+
+    async def it_awards_exactly_one_joined_badge_to_a_new_account(user_repo: AsyncMock):
+        user_repo.exists_by_username.return_value = False
+        user_repo.exists_by_email.return_value = False
+        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        service = AuthService(user_repo, {})
+
+        await service.register_user(_register_request())
+
+        saved_user = user_repo.save.call_args.args[0]
+        assert len(saved_user.badges) == 1
+        assert saved_user.badges[0].reason == BadgeReason.JOINED
+        assert saved_user.badges[0].earned_at is not None
 
 
 def describe_login_user():
@@ -162,6 +221,7 @@ def describe_sign_in_with_provider():
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
         user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = None
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         result = await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
@@ -170,6 +230,65 @@ def describe_sign_in_with_provider():
         assert result.access_token
         assert result.refresh_token
         user_repo.save_new_oauth_account.assert_not_called()
+
+    async def it_resyncs_the_stored_picture_on_every_login_with_a_picture(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/new.jpg"
+        )
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = None
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        user_repo.update_linked_provider_picture.assert_awaited_once_with(
+            SOME_USER_ID, AuthProviderName.GOOGLE, HttpUrl("https://example.com/new.jpg")
+        )
+
+    async def it_refreshes_the_active_avatar_value_when_its_source_is_already_google(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/new.jpg"
+        )
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = AvatarSchema(
+            source=AuthProviderName.GOOGLE,
+            value=HttpUrl("https://example.com/old.jpg"),
+        )
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        user_repo.set_avatar.assert_awaited_once()
+        called_user_id, called_avatar = user_repo.set_avatar.call_args.args
+        assert called_user_id == SOME_USER_ID
+        assert str(called_avatar.value) == "https://example.com/new.jpg"
+
+    async def it_never_overrides_a_generated_or_gravatar_choice_on_login(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/new.jpg"
+        )
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = None
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        user_repo.set_avatar.assert_not_called()
+
+    async def it_does_not_resync_metadata_when_no_picture_claim_is_present(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        user_repo.update_linked_provider_picture.assert_not_called()
+        user_repo.find_avatar_by_id.assert_not_called()
+        user_repo.set_avatar.assert_not_called()
 
     async def it_requires_linking_when_the_email_already_belongs_to_a_different_account(user_repo: AsyncMock):
         google = _google_provider()
@@ -202,6 +321,40 @@ def describe_sign_in_with_provider():
         assert len(saved_user.linked_providers) == 1
         assert saved_user.linked_providers[0].provider == AuthProviderName.GOOGLE
         assert saved_user.linked_providers[0].external_id == "sub-1"
+
+    async def it_defaults_a_new_account_to_no_avatar_when_no_picture_is_present(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
+        user_repo.find_id_by_linked_provider.return_value = None
+        user_repo.find_by_email.return_value = None
+        user_repo.exists_by_username.return_value = False
+        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        saved_user = user_repo.save_new_oauth_account.call_args.args[0]
+        assert saved_user.avatar is None
+        assert saved_user.generated_avatar_seed is not None
+
+    async def it_adopts_the_google_picture_as_the_new_accounts_avatar_when_present(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/pic.jpg"
+        )
+        user_repo.find_id_by_linked_provider.return_value = None
+        user_repo.find_by_email.return_value = None
+        user_repo.exists_by_username.return_value = False
+        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
+
+        saved_user = user_repo.save_new_oauth_account.call_args.args[0]
+        assert saved_user.avatar.source == AuthProviderName.GOOGLE
+        assert str(saved_user.avatar.value) == "https://example.com/pic.jpg"
+        assert str(saved_user.linked_providers[0].picture_url) == "https://example.com/pic.jpg"
+        assert saved_user.generated_avatar_seed is not None
 
     async def it_falls_back_to_the_email_local_part_for_the_username_when_no_name_is_given(user_repo: AsyncMock):
         google = _google_provider()
@@ -253,7 +406,11 @@ def describe_link_provider():
 
     async def it_links_the_provider_when_unclaimed(user_repo: AsyncMock):
         google = _google_provider()
-        google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com")
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1",
+            email="alice@example.com",
+            picture="https://example.com/pic.jpg",
+        )
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.add_linked_provider.return_value = True
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
@@ -265,6 +422,23 @@ def describe_link_provider():
         assert called_user_id == SOME_USER_ID
         assert called_entry.provider == AuthProviderName.GOOGLE
         assert called_entry.external_id == "sub-1"
+        assert str(called_entry.picture_url) == "https://example.com/pic.jpg"
+
+    async def it_passes_the_redirect_uri_through_to_the_provider(user_repo: AsyncMock):
+        gravatar = AsyncMock(spec=OAuthProvider)
+        gravatar.verify.return_value = OAuthIdentity(external_id="wp-1", email="alice@example.com")
+        user_repo.find_id_by_linked_provider.return_value = None
+        user_repo.add_linked_provider.return_value = True
+        service = AuthService(user_repo, {AuthProviderName.GRAVATAR: gravatar})
+
+        await service.link_provider(
+            SOME_USER_ID,
+            AuthProviderName.GRAVATAR,
+            "some-code",
+            "http://localhost:5173/callback",
+        )
+
+        gravatar.verify.assert_awaited_once_with("some-code", "http://localhost:5173/callback")
 
     async def it_rejects_linking_when_a_concurrent_request_wins_the_race(user_repo: AsyncMock):
         google = _google_provider()
@@ -285,6 +459,68 @@ def describe_link_provider():
         await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
 
         user_repo.add_linked_provider.assert_not_called()
+
+    async def it_resyncs_the_stored_picture_on_a_repeat_link_attempt(user_repo: AsyncMock):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1",
+            email="alice@example.com",
+            picture="https://example.com/new.jpg",
+        )
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = AvatarSchema(
+            source=AuthProviderName.GOOGLE,
+            value=HttpUrl("https://example.com/old.jpg"),
+        )
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
+
+        user_repo.update_linked_provider_picture.assert_awaited_once_with(
+            SOME_USER_ID, AuthProviderName.GOOGLE, HttpUrl("https://example.com/new.jpg")
+        )
+        user_repo.set_avatar.assert_awaited_once()
+
+    async def it_does_not_adopt_google_as_avatar_on_a_repeat_link_when_source_is_not_already_google(
+        user_repo: AsyncMock,
+    ):
+        google = _google_provider()
+        google.verify.return_value = OAuthIdentity(
+            external_id="sub-1",
+            email="alice@example.com",
+            picture="https://example.com/new.jpg",
+        )
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = None
+        service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
+
+        await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
+
+        user_repo.update_linked_provider_picture.assert_awaited_once()
+        user_repo.set_avatar.assert_not_called()
+
+    async def it_resyncs_the_stored_picture_for_gravatar_too(user_repo: AsyncMock):
+        gravatar = AsyncMock(spec=OAuthProvider)
+        gravatar.verify.return_value = OAuthIdentity(
+            external_id="wp-1",
+            email="alice@example.com",
+            picture="https://gravatar.com/avatar/new",
+        )
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user_repo.find_avatar_by_id.return_value = AvatarSchema(
+            source=AuthProviderName.GRAVATAR,
+            value=HttpUrl("https://gravatar.com/avatar/old"),
+        )
+        service = AuthService(user_repo, {AuthProviderName.GRAVATAR: gravatar})
+
+        await service.link_provider(SOME_USER_ID, AuthProviderName.GRAVATAR, "some-code", "http://localhost:5173/cb")
+
+        user_repo.update_linked_provider_picture.assert_awaited_once_with(
+            SOME_USER_ID,
+            AuthProviderName.GRAVATAR,
+            HttpUrl("https://gravatar.com/avatar/new"),
+        )
+        user_repo.set_avatar.assert_awaited_once()
 
     async def it_rejects_linking_a_credential_already_owned_by_a_different_account(user_repo: AsyncMock):
         google = _google_provider()
@@ -331,6 +567,33 @@ def describe_disconnect_provider():
             await service.disconnect_provider(SOME_USER_ID, AuthProviderName.GOOGLE)
 
         user_repo.remove_linked_provider.assert_not_called()
+
+
+def describe_revoke_provider_link():
+    async def it_removes_the_link_for_the_matching_account(user_repo: AsyncMock):
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        service = AuthService(user_repo, {})
+
+        await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
+
+        user_repo.find_id_by_linked_provider.assert_awaited_once_with(AuthProviderName.GOOGLE, "google-sub-1")
+        user_repo.remove_linked_provider.assert_awaited_once_with(SOME_USER_ID, AuthProviderName.GOOGLE)
+
+    async def it_is_a_no_op_when_no_account_is_linked_to_that_identity(user_repo: AsyncMock):
+        user_repo.find_id_by_linked_provider.return_value = None
+        service = AuthService(user_repo, {})
+
+        await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
+
+        user_repo.remove_linked_provider.assert_not_called()
+
+    async def it_removes_the_link_even_when_it_is_the_only_remaining_authentication_method(user_repo: AsyncMock):
+        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        service = AuthService(user_repo, {})
+
+        await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
+
+        user_repo.remove_linked_provider.assert_awaited_once_with(SOME_USER_ID, AuthProviderName.GOOGLE)
 
 
 def describe_list_connected_providers():
