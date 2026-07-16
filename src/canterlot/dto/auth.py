@@ -70,13 +70,25 @@ class CreateSessionRequest(BaseModel):
 class LinkProviderRequest(BaseModel):
     credential: str = Field(
         ...,
-        description="The provider's opaque proof-of-ownership token (e.g. a Google ID token).",
+        description=(
+            "The provider's opaque proof-of-ownership token (e.g. a Google ID token, or a Gravatar authorization code)."
+        ),
+    )
+    redirect_uri: str | None = Field(
+        default=None,
+        description=(
+            "Required only for providers using an authorization-code exchange (e.g. Gravatar), must exactly "
+            "match the redirect_uri used in the original authorize request. Ignored by other providers."
+        ),
     )
 
 
 class LinkedProviderDTO(BaseModel):
     provider: AuthProviderName
     linked_at: datetime
+    has_picture: bool = Field(
+        description="Whether this linked provider carries a profile picture usable as an avatar source."
+    )
 
 
 class ConnectedProvidersResponse(BaseModel):
@@ -88,7 +100,11 @@ class ConnectedProvidersResponse(BaseModel):
         return cls(
             has_password=user.hashed_password is not None,
             linked_providers=[
-                LinkedProviderDTO(provider=linked.provider, linked_at=linked.linked_at)
+                LinkedProviderDTO(
+                    provider=linked.provider,
+                    linked_at=linked.linked_at,
+                    has_picture=linked.picture_url is not None,
+                )
                 for linked in user.linked_providers
             ],
         )

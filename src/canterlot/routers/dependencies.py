@@ -106,8 +106,10 @@ async def get_catalog_service(
     return CatalogService(book_repo=book_repo, club_repo=club_repo, user_repo=user_repo, link_providers=link_providers)
 
 
-def get_oauth_providers() -> dict[AuthProviderName, OAuthProvider]:
-    return get_all_oauth_providers()
+def get_oauth_providers(
+    session: Annotated[AsyncSession, Depends(get_curl_cffi_session)],
+) -> dict[AuthProviderName, OAuthProvider]:
+    return get_all_oauth_providers(session)
 
 
 def get_google_risc_verifier(

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     ]
     google_books_api_key: str
     google_oauth_client_id: str | None = None
+    gravatar_oauth_client_id: str | None = None
+    gravatar_oauth_client_secret: str | None = None
     jwt_secret_key: str
     jwt_algorithm: str
     access_token_expiry_minutes: int = 15

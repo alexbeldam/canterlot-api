@@ -1,14 +1,15 @@
 from datetime import UTC, datetime
 from typing import Annotated, ClassVar
 
+import shortuuid
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 from pymongo import ASCENDING, IndexModel
 
-from canterlot.utils.format import NonEmptyStr, NormalizedEmailStr
+from canterlot.utils.format import HttpsUrl, NonEmptyStr, NormalizedEmailStr
 
 from .book import ReadBook
-from .enums import AuthProviderName
+from .enums import AuthProviderName, BadgeReason
 
 type UsernameStr = Annotated[
     NonEmptyStr,
@@ -25,7 +26,18 @@ type PersonNameStr = Annotated[
 class LinkedProviderSchema(BaseModel):
     provider: AuthProviderName
     external_id: str
+    picture_url: HttpsUrl | None = None
     linked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AvatarSchema(BaseModel):
+    source: AuthProviderName
+    value: HttpsUrl
+
+
+class EarnedBadgeSchema(BaseModel):
+    reason: BadgeReason
+    earned_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class UserModel(Document):
@@ -34,7 +46,10 @@ class UserModel(Document):
     email: Annotated[NormalizedEmailStr, Indexed(unique=True)]
     hashed_password: str | None = None
     linked_providers: list[LinkedProviderSchema] = Field(default_factory=list)
+    avatar: AvatarSchema | None = None
+    generated_avatar_seed: str = Field(default_factory=shortuuid.random)
     referral_count: int = Field(default=0)
+    badges: list[EarnedBadgeSchema] = Field(default_factory=lambda: [EarnedBadgeSchema(reason=BadgeReason.JOINED)])
     refresh_tokens: list[str] = Field(default_factory=list)
     books_read: list[ReadBook] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

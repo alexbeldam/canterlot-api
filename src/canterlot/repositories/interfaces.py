@@ -5,6 +5,7 @@ from beanie import PydanticObjectId
 
 from canterlot.models import (
     AuthProviderName,
+    AvatarSchema,
     BookModel,
     CatalogEntryModel,
     ClubModel,
@@ -19,7 +20,7 @@ from canterlot.models.book import BookProviderIdentifier, ReadBook, UrlList
 from canterlot.models.club import ClubNameStr, ClubSlugStr
 from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.pagination import Page, SortDirection
-from canterlot.utils.format import ISBN10Str, ISBN13Str, LanguageStr, NormalizedEmailStr
+from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NormalizedEmailStr
 
 
 class BookRepository(Protocol):
@@ -150,6 +151,12 @@ class UserRepository(Protocol):
     async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> bool: ...
     async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> bool: ...
     async def remove_linked_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None: ...
+    async def update_linked_provider_picture(
+        self,
+        user_id: PydanticObjectId,
+        provider: AuthProviderName,
+        picture_url: HttpsUrl,
+    ) -> None: ...
     async def update_profile(
         self,
         user_id: PydanticObjectId,
@@ -162,6 +169,10 @@ class UserRepository(Protocol):
         hashed_password: str,
         new_refresh_token: str,
     ) -> None: ...
+    async def find_avatar_by_id(self, user_id: PydanticObjectId) -> AvatarSchema | None: ...
+    async def set_avatar(self, user_id: PydanticObjectId, avatar: AvatarSchema) -> bool: ...
+    async def clear_avatar(self, user_id: PydanticObjectId) -> bool: ...
+    async def set_generated_avatar_seed(self, user_id: PydanticObjectId, seed: str) -> bool: ...
 
 
 class InviteRepository(Protocol):

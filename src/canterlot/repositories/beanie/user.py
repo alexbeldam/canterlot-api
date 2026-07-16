@@ -6,10 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from pymongo.errors import DuplicateKeyError
 from pymongo.results import UpdateResult
 
-from canterlot.models import AuthProviderName, LinkedProviderSchema, UserModel
+from canterlot.models import AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.repositories import UserRepository
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.utils.format import HttpsUrl, NormalizedEmailStr
 
 
 class UsernameProjection(BaseModel):
@@ -20,6 +20,10 @@ class IdProjection(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: PydanticObjectId = Field(alias="_id")
+
+
+class AvatarProjection(BaseModel):
+    avatar: AvatarSchema | None = None
 
 
 class BeanieUserRepository(UserRepository):
@@ -104,6 +108,33 @@ class BeanieUserRepository(UserRepository):
         await UserModel.find_one(UserModel.id == user_id).update_one(
             Pull({UserModel.linked_providers: {"provider": provider}})
         )
+
+    async def update_linked_provider_picture(
+        self, user_id: PydanticObjectId, provider: AuthProviderName, picture_url: HttpsUrl
+    ) -> None:
+        await UserModel.find_one(UserModel.id == user_id).update_one(
+            {"$set": {"linked_providers.$[target].picture_url": picture_url}},
+            array_filters=[{"target.provider": provider}],
+        )
+
+    async def find_avatar_by_id(self, user_id: PydanticObjectId) -> AvatarSchema | None:
+        p = await UserModel.find_one(UserModel.id == user_id).project(AvatarProjection)
+
+        if not p:
+            return None
+        return p.avatar
+
+    async def set_avatar(self, user_id: PydanticObjectId, avatar: AvatarSchema) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id).update_one({"$set": {"avatar": avatar}})
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def clear_avatar(self, user_id: PydanticObjectId) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id).update_one({"$set": {"avatar": None}})
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def set_generated_avatar_seed(self, user_id: PydanticObjectId, seed: str) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id).update_one({"$set": {"generated_avatar_seed": seed}})
+        return cast(UpdateResult, result).matched_count > 0
 
     async def update_profile(
         self,

@@ -21,7 +21,11 @@ class GoogleAuthProvider(OAuthProvider):
     def name(self) -> AuthProviderName:
         return AuthProviderName.GOOGLE
 
-    async def verify(self, credential: str) -> OAuthIdentity:
+    @property
+    def supports_avatar(self) -> bool:
+        return True
+
+    async def verify(self, credential: str, _redirect_uri: str | None = None) -> OAuthIdentity:
         log = logger.bind(provider=self.name)
         log.info("Verifying Google ID token against Google's public certificates")
 
@@ -45,4 +49,5 @@ class GoogleAuthProvider(OAuthProvider):
             external_id=claims["sub"],
             email=claims["email"],
             name=claims.get("name"),
+            picture=claims.get("picture"),
         )

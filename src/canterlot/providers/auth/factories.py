@@ -1,18 +1,34 @@
+from curl_cffi.requests import AsyncSession
+
 from canterlot.config import get_settings
 from canterlot.models.enums import AuthProviderName
 from canterlot.utils import get_logger
 
 from .google import GoogleAuthProvider
+from .gravatar import GravatarAuthProvider
 from .interfaces import OAuthProvider
 
 logger = get_logger(__name__)
 
 
-def get_all_oauth_providers() -> dict[AuthProviderName, OAuthProvider]:
-    client_id = get_settings().google_oauth_client_id
-    if not client_id:
-        logger.warn("Google OAuth client id not configured; Google sign-in will be unavailable")
-        return {}
+def get_all_oauth_providers(session: AsyncSession) -> dict[AuthProviderName, OAuthProvider]:
+    settings = get_settings()
+    providers: dict[AuthProviderName, OAuthProvider] = {}
 
-    logger.info("Google OAuth provider configured and enabled")
-    return {AuthProviderName.GOOGLE: GoogleAuthProvider(client_id)}
+    if settings.google_oauth_client_id:
+        logger.debug("Google OAuth provider configured and enabled")
+        providers[AuthProviderName.GOOGLE] = GoogleAuthProvider(settings.google_oauth_client_id)
+    else:
+        logger.warn("Google OAuth client id not configured; Google sign-in will be unavailable")
+
+    if settings.gravatar_oauth_client_id and settings.gravatar_oauth_client_secret:
+        logger.debug("Gravatar OAuth provider configured and enabled")
+        providers[AuthProviderName.GRAVATAR] = GravatarAuthProvider(
+            settings.gravatar_oauth_client_id,
+            settings.gravatar_oauth_client_secret,
+            session,
+        )
+    else:
+        logger.warn("Gravatar OAuth client id/secret not configured; Gravatar linking will be unavailable")
+
+    return providers

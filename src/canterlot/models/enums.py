@@ -31,6 +31,11 @@ class ClubOnboardingStatus(StrEnum):
 
 class AuthProviderName(StrEnum):
     GOOGLE = "GOOGLE"
+    GRAVATAR = "GRAVATAR"
+
+
+class BadgeReason(StrEnum):
+    JOINED = "JOINED"
 
 
 class AuthOutcome(StrEnum):
