@@ -10,6 +10,7 @@ from canterlot.exceptions import (
     InvalidOAuthCredentialError,
     OAuthAccountCreationConflictError,
     OAuthLinkRequiredError,
+    RateLimitExceededError,
     TokenExpiredError,
     TokenMalformedError,
 )
@@ -22,6 +23,8 @@ from canterlot.routers.dependencies import (
     get_auth_service,
     get_optional_refresh_token_context,
     get_user_id_from_valid_refresh_token,
+    rate_limit_login_attempt,
+    rate_limit_refresh_attempt,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService
@@ -33,6 +36,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     "/sessions",
     operation_id="createSession",
     response_model=AccessTokenResponse,
+    dependencies=[Depends(rate_limit_login_attempt)],
     responses={
         status.HTTP_200_OK: {
             "description": (
@@ -71,6 +75,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
                 "Validation error. Fields don't match `type` (PASSWORD requires username+password, OAUTH "
                 "requires provider+credential), or `provider` is not a recognized authentication provider."
             )
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": (
+                "RateLimitExceededError: Too many sign-in attempts, either from this IP address or "
+                "against this account (PASSWORD sessions only -- OAUTH is limited by IP alone)."
+            ),
+            "content": error_example(RateLimitExceededError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,
@@ -135,6 +147,7 @@ async def login(
     "/sessions/current",
     operation_id="rotateSession",
     response_model=AccessTokenResponse,
+    dependencies=[Depends(rate_limit_refresh_attempt)],
     responses={
         status.HTTP_200_OK: {
             "description": (
@@ -157,6 +170,11 @@ async def login(
                 "the token has already been revoked or invalidated."
             ),
             "content": error_example(TokenExpiredError, InvalidCredentialsError),
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": "RateLimitExceededError: Too many session-refresh attempts from this IP address.",
+            "content": error_example(RateLimitExceededError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,

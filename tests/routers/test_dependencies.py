@@ -1,18 +1,20 @@
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import pytest
 from beanie import PydanticObjectId
 from curl_cffi.requests import AsyncSession
+from fastapi import Request
 from fastapi.openapi.models import OAuth2
 from fastapi.routing import iter_route_contexts
 
 from canterlot.app import create_app
 from canterlot.config import get_settings
+from canterlot.dto.auth import CreateSessionRequest
 from canterlot.exceptions import InvalidCredentialsError, RateLimitExceededError, TokenExpiredError, TokenMalformedError
-from canterlot.models.enums import AuthProviderName
+from canterlot.models.enums import AuthProviderName, SessionType
 from canterlot.providers import BookProvider, GoogleBookProvider, LinkProvider
 from canterlot.providers.annas import AnnaLinkProvider
 from canterlot.providers.auth import GoogleAuthProvider
@@ -35,6 +37,7 @@ from canterlot.repositories.redis import RedisRepository
 from canterlot.routers.dependencies import (
     LOGIN_PATH,
     RefreshTokenContext,
+    _client_ip,
     _enforce_rate_limit,
     _parse_subject_id,
     get_auth_service,
@@ -60,6 +63,9 @@ from canterlot.routers.dependencies import (
     get_user_repository,
     oauth2_scheme,
     rate_limit_club_owner_action,
+    rate_limit_login_attempt,
+    rate_limit_refresh_attempt,
+    rate_limit_register_attempt,
 )
 from canterlot.services import AuthService, BookService, CatalogService, ClubService, HealthService, InviteService
 from canterlot.utils.security import create_access_token, create_jwt_token, create_refresh_token
@@ -292,6 +298,96 @@ def describe_rate_limit_club_owner_action():
         monkeypatch.setattr(get_settings(), "gravatar_oauth_client_secret", None)
 
         assert get_oauth_providers(AsyncMock(spec=AsyncSession)) == {}
+
+
+def _make_request(client_host: str | None = "203.0.113.5") -> Request:
+    scope: dict[str, object] = {"type": "http", "headers": [], "client": (client_host, 12345) if client_host else None}
+    return Request(scope)
+
+
+def describe_client_ip():
+    def it_returns_the_client_host_when_present():
+        assert _client_ip(_make_request("203.0.113.5")) == "203.0.113.5"
+
+    def it_returns_unknown_when_the_client_is_absent():
+        assert _client_ip(_make_request(None)) == "unknown"
+
+
+def describe_rate_limit_register_attempt():
+    async def it_keys_the_counter_by_client_ip():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 1
+
+        await rate_limit_register_attempt(_make_request(), redis_client)
+
+        redis_client.incr.assert_awaited_once_with("ratelimit:register:203.0.113.5")
+
+    async def it_raises_once_the_configured_limit_is_exceeded():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 999
+        redis_client.ttl.return_value = 10
+
+        with pytest.raises(RateLimitExceededError):
+            await rate_limit_register_attempt(_make_request(), redis_client)
+
+
+def describe_rate_limit_refresh_attempt():
+    async def it_keys_the_counter_by_client_ip():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 1
+
+        await rate_limit_refresh_attempt(_make_request(), redis_client)
+
+        redis_client.incr.assert_awaited_once_with("ratelimit:refresh:203.0.113.5")
+
+    async def it_raises_once_the_configured_limit_is_exceeded():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 999
+        redis_client.ttl.return_value = 10
+
+        with pytest.raises(RateLimitExceededError):
+            await rate_limit_refresh_attempt(_make_request(), redis_client)
+
+
+def describe_rate_limit_login_attempt():
+    async def it_applies_a_single_ip_keyed_limit_for_oauth_sessions():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 1
+        payload = CreateSessionRequest(type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE, credential="token")
+
+        await rate_limit_login_attempt(_make_request(), payload, redis_client)
+
+        redis_client.incr.assert_awaited_once_with("ratelimit:oauth-sign-in:203.0.113.5")
+
+    async def it_applies_ip_and_account_keyed_limits_for_password_sessions():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 1
+        payload = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
+
+        await rate_limit_login_attempt(_make_request(), payload, redis_client)
+
+        assert redis_client.incr.await_args_list == [
+            call("ratelimit:login-ip:203.0.113.5"),
+            call("ratelimit:login-account:alice_1"),
+        ]
+
+    async def it_raises_when_the_ip_limit_is_exceeded_for_a_password_session():
+        redis_client = AsyncMock()
+        redis_client.incr.return_value = 999
+        redis_client.ttl.return_value = 10
+        payload = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
+
+        with pytest.raises(RateLimitExceededError):
+            await rate_limit_login_attempt(_make_request(), payload, redis_client)
+
+    async def it_raises_when_the_account_limit_is_exceeded_for_a_password_session():
+        redis_client = AsyncMock()
+        redis_client.incr.side_effect = [1, 999]
+        redis_client.ttl.return_value = 10
+        payload = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
+
+        with pytest.raises(RateLimitExceededError):
+            await rate_limit_login_attempt(_make_request(), payload, redis_client)
 
 
 def describe_service_factories():

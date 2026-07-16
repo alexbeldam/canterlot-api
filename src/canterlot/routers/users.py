@@ -31,6 +31,7 @@ from canterlot.exceptions import (
     InvalidOAuthCredentialError,
     InviteLinkDeactivatedError,
     LastAuthenticationMethodError,
+    RateLimitExceededError,
     StaleLegalVersionError,
     TokenExpiredError,
     TokenMalformedError,
@@ -46,6 +47,7 @@ from canterlot.routers.dependencies import (
     get_current_user_id,
     get_invite_service,
     get_user_service,
+    rate_limit_register_attempt,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService, ClubService, InviteService, UserService
@@ -61,6 +63,7 @@ _read_books = APIRouter(prefix="/read-books", tags=["Users"])
     operation_id="register",
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit_register_attempt)],
     responses={
         status.HTTP_201_CREATED: {
             "description": (
@@ -108,6 +111,11 @@ _read_books = APIRouter(prefix="/read-books", tags=["Users"])
             "description": (
                 "Validation error. Request body values violate type constraints or payload formatting requirements."
             )
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": ErrorResponseModel,
+            "description": "RateLimitExceededError: Too many registration attempts from this IP address.",
+            "content": error_example(RateLimitExceededError),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponseModel,

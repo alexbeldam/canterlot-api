@@ -6,10 +6,11 @@ import redis.asyncio as aioredis
 from beanie import PydanticObjectId
 from bson.errors import InvalidId
 from curl_cffi.requests import AsyncSession
-from fastapi import Cookie, Depends
+from fastapi import Cookie, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 
 from canterlot.config import get_settings
+from canterlot.dto.auth import CreateSessionRequest
 from canterlot.exceptions import (
     ClubNotFoundError,
     GatewayConfigurationError,
@@ -23,7 +24,7 @@ from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models import UserModel
 from canterlot.models.book import BookExternalId
 from canterlot.models.club import ClubSlugStr
-from canterlot.models.enums import AuthProviderName
+from canterlot.models.enums import AuthProviderName, SessionType
 from canterlot.models.user import UsernameStr
 from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
 from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
@@ -300,3 +301,64 @@ def rate_limit_club_owner_action(scope: str):
         )
 
     return dependency
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+async def rate_limit_register_attempt(
+    request: Request,
+    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+) -> None:
+    settings = get_settings()
+    await _enforce_rate_limit(
+        redis_client,
+        key=f"ratelimit:register:{_client_ip(request)}",
+        limit=settings.auth_register_rate_limit,
+        window_seconds=settings.auth_register_rate_limit_window_seconds,
+    )
+
+
+async def rate_limit_refresh_attempt(
+    request: Request,
+    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+) -> None:
+    settings = get_settings()
+    await _enforce_rate_limit(
+        redis_client,
+        key=f"ratelimit:refresh:{_client_ip(request)}",
+        limit=settings.auth_refresh_rate_limit,
+        window_seconds=settings.auth_refresh_rate_limit_window_seconds,
+    )
+
+
+async def rate_limit_login_attempt(
+    request: Request,
+    payload: CreateSessionRequest,
+    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+) -> None:
+    settings = get_settings()
+    ip = _client_ip(request)
+
+    if payload.type is SessionType.OAUTH:
+        await _enforce_rate_limit(
+            redis_client,
+            key=f"ratelimit:oauth-sign-in:{ip}",
+            limit=settings.auth_oauth_signin_rate_limit,
+            window_seconds=settings.auth_oauth_signin_rate_limit_window_seconds,
+        )
+        return
+
+    await _enforce_rate_limit(
+        redis_client,
+        key=f"ratelimit:login-ip:{ip}",
+        limit=settings.auth_login_ip_rate_limit,
+        window_seconds=settings.auth_login_rate_limit_window_seconds,
+    )
+    await _enforce_rate_limit(
+        redis_client,
+        key=f"ratelimit:login-account:{payload.username}",
+        limit=settings.auth_login_account_rate_limit,
+        window_seconds=settings.auth_login_rate_limit_window_seconds,
+    )
