@@ -104,6 +104,7 @@ async def create_session(
 
     if oauth_result.outcome == AuthOutcome.CREATED:
         response.status_code = status.HTTP_201_CREATED
+        response.headers["Location"] = "/v1/users/me"
 
     set_refresh_token_cookie(response, oauth_result.refresh_token)
 

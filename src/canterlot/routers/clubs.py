@@ -104,7 +104,7 @@ async def create_club(
 
     member_usernames = await club_service.resolve_member_usernames(res.members)
 
-    response.headers["Location"] = f"/api/v1/clubs/{res.slug}"
+    response.headers["Location"] = f"/v1/clubs/{res.slug}"
 
     return ClubResponse.from_model(res, user_usernames=member_usernames)
 
@@ -436,7 +436,7 @@ async def create_invite(
             target_email=cast(NormalizedEmailStr, payload.email),
         )
 
-    response.headers["Location"] = f"/api/v1/invites/{token}/preview"
+    response.headers["Location"] = f"/v1/invites/{token}/preview"
 
     return InviteTokenResponse(invite_token=token)
 
