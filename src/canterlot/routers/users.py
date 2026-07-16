@@ -1,37 +1,151 @@
 from typing import Annotated
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
-from canterlot.dto.auth import ConnectedProvidersResponse, LinkProviderRequest, TokenResponse
+from canterlot.dto.auth import (
+    AccessTokenResponse,
+    ConnectedProvidersResponse,
+    LinkProviderRequest,
+    RegisterResponse,
+    UserRegisterRequest,
+)
 from canterlot.dto.user import ChangePasswordRequest, UpdateProfileRequest, UserProfileResponse
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
     BookNotFoundError,
+    ClubNotFoundError,
+    DirectInviteIdentityMismatchError,
+    EmailAlreadyExistsError,
     GatewayConfigurationError,
     IncorrectPasswordError,
     InvalidCredentialsError,
+    InvalidInviteTokenError,
     InvalidOAuthCredentialError,
+    InviteLinkDeactivatedError,
     LastAuthenticationMethodError,
     TokenExpiredError,
     TokenMalformedError,
     UsernameAlreadyExistsError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import AuthProviderName
+from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
+from canterlot.routers.cookies import set_refresh_token_cookie
 from canterlot.routers.dependencies import (
     get_auth_service,
     get_book_id_from_identifier,
+    get_club_service,
     get_current_user_id,
+    get_invite_service,
     get_user_service,
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import AuthService, UserService
+from canterlot.services import AuthService, ClubService, InviteService, UserService
 
+users_router = APIRouter(prefix="/users", tags=["Users"])
 profile_router = APIRouter(prefix="/users/me", tags=["Users"])
 auth_providers_router = APIRouter(prefix="/users/me/auth-providers", tags=["Users"])
 read_books_router = APIRouter(prefix="/users/me/read-books", tags=["Users"])
+
+
+@users_router.post(
+    "",
+    operation_id="register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_201_CREATED: {
+            "description": (
+                "User account created successfully. Access token returned in the body; the refresh token is "
+                "set as an httpOnly session cookie, not returned in the body."
+            )
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InvalidInviteTokenError: The provided invite_id does not correspond to an existing invitation."
+            ),
+            "content": error_example(InvalidInviteTokenError),
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponseModel,
+            "description": (
+                "DirectInviteIdentityMismatchError: The provided invite_id is a direct invitation bound to a "
+                "different email address than the one being registered."
+            ),
+            "content": error_example(DirectInviteIdentityMismatchError),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponseModel,
+            "description": "ClubNotFoundError: The club associated with the provided invite_id no longer exists.",
+            "content": error_example(ClubNotFoundError),
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponseModel,
+            "description": (
+                "UsernameAlreadyExistsError or EmailAlreadyExistsError: The username or email string "
+                "is already bound to a different profile."
+            ),
+            "content": error_example(UsernameAlreadyExistsError, EmailAlreadyExistsError),
+        },
+        status.HTTP_410_GONE: {
+            "model": ErrorResponseModel,
+            "description": (
+                "InviteLinkDeactivatedError: The provided invite_id has been deactivated, rotated, or has expired."
+            ),
+            "content": error_example(InviteLinkDeactivatedError),
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": (
+                "Validation error. Request body values violate type constraints or payload formatting requirements."
+            )
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponseModel,
+            "description": "Unexpected global backend execution failure or persistence error.",
+            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+    },
+)
+async def register(
+    payload: UserRegisterRequest,
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    invite_service: Annotated[InviteService, Depends(get_invite_service)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+):
+    validated_invite = None
+    inviter_username = payload.invited_by
+
+    if payload.invite_id:
+        validated_invite = await invite_service.validate_incoming_invite(
+            payload.invite_id,
+            payload.email,
+            payload.invited_by,
+        )
+
+        inviter_username = validated_invite.invited_by or payload.invited_by
+
+    res = await auth_service.register_user(payload, inviter_username)
+    onboarding = None
+
+    if validated_invite:
+        onboarding = await club_service.admit_user(
+            validated_invite.club_id,
+            res.user_id,
+            validated_invite.is_direct,
+        )
+
+        if (
+            onboarding
+            and onboarding.status in [ClubOnboardingStatus.JOINED, ClubOnboardingStatus.PENDING_APPROVAL]
+            and payload.invite_id
+        ):
+            await invite_service.register_invite_usage(payload.invite_id)
+
+    set_refresh_token_cookie(response, res.refresh_token)
+    return RegisterResponse(access_token=res.access_token, onboarding=onboarding)
 
 
 @profile_router.patch(
@@ -79,13 +193,14 @@ async def update_profile(
 @profile_router.put(
     "/password",
     operation_id="changePassword",
-    response_model=TokenResponse,
+    response_model=AccessTokenResponse,
     responses={
         status.HTTP_200_OK: {
             "description": (
                 "Password changed, or set for the first time on an OAuth-only account (`current_password` is "
                 "only required/verified when the account already has a password). Every other refresh token on "
-                "the account is revoked and a fresh token pair is returned for the caller's own session."
+                "the account is revoked; a fresh access token is returned in the body and a new refresh cookie "
+                "is set for the caller's own session."
             )
         },
         status.HTTP_400_BAD_REQUEST: {
@@ -114,9 +229,12 @@ async def update_profile(
 async def change_password(
     payload: ChangePasswordRequest,
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> TokenResponse:
-    return await auth_service.change_password(current_user_id, payload.current_password, payload.new_password)
+) -> AccessTokenResponse:
+    result = await auth_service.change_password(current_user_id, payload.current_password, payload.new_password)
+    set_refresh_token_cookie(response, result.refresh_token)
+    return AccessTokenResponse(access_token=result.access_token)
 
 
 @auth_providers_router.get(

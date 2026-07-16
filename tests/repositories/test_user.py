@@ -117,16 +117,6 @@ def describe_find_id_by_linked_provider():
         assert await repo.find_id_by_linked_provider(AuthProviderName.GOOGLE, "missing-ext-id") is None
 
 
-def describe_find_refresh_tokens_by_id():
-    async def it_returns_the_refresh_tokens():
-        user = await _user(refresh_tokens=["token-a", "token-b"])
-
-        assert await repo.find_refresh_tokens_by_id(_id(user)) == ["token-a", "token-b"]
-
-    async def it_returns_none_when_the_user_does_not_exist():
-        assert await repo.find_refresh_tokens_by_id(PydanticObjectId()) is None
-
-
 def describe_exists_by_username():
     async def it_returns_true_when_the_username_exists():
         await _user(username="exists_username")
@@ -194,14 +184,30 @@ def describe_push_refresh_token_by_id():
 
 
 def describe_pull_refresh_token_by_id():
-    async def it_removes_a_refresh_token():
+    async def it_removes_a_refresh_token_and_reports_it_was_present():
         user = await _user(refresh_tokens=["token-a", "token-b"])
 
-        await repo.pull_refresh_token_by_id(_id(user), "token-a")
+        removed = await repo.pull_refresh_token_by_id(_id(user), "token-a")
 
+        assert removed is True
         found = await repo.find_by_id(_id(user))
         assert found is not None
         assert found.refresh_tokens == ["token-b"]
+
+    async def it_reports_false_when_the_token_is_not_in_the_array():
+        user = await _user(refresh_tokens=["token-a"])
+
+        removed = await repo.pull_refresh_token_by_id(_id(user), "never-issued-token")
+
+        assert removed is False
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.refresh_tokens == ["token-a"]
+
+    async def it_reports_false_for_a_nonexistent_user():
+        removed = await repo.pull_refresh_token_by_id(PydanticObjectId(), "some-token")
+
+        assert removed is False
 
 
 def describe_add_linked_provider():

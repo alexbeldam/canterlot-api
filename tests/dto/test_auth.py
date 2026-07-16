@@ -1,8 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from canterlot.dto.auth import ConnectedProvidersResponse, OAuthSignInResponse, UserRegisterRequest
-from canterlot.models.enums import AuthOutcome, AuthProviderName
+from canterlot.dto.auth import (
+    AccessTokenResponse,
+    ConnectedProvidersResponse,
+    CreateSessionRequest,
+    UserRegisterRequest,
+)
+from canterlot.models.enums import AuthProviderName, SessionType
 from canterlot.models.user import LinkedProviderSchema, UserModel
 
 
@@ -47,11 +52,56 @@ def describe_password_constraints():
         assert request.password == "123456"
 
 
-def describe_oauth_sign_in_response():
-    def it_carries_no_tokens_by_default():
-        response = OAuthSignInResponse(outcome=AuthOutcome.LINK_REQUIRED)
-        assert response.access_token is None
-        assert response.refresh_token is None
+def describe_create_session_request():
+    def it_accepts_a_valid_password_session():
+        request = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
+        assert request.username == "alice_1"
+
+    def it_accepts_a_valid_oauth_session():
+        request = CreateSessionRequest(
+            type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE, credential="some-id-token"
+        )
+        assert request.provider == AuthProviderName.GOOGLE
+
+    def it_rejects_a_password_session_missing_the_password():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1")
+
+    def it_rejects_a_password_session_missing_the_username():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(type=SessionType.PASSWORD, password="secret1")
+
+    def it_rejects_a_password_session_with_oauth_fields_set():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(
+                type=SessionType.PASSWORD,
+                username="alice_1",
+                password="secret1",
+                provider=AuthProviderName.GOOGLE,
+            )
+
+    def it_rejects_an_oauth_session_missing_the_credential():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE)
+
+    def it_rejects_an_oauth_session_missing_the_provider():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(type=SessionType.OAUTH, credential="some-id-token")
+
+    def it_rejects_an_oauth_session_with_password_fields_set():
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(
+                type=SessionType.OAUTH,
+                provider=AuthProviderName.GOOGLE,
+                credential="some-id-token",
+                username="alice_1",
+            )
+
+
+def describe_access_token_response():
+    def it_defaults_the_token_type_to_bearer():
+        response = AccessTokenResponse(access_token="access")
+        assert response.token_type == "bearer"
 
 
 def describe_connected_providers_response_from_model():

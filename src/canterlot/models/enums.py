@@ -11,6 +11,11 @@ class InviteType(StrEnum):
     DIRECT = "DIRECT"
 
 
+class SessionType(StrEnum):
+    PASSWORD = "PASSWORD"
+    OAUTH = "OAUTH"
+
+
 class MemberRole(StrEnum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
@@ -31,7 +36,6 @@ class AuthProviderName(StrEnum):
 class AuthOutcome(StrEnum):
     LOGGED_IN = "LOGGED_IN"
     CREATED = "CREATED"
-    LINK_REQUIRED = "LINK_REQUIRED"
 
 
 class ExtensionType(StrEnum):

@@ -38,7 +38,8 @@ def create_access_token(user_id: PydanticObjectId) -> str:
 
 
 def create_refresh_token(user_id: PydanticObjectId) -> str:
-    return create_jwt_token({"sub": str(user_id), "type": "refresh"}, timedelta(days=60))
+    expiry = timedelta(days=get_settings().refresh_token_expiry_days)
+    return create_jwt_token({"sub": str(user_id), "type": "refresh"}, expiry)
 
 
 def decode_jwt_payload(token: str) -> dict[str, Any]:

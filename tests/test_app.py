@@ -29,8 +29,15 @@ def describe_custom_openapi():
 
         schema = custom_openapi(app)
 
-        assert "/auth/register" in schema["paths"]
+        assert "/users" in schema["paths"]
         assert not any(path.startswith("/api/v1") for path in schema["paths"])
+
+    def it_excludes_the_hidden_swagger_only_login_shim():
+        app = create_app()
+
+        schema = custom_openapi(app)
+
+        assert "/auth/login" not in schema["paths"]
 
     def it_maps_the_bare_api_v1_root_path_to_a_slash():
         app = FastAPI()
