@@ -9,8 +9,7 @@ jobs:
   ping:
     name: Ping Health Endpoint
     runs-on: ubuntu-latest
-    environment: "main - canterlot-api"
 
     steps:
       - name: Ping /health
-        run: curl -fsS "${{ vars.API_URL }}/health"
+        run: curl -fsS "${{ vars.PROD_API_URL }}/health"
