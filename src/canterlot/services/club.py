@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
 
@@ -26,16 +26,13 @@ from canterlot.models import (
     MemberRole,
     MemberSchema,
 )
-from canterlot.models.club import ClubSlugStr
+from canterlot.models.club import OWNERSHIP_RECLAIM_WINDOW, OWNERSHIP_TRANSFER_COOLDOWN, ClubSlugStr
 from canterlot.models.user import UsernameStr
 from canterlot.repositories import ClubRepository, UserRepository
 from canterlot.utils import get_logger, make_slug
 from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
-
-_OWNERSHIP_TRANSFER_COOLDOWN = timedelta(days=30)
-_OWNERSHIP_RECLAIM_WINDOW = timedelta(hours=24)
 
 
 def _find_member(members: list[MemberSchema], user_id: PydanticObjectId) -> MemberSchema | None:
@@ -273,7 +270,7 @@ class ClubService:
         if (
             target_user_id == club.protected_former_owner_id
             and club.ownership_transferred_at is not None
-            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+            and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
             log.warn("Removal rejected: target is a protected former owner")
             raise FormerOwnerProtectedError(
@@ -370,7 +367,7 @@ class ClubService:
         if (
             target_user_id == club.protected_former_owner_id
             and club.ownership_transferred_at is not None
-            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+            and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
             log.warn("Role change rejected: target is a protected former owner")
             raise FormerOwnerProtectedError(
@@ -410,7 +407,7 @@ class ClubService:
         if (
             caller_id == club.protected_former_owner_id
             and club.ownership_transferred_at is not None
-            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+            and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
             log.warn("Leave rejected: caller is a protected former owner")
             raise FormerOwnerProtectedError(
@@ -438,7 +435,7 @@ class ClubService:
         if (
             club.protected_former_owner_id is not None
             and club.ownership_transferred_at is not None
-            and now - club.ownership_transferred_at < _OWNERSHIP_TRANSFER_COOLDOWN
+            and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
             log.warn("Dissolution rejected: club has an active protected-former-owner window")
             raise FormerOwnerProtectedError(
@@ -484,7 +481,7 @@ class ClubService:
             )
 
         log.info("Club ownership transferred successfully")
-        return now + _OWNERSHIP_RECLAIM_WINDOW
+        return now + OWNERSHIP_RECLAIM_WINDOW
 
     def __ensure_transfer_is_allowed(
         self,
@@ -511,11 +508,11 @@ class ClubService:
             return
 
         last_transfer = club.ownership_transferred_at
-        if last_transfer is not None and now - last_transfer < _OWNERSHIP_TRANSFER_COOLDOWN:
+        if last_transfer is not None and now - last_transfer < OWNERSHIP_TRANSFER_COOLDOWN:
             log.warn("Transfer rejected: new-owner cooldown is still active")
             raise OwnershipTransferCooldownError(
                 "You must wait 30 days after receiving ownership before transferring it again.",
-                cooldown_expires_at=last_transfer + _OWNERSHIP_TRANSFER_COOLDOWN,
+                cooldown_expires_at=last_transfer + OWNERSHIP_TRANSFER_COOLDOWN,
             )
 
     async def reclaim_ownership(self, club_id: PydanticObjectId, caller_id: PydanticObjectId) -> None:
@@ -538,11 +535,11 @@ class ClubService:
             raise OwnershipTransferConflictError("This club's ownership state is inconsistent; please retry.")
 
         now = datetime.now(UTC)
-        if now - transferred_at > _OWNERSHIP_RECLAIM_WINDOW:
+        if now - transferred_at > OWNERSHIP_RECLAIM_WINDOW:
             log.warn("Reclaim rejected: the 24-hour reclaim window has elapsed")
             raise OwnershipReclaimWindowExpiredError(
                 "The 24-hour reclaim window has passed; ask the current owner to transfer it back.",
-                window_expired_at=transferred_at + _OWNERSHIP_RECLAIM_WINDOW,
+                window_expired_at=transferred_at + OWNERSHIP_RECLAIM_WINDOW,
             )
 
         reclaimed = await self.__club_repo.reclaim_ownership(club_id, caller_id, current_owner.user_id)

@@ -210,7 +210,9 @@ async def get_club(
     view = await club_service.get_club_view(club_slug, current_user_id)
 
     if view.pending_usernames is not None:
-        return ClubDetailResponse.from_model_with_pending(view.club, view.member_usernames, view.pending_usernames)
+        return ClubDetailResponse.from_model_with_pending(
+            view.club, view.member_usernames, view.pending_usernames, current_user_id
+        )
 
     return ClubResponse.from_model(view.club, view.member_usernames)
 

@@ -146,6 +146,7 @@ def describe_club_detail_response_from_model_with_pending():
             club,
             user_usernames={SOME_OWNER_ID: "owner_1"},
             pending_usernames={SOME_PENDING_ID: "pending_1"},
+            viewer_id=SOME_OWNER_ID,
         )
 
         assert response.members[0].username == "owner_1"
@@ -155,7 +156,7 @@ def describe_club_detail_response_from_model_with_pending():
     def it_never_exposes_banned_users():
         club = ClubModel(name="Book Club", slug="book-club")
 
-        response = ClubDetailResponse.from_model_with_pending(club, {}, {})
+        response = ClubDetailResponse.from_model_with_pending(club, {}, {}, viewer_id=SOME_OWNER_ID)
 
         assert not hasattr(response, "banned_users")
         assert response.pending_approvals == []
@@ -176,6 +177,108 @@ def describe_club_detail_response_from_model_with_pending():
             club,
             user_usernames={SOME_OWNER_ID: "owner_1"},
             pending_usernames={SOME_PENDING_ID: "pending_1", SOME_OTHER_PENDING_ID: "pending_2"},
+            viewer_id=SOME_OWNER_ID,
         )
 
         assert [p.username for p in response.pending_approvals] == ["pending_2", "pending_1"]
+
+    def it_has_no_protection_state_when_no_transfer_ever_happened():
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
+        )
+
+        response = ClubDetailResponse.from_model_with_pending(
+            club, user_usernames={SOME_OWNER_ID: "owner_1"}, pending_usernames={}, viewer_id=SOME_OWNER_ID
+        )
+
+        assert response.protected_former_owner is None
+        assert response.active_reclaim_deadline is None
+
+    def it_exposes_protected_former_owner_to_any_viewer_within_the_30_day_cooldown():
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_ADMIN_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=29),
+            protected_former_owner_id=SOME_ADMIN_ID,
+        )
+
+        response = ClubDetailResponse.from_model_with_pending(
+            club,
+            user_usernames={SOME_OWNER_ID: "owner_1", SOME_ADMIN_ID: "former_owner"},
+            pending_usernames={},
+            viewer_id=SOME_OWNER_ID,
+        )
+
+        assert response.protected_former_owner == "former_owner"
+
+    def it_hides_protected_former_owner_once_the_30_day_cooldown_has_elapsed():
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_ADMIN_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(days=31),
+            protected_former_owner_id=SOME_ADMIN_ID,
+        )
+
+        response = ClubDetailResponse.from_model_with_pending(
+            club,
+            user_usernames={SOME_OWNER_ID: "owner_1", SOME_ADMIN_ID: "former_owner"},
+            pending_usernames={},
+            viewer_id=SOME_OWNER_ID,
+        )
+
+        assert response.protected_former_owner is None
+
+    def it_exposes_active_reclaim_deadline_only_to_the_protected_former_owner_within_24_hours():
+        transferred_at = datetime.now(UTC) - timedelta(hours=1)
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_ADMIN_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=transferred_at,
+            protected_former_owner_id=SOME_ADMIN_ID,
+        )
+        usernames = {SOME_OWNER_ID: "owner_1", SOME_ADMIN_ID: "former_owner"}
+
+        as_former_owner = ClubDetailResponse.from_model_with_pending(
+            club, user_usernames=usernames, pending_usernames={}, viewer_id=SOME_ADMIN_ID
+        )
+        as_current_owner = ClubDetailResponse.from_model_with_pending(
+            club, user_usernames=usernames, pending_usernames={}, viewer_id=SOME_OWNER_ID
+        )
+
+        assert as_former_owner.active_reclaim_deadline == transferred_at + timedelta(hours=24)
+        assert as_current_owner.active_reclaim_deadline is None
+
+    def it_hides_active_reclaim_deadline_once_the_24_hour_window_has_elapsed():
+        club = ClubModel(
+            name="Book Club",
+            slug="book-club",
+            members=[
+                MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER),
+                MemberSchema(user_id=SOME_ADMIN_ID, role=MemberRole.ADMIN),
+            ],
+            ownership_transferred_at=datetime.now(UTC) - timedelta(hours=25),
+            protected_former_owner_id=SOME_ADMIN_ID,
+        )
+
+        response = ClubDetailResponse.from_model_with_pending(
+            club,
+            user_usernames={SOME_OWNER_ID: "owner_1", SOME_ADMIN_ID: "former_owner"},
+            pending_usernames={},
+            viewer_id=SOME_ADMIN_ID,
+        )
+
+        assert response.active_reclaim_deadline is None

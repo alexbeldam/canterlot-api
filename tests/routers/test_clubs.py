@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
@@ -152,6 +152,21 @@ def describe_get_club():
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
+
+    def it_exposes_ownership_transfer_protection_state_to_the_protected_former_owner(
+        client: TestClient, club_service: AsyncMock
+    ):
+        club = _created_club()
+        club.ownership_transferred_at = datetime.now(UTC) - timedelta(hours=1)
+        club.protected_former_owner_id = SOME_OWNER_ID
+        club_service.get_club_view.return_value = _club_view(role=MemberRole.OWNER, pending_usernames={}, club=club)
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["protected_former_owner"] == "alice_1"
+        assert body["active_reclaim_deadline"] is not None
 
 
 def describe_update_club_settings():
