@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import cast
 
@@ -149,6 +150,7 @@ class BeanieClubRepository(ClubRepository):
         sort_by: str | None = None,
         sort_direction: SortDirection = SortDirection.DESC,
         suggested_by: PydanticObjectId | None = None,
+        q: str | None = None,
     ) -> Page[CatalogEntryModel]:
         sort_field = sort_by if sort_by in _CATALOG_SORT_FIELD_PATHS else "suggested_at"
         sort_path = _CATALOG_SORT_FIELD_PATHS[sort_field]
@@ -159,7 +161,7 @@ class BeanieClubRepository(ClubRepository):
         if suggested_by is not None:
             pipeline.append({"$match": {"catalog.suggested_by": suggested_by}})
 
-        if sort_field in _BOOK_JOINED_SORT_FIELDS:
+        if sort_field in _BOOK_JOINED_SORT_FIELDS or q is not None:
             pipeline.append(
                 {
                     "$lookup": {
@@ -171,6 +173,19 @@ class BeanieClubRepository(ClubRepository):
                 }
             )
             pipeline.append({"$unwind": {"path": "$book", "preserveNullAndEmptyArrays": True}})
+
+        if q is not None:
+            pattern = re.escape(q)
+            pipeline.append(
+                {
+                    "$match": {
+                        "$or": [
+                            {"book.title": {"$regex": pattern, "$options": "i"}},
+                            {"book.authors": {"$regex": pattern, "$options": "i"}},
+                        ]
+                    }
+                }
+            )
 
         pipeline.append({"$sort": {sort_path: direction}})
         pipeline.append(

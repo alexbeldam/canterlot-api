@@ -159,7 +159,7 @@ def describe_get_club_catalog():
 
         response = client.get(
             f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/",
-            params={"sort_by": "title", "suggested_by": "alice_1", "page": 2, "limit": 10},
+            params={"sort_by": "title", "suggested_by": "alice_1", "page": 2, "limit": 10, "q": "gatsby"},
         )
 
         assert response.status_code == 200
@@ -169,6 +169,7 @@ def describe_get_club_catalog():
         assert kwargs["suggested_by"] == "alice_1"
         assert kwargs["page"] == 2
         assert kwargs["limit"] == 10
+        assert kwargs["q"] == "gatsby"
 
     def it_returns_422_for_an_invalid_sort_field(client: TestClient, catalog_service: AsyncMock, club_repo: AsyncMock):
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID

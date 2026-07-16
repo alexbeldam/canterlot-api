@@ -136,6 +136,7 @@ class CatalogService:
         sort_by: CatalogSortField | None,
         sort_direction: SortDirection,
         suggested_by: UsernameStr | None = None,
+        q: str | None = None,
     ) -> PaginatedCatalogResponse:
         log = logger.bind(club_id=str(club_id), current_user_id=str(current_user_id))
         log.info("Fetching club catalog page")
@@ -157,6 +158,7 @@ class CatalogService:
             sort_by=sort_by,
             sort_direction=sort_direction,
             suggested_by=suggested_by_id,
+            q=q,
         )
 
         books = await self.__book_repo.find_by_ids([entry.book_id for entry in catalog_page.items])

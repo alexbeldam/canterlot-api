@@ -67,6 +67,7 @@ class CatalogSortField(StrEnum):
 class CatalogFilters(PageRequest):
     sort_by: CatalogSortField | None = Query(default=None)  # noqa: RUF009 -- FastAPI sentinel, not mutable state
     suggested_by: UsernameStr | None = Query(default=None)  # noqa: RUF009 -- FastAPI sentinel, not mutable state
+    q: NonEmptyStr | None = Query(default=None)  # noqa: RUF009 -- FastAPI sentinel, not mutable state
 
 
 PaginatedCatalogResponse = Page[CatalogEntryResponse]

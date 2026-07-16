@@ -135,6 +135,62 @@ def describe_find_catalog_page_by_club_id():
         assert page.total_items == 1
         assert page.items[0].book_id == _id(book_a)
 
+    async def it_filters_by_free_text_query_matching_title():
+        matching = await _book("The Great Gatsby", 2020, "q-title-match")
+        other = await _book("Moby Dick", 1851, "q-title-other")
+        suggester = PydanticObjectId()
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(matching), suggested_by=suggester),
+                CatalogEntryModel(book_id=_id(other), suggested_by=suggester),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, q="great gatsby")
+
+        assert page.total_items == 1
+        assert page.items[0].book_id == _id(matching)
+
+    async def it_filters_by_free_text_query_matching_authors():
+        matching = await BookModel(
+            external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "q-author-match"),
+            title="Some Book",
+            authors=["Jane Austen"],
+        ).insert()
+        other = await _book("Other Book", 2020, "q-author-other")
+        suggester = PydanticObjectId()
+        club = await _club(
+            catalog=[
+                CatalogEntryModel(book_id=_id(matching), suggested_by=suggester),
+                CatalogEntryModel(book_id=_id(other), suggested_by=suggester),
+            ]
+        )
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, q="austen")
+
+        assert page.total_items == 1
+        assert page.items[0].book_id == _id(matching)
+
+    async def it_escapes_regex_special_characters_in_the_query():
+        book = await _book("C++ Primer", 2020, "q-regex-escape")
+        suggester = PydanticObjectId()
+        club = await _club(catalog=[CatalogEntryModel(book_id=_id(book), suggested_by=suggester)])
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, q="C++")
+
+        assert page.total_items == 1
+        assert page.items[0].book_id == _id(book)
+
+    async def it_returns_no_matches_when_the_query_matches_nothing():
+        book = await _book("Some Book", 2020, "q-no-match")
+        suggester = PydanticObjectId()
+        club = await _club(catalog=[CatalogEntryModel(book_id=_id(book), suggested_by=suggester)])
+
+        page = await repo.find_catalog_page_by_club_id(_id(club), page=1, limit=10, q="nonexistent phrase")
+
+        assert page.total_items == 0
+        assert page.items == []
+
     async def it_falls_back_to_suggested_at_for_an_unrecognized_sort_field():
         book_a = await _book("Book A", 2020, "fallback-a")
         book_b = await _book("Book B", 2020, "fallback-b")
