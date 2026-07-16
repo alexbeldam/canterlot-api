@@ -124,6 +124,7 @@ Há ainda uma rota oculta `POST /auth/login` (form-encoded, fora do schema OpenA
 | <kbd>GET /clubs/{slug}/invites/public</kbd>                  | Retorna o link de convite público ativo do clube.                           |
 | <kbd>PATCH /clubs/{slug}/pending-approvals/{user}</kbd>      | Aprova uma solicitação pendente de entrada (clube restrito).                |
 | <kbd>DELETE /clubs/{slug}/pending-approvals/{user}</kbd>     | Rejeita uma solicitação pendente de entrada.                                |
+| <kbd>GET /clubs/{slug}/members/{user}</kbd>                  | Perfil de um colega de clube (nome, usuário, avatar, papel, data de entrada) — sempre restrito a um clube compartilhado, nunca um diretório global de usuários. |
 | <kbd>DELETE /clubs/{slug}/members/me</kbd>                   | O próprio membro sai do clube.                                              |
 | <kbd>DELETE /clubs/{slug}/members/{user}</kbd>               | Remove (e bane) um membro — `Engine de Rank Protection` aplicado.           |
 | <kbd>PUT /clubs/{slug}/members/{user}/role</kbd>             | Promove ou rebaixa um membro.                                               |
@@ -161,7 +162,7 @@ Funcionalidades com as regras de negócio já desenhadas, mas **ainda não imple
 
 - **Sessões de Leitura & Votação:** o ciclo completo de rodadas de leitura — iniciar uma rodada (sorteio automático ou pool curado), votação ponderada por membro, acompanhamento de progresso individual, e conclusão/cancelamento da rodada.
 - **Verificação e troca de e-mail:** confirmação de e-mail no cadastro, e um fluxo para trocar o e-mail de uma conta existente.
-- **Perfil estendido:** consultar o próprio perfil (hoje só é possível atualizá-lo, não vê-lo) e o perfil de outro membro do mesmo clube; consultar e remover entradas do histórico de leitura pessoal (hoje só é possível adicionar).
+- **Histórico de leitura navegável:** consultar (paginado) e remover entradas do histórico de leitura pessoal — hoje só é possível adicionar.
 - **Logout de todos os dispositivos:** encerrar todas as sessões ativas de uma vez, como ação deliberada e independente da troca de senha.
 - **Lembretes automáticos de prazo de leitura:** notificação por e-mail um dia antes e no dia do prazo de uma rodada, disparado por um cron externo.
 
