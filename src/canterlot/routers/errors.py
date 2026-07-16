@@ -14,7 +14,13 @@ logger = get_logger(__name__)
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(BusinessError)
     async def business_error_handler(_req: Request, exc: BusinessError) -> JSONResponse:
-        payload = ErrorResponseModel(error=ErrorDetail(error_code=exc.error_code, message=exc.response_message))
+        payload = ErrorResponseModel(
+            error=ErrorDetail(
+                error_code=exc.error_code,
+                message=exc.response_message,
+                context=exc.context,
+            )
+        )
         return JSONResponse(status_code=exc.status_code, content=jsonable_encoder(payload), headers=exc.headers)
 
     @app.exception_handler(Exception)

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import status
 
 from .base import BusinessError, ErrorCode
@@ -41,10 +43,18 @@ class OwnershipTransferCooldownError(ClubDomainError):
     error_code = ErrorCode.OWNERSHIP_TRANSFER_COOLDOWN
     status_code = status.HTTP_409_CONFLICT
 
+    def __init__(self, message: str | None = None, *, cooldown_expires_at: datetime | None = None):
+        context = {"cooldown_expires_at": cooldown_expires_at.isoformat()} if cooldown_expires_at else None
+        super().__init__(message, context=context)
+
 
 class OwnershipReclaimWindowExpiredError(ClubDomainError):
     error_code = ErrorCode.OWNERSHIP_RECLAIM_WINDOW_EXPIRED
     status_code = status.HTTP_409_CONFLICT
+
+    def __init__(self, message: str | None = None, *, window_expired_at: datetime | None = None):
+        context = {"window_expired_at": window_expired_at.isoformat()} if window_expired_at else None
+        super().__init__(message, context=context)
 
 
 class OwnershipTransferConflictError(ClubDomainError):

@@ -488,7 +488,8 @@ class ClubService:
         if last_transfer is not None and now - last_transfer < _OWNERSHIP_TRANSFER_COOLDOWN:
             log.warn("Transfer rejected: new-owner cooldown is still active")
             raise OwnershipTransferCooldownError(
-                "You must wait 30 days after receiving ownership before transferring it again."
+                "You must wait 30 days after receiving ownership before transferring it again.",
+                cooldown_expires_at=last_transfer + _OWNERSHIP_TRANSFER_COOLDOWN,
             )
 
     async def reclaim_ownership(self, club_id: PydanticObjectId, caller_id: PydanticObjectId) -> None:
@@ -514,7 +515,8 @@ class ClubService:
         if now - transferred_at > _OWNERSHIP_RECLAIM_WINDOW:
             log.warn("Reclaim rejected: the 24-hour reclaim window has elapsed")
             raise OwnershipReclaimWindowExpiredError(
-                "The 24-hour reclaim window has passed; ask the current owner to transfer it back."
+                "The 24-hour reclaim window has passed; ask the current owner to transfer it back.",
+                window_expired_at=transferred_at + _OWNERSHIP_RECLAIM_WINDOW,
             )
 
         reclaimed = await self.__club_repo.reclaim_ownership(club_id, caller_id, current_owner.user_id)
