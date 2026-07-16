@@ -13,7 +13,7 @@ class HealthService:
 
         log = logger.bind(dependency_count=len(self.__database_repos), healthy=healthy)
         if healthy:
-            log.info("Health check passed")
+            log.debug("Health check passed")
         else:
             log.warn("Health check failed: a dependency is unreachable")
 

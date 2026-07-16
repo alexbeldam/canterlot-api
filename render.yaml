@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     branch: main
-    autoDeploy: true
+    autoDeploy: false
     buildCommand: |
       curl -LsSf https://astral.sh/uv/install.sh | sh
       export PATH="$HOME/.local/bin:$PATH"
@@ -14,6 +14,8 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: prod
+      - key: CORS_ORIGINS
+        value: '["https://canterlot.com.br"]'
       - key: CURRENT_TERMS_VERSION
         value: "1"
       - key: CURRENT_PRIVACY_VERSION

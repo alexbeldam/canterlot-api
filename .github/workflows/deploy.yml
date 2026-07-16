@@ -1,0 +1,58 @@
+name: "Pipeline | Deploy to Render"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+    environment: "main - canterlot-api"
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Deploy-Relevant Changes
+        id: changes
+        run: |
+          set -o pipefail
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE=$(git rev-parse "${{ github.sha }}~1")
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          echo "$CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -qE '^(src/|pyproject\.toml|uv\.lock)'; then
+            echo "source-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "source-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if echo "$CHANGED_FILES" | grep -qE '^render\.yaml$'; then
+            echo "blueprint-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "blueprint-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Render Deploy Hook
+        if: steps.changes.outputs.source-changed == 'true' && steps.changes.outputs.blueprint-changed == 'false'
+        run: |
+          curl -fsS -X POST "${{ secrets.DEPLOY_HOOK }}"
+          echo "Triggered the Deploy Hook for source changes." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record Skip Reason
+        if: steps.changes.outputs.source-changed == 'false' || steps.changes.outputs.blueprint-changed == 'true'
+        run: |
+          if [ "${{ steps.changes.outputs.blueprint-changed }}" = "true" ]; then
+            echo "render.yaml changed - Render's Blueprint auto-sync will deploy this commit, Deploy Hook skipped to avoid a duplicate." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No source or blueprint changes in this push, nothing to deploy." >> "$GITHUB_STEP_SUMMARY"
+          fi
