@@ -50,13 +50,13 @@ from canterlot.routers.dependencies import (
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService, ClubService, InviteService, UserService
 
-users_router = APIRouter(prefix="/users", tags=["Users"])
-profile_router = APIRouter(prefix="/users/me", tags=["Users"])
-auth_providers_router = APIRouter(prefix="/users/me/auth-providers", tags=["Users"])
-read_books_router = APIRouter(prefix="/users/me/read-books", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["Users"])
+_profile = APIRouter(prefix="/me", tags=["Users"])
+_oauth = APIRouter(prefix="/auth-providers", tags=["Users"])
+_read_books = APIRouter(prefix="/read-books", tags=["Users"])
 
 
-@users_router.post(
+@router.post(
     "",
     operation_id="register",
     response_model=RegisterResponse,
@@ -158,7 +158,7 @@ async def register(
     return RegisterResponse(access_token=res.access_token, onboarding=onboarding)
 
 
-@profile_router.get(
+@_profile.get(
     "",
     operation_id="getOwnProfile",
     response_model=UserProfileResponse,
@@ -192,7 +192,7 @@ async def get_own_profile(
     return UserProfileResponse.from_model(user)
 
 
-@profile_router.patch(
+@_profile.patch(
     "",
     operation_id="updateProfile",
     response_model=UserProfileResponse,
@@ -234,7 +234,7 @@ async def update_profile(
     return UserProfileResponse.from_model(updated)
 
 
-@profile_router.put(
+@_profile.put(
     "/password",
     operation_id="changePassword",
     response_model=AccessTokenResponse,
@@ -283,7 +283,7 @@ async def change_password(
     return AccessTokenResponse(access_token=result.access_token)
 
 
-@profile_router.put(
+@_profile.put(
     "/avatar",
     operation_id="setAvatar",
     response_model=UserProfileResponse,
@@ -335,7 +335,7 @@ async def set_avatar(
     return UserProfileResponse.from_model(updated)
 
 
-@profile_router.delete(
+@_profile.delete(
     "/avatar",
     operation_id="clearAvatar",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -369,7 +369,7 @@ async def clear_avatar(
     await user_service.clear_avatar(current_user_id)
 
 
-@profile_router.post(
+@_profile.post(
     "/avatar/seed",
     operation_id="regenerateAvatarSeed",
     response_model=UserProfileResponse,
@@ -408,7 +408,7 @@ async def regenerate_avatar_seed(
     return UserProfileResponse.from_model(updated)
 
 
-@profile_router.post(
+@_profile.post(
     "/legal-acceptance",
     operation_id="acceptLegalDocuments",
     response_model=UserProfileResponse,
@@ -464,7 +464,7 @@ async def accept_legal_documents(
     return UserProfileResponse.from_model(updated)
 
 
-@auth_providers_router.get(
+@_oauth.get(
     "",
     operation_id="getConnectedProviders",
     response_model=ConnectedProvidersResponse,
@@ -498,7 +498,7 @@ async def get_connected_providers(
     return await auth_service.list_connected_providers(current_user_id)
 
 
-@auth_providers_router.post(
+@_oauth.post(
     "/{provider}",
     operation_id="linkProvider",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -549,7 +549,7 @@ async def link_provider(
     await auth_service.link_provider(current_user_id, provider, payload.credential, payload.redirect_uri)
 
 
-@auth_providers_router.delete(
+@_oauth.delete(
     "/{provider}",
     operation_id="disconnectProvider",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -598,7 +598,7 @@ async def disconnect_provider(
     await auth_service.disconnect_provider(current_user_id, provider)
 
 
-@read_books_router.put(
+@_read_books.put(
     "/{identifier}",
     operation_id="markBookRead",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -638,3 +638,8 @@ async def mark_book_read(
     user_service: Annotated[UserService, Depends(get_user_service)],
 ) -> None:
     await user_service.mark_book_read(user_id=current_user_id, book_id=book_id)
+
+
+_profile.include_router(_oauth)
+_profile.include_router(_read_books)
+router.include_router(_profile)
