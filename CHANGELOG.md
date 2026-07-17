@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.2.3 (2026-07-17)
+
+### Bug Fixes
+
+- **ci**: Drop the approval PAT, use GITHUB_TOKEN for both steps
+  ([`38c5cae`](https://github.com/alexbeldam/canterlot-api/commit/38c5cae51aef487579d1d5a95d325ad5d500c0ce))
+
+- **ci**: Grant contents:write for enabling Dependabot auto-merge
+  ([`35bbdec`](https://github.com/alexbeldam/canterlot-api/commit/35bbdecf3cf2fd99092a7d05db4ea38cb09586ca))
+
+
 ## v0.2.2 (2026-07-17)
 
 ### Bug Fixes
