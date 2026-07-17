@@ -35,7 +35,7 @@ jobs:
 
       - name: Verify Quality Gate Cache State
         id: cache-check
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .quality-gate-passed
           key: ${{ steps.gate-hash.outputs.cache-key }}
