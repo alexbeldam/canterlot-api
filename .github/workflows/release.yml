@@ -145,7 +145,7 @@ jobs:
           export GIT_COMMIT_AUTHOR="$BOT_NAME <$BOT_EMAIL>"
 
           uv run semantic-release version \
-            --commit --tag --changelog --push --vcs-release --skip-build \
+            --commit --tag --changelog --push --vcs-release \
             ${{ inputs.force_major && '--major' || '' }}
 
       - name: Promote develop to Main
