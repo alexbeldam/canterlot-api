@@ -2,7 +2,9 @@ name: "Pipeline | Automated Testing & Quality Gate"
 
 on:
   workflow_dispatch:
-  workflow_call:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - develop
