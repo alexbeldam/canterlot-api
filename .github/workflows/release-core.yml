@@ -50,8 +50,10 @@ jobs:
           done
 
           if [ "$CONCLUSION" != "success" ]; then
-            echo "develop's HEAD ($SHA) does not have a successful 'Lint, Type Check, & Test" >&2
-            echo "Execution' check (conclusion: $CONCLUSION). Refusing to release untested code." >&2
+            {
+              echo "develop's HEAD ($SHA) does not have a successful 'Lint, Type Check, & Test"
+              echo "Execution' check (conclusion: $CONCLUSION). Refusing to release untested code."
+            } | tee -a "$GITHUB_STEP_SUMMARY" >&2
             exit 1
           fi
 
@@ -131,7 +133,7 @@ jobs:
           if git merge-base --is-ancestor origin/main HEAD; then
             git push origin HEAD:main
           else
-            echo "main has commits not present on develop - refusing to fast-forward." >&2
+            echo "main has commits not present on develop - refusing to fast-forward." | tee -a "$GITHUB_STEP_SUMMARY" >&2
             exit 1
           fi
 

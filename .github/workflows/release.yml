@@ -24,7 +24,7 @@ jobs:
       - name: Ensure Dispatched From develop
         if: ${{ github.ref != 'refs/heads/develop' }}
         run: |
-          echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}'." >&2
+          echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}'." | tee -a "$GITHUB_STEP_SUMMARY" >&2
           exit 1
 
   release:
