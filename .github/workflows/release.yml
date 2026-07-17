@@ -23,6 +23,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Ensure Dispatched From develop
+        if: ${{ github.ref != 'refs/heads/develop' }}
+        run: |
+          echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}' -- main only" >&2
+          echo "gets a workflow copy at release time, so it can silently lag behind fixes made here." >&2
+          exit 1
+
       - name: Generate Release App Token
         id: app-token
         uses: actions/create-github-app-token@v1
@@ -49,8 +56,29 @@ jobs:
       - name: Preview Next Version and Changelog
         if: ${{ inputs.dry_run }}
         run: |
-          uv run semantic-release --noop version --print
+          VERSION=$(uv run semantic-release --noop version --print)
           uv run semantic-release --noop changelog
+
+          {
+            echo "### Preview: \`$VERSION\`"
+            echo ""
+            echo "Dry run -- nothing was committed, tagged, or pushed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render License for This Release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION=$(uv run semantic-release version --print ${{ inputs.force_major && '--major' || '' }})
+          YEAR=$(date -u +%Y)
+          CHANGE_DATE=$(date -u -d "+4 years" +%Y-%m-%d)
+
+          sed \
+            -e "s/{{VERSION}}/$VERSION/g" \
+            -e "s/{{YEAR}}/$YEAR/g" \
+            -e "s/{{CHANGE_DATE}}/$CHANGE_DATE/g" \
+            .github/templates/LICENSE > LICENSE
+
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Bump Version, Update Changelog, Commit, Tag, Push, and Publish Release
         if: ${{ !inputs.dry_run }}
@@ -77,3 +105,12 @@ jobs:
             echo "main has commits not present on develop - refusing to fast-forward." >&2
             exit 1
           fi
+
+      - name: Post Release Summary
+        if: ${{ !inputs.dry_run }}
+        run: |
+          {
+            echo "### Released \`$VERSION\`"
+            echo ""
+            echo "Tagged, pushed, and promoted \`develop\` to \`main\`."
+          } >> "$GITHUB_STEP_SUMMARY"
