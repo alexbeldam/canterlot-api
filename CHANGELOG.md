@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.2 (2026-07-17)
+
+### Bug Fixes
+
+- **ci**: Approve Dependabot PRs with a PAT instead of the release App
+  ([`66e18f7`](https://github.com/alexbeldam/canterlot-api/commit/66e18f7c4e6cae98d4b23530b3021aecb80af779))
+
+
 ## v0.2.1 (2026-07-17)
 
 ### Bug Fixes

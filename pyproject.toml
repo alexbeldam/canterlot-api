@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "CanterlotAPI"
-version = "0.2.1"
+version = "0.2.2"
 description = "API for a Book Club management system"
 readme = "README.md"
 requires-python = ">=3.13"
