@@ -26,8 +26,7 @@ jobs:
       - name: Ensure Dispatched From develop
         if: ${{ github.ref != 'refs/heads/develop' }}
         run: |
-          echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}' -- main only" >&2
-          echo "gets a workflow copy at release time, so it can silently lag behind fixes made here." >&2
+          echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}'." >&2
           exit 1
 
       - name: Generate Release App Token
@@ -43,6 +42,20 @@ jobs:
           ref: develop
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
+
+      - name: Ensure develop's Quality Gate Passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(git rev-parse HEAD)
+          CONCLUSION=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "Lint, Type Check, & Test Execution")] | sort_by(.completed_at) | last | .conclusion // "none"')
+
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "develop's HEAD ($SHA) does not have a successful 'Lint, Type Check, & Test" >&2
+            echo "Execution' check (conclusion: $CONCLUSION). Refusing to release untested code." >&2
+            exit 1
+          fi
 
       - name: Install uv Ecosystem Manager
         uses: astral-sh/setup-uv@v5
