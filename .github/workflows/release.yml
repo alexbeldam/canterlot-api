@@ -12,6 +12,10 @@ on:
         description: "Force a major version bump (e.g. cutting 1.0.0) regardless of commit analysis"
         type: boolean
         default: false
+  pull_request_target:
+    types: [closed]
+    branches:
+      - develop
 
 concurrency:
   group: release
@@ -21,10 +25,17 @@ jobs:
   release:
     name: Version, Tag, and Promote to Main
     runs-on: ubuntu-latest
+    # Dependabot's own merges auto-promote (no human dispatch needed for routine dependency bumps);
+    # every other merge to develop still waits for a maintainer to manually dispatch this workflow.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.user.login == 'dependabot[bot]')
 
     steps:
       - name: Ensure Dispatched From develop
-        if: ${{ github.ref != 'refs/heads/develop' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/develop' }}
         run: |
           echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}'." >&2
           exit 1
@@ -48,8 +59,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SHA=$(git rev-parse HEAD)
-          CONCLUSION=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
-            --jq '[.check_runs[] | select(.name == "Lint, Type Check, & Test Execution")] | sort_by(.completed_at) | last | .conclusion // "none"')
+
+          # Auto-triggered runs (Dependabot merges) can start before develop's own
+          # push-triggered quality run has finished, so poll instead of a single read.
+          CONCLUSION="pending"
+          for _ in $(seq 1 45); do
+            CONCLUSION=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+              --jq '[.check_runs[] | select(.name == "Lint, Type Check, & Test Execution")] | sort_by(.completed_at) | last | .conclusion // "pending"')
+
+            if [ "$CONCLUSION" != "pending" ]; then
+              break
+            fi
+            sleep 20
+          done
 
           if [ "$CONCLUSION" != "success" ]; then
             echo "develop's HEAD ($SHA) does not have a successful 'Lint, Type Check, & Test" >&2
@@ -78,10 +100,30 @@ jobs:
             echo "Dry run -- nothing was committed, tagged, or pushed."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Render License for This Release
+      - name: Determine If a Release Is Due
         if: ${{ !inputs.dry_run }}
+        id: version
         run: |
-          VERSION=$(uv run semantic-release version --print ${{ inputs.force_major && '--major' || '' }})
+          set +e
+          VERSION=$(uv run semantic-release --strict version --print ${{ inputs.force_major && '--major' || '' }})
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            echo "release-due=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          elif [ "$STATUS" -eq 2 ]; then
+            # No commits since the last tag warrant a version bump (e.g. a Dependabot
+            # `chore(deps): ...` merge) -- fast-forward main without touching LICENSE/version.
+            echo "release-due=false" >> "$GITHUB_OUTPUT"
+          else
+            exit "$STATUS"
+          fi
+
+      - name: Render License for This Release
+        if: ${{ !inputs.dry_run && steps.version.outputs.release-due == 'true' }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
           YEAR=$(date -u +%Y)
           CHANGE_DATE=$(date -u -d "+4 years" +%Y-%m-%d)
 
@@ -91,10 +133,8 @@ jobs:
             -e "s/{{CHANGE_DATE}}/$CHANGE_DATE/g" \
             .github/templates/LICENSE > LICENSE
 
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-
       - name: Bump Version, Update Changelog, Commit, Tag, Push, and Publish Release
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.dry_run && steps.version.outputs.release-due == 'true' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BOT_NAME: "${{ steps.app-token.outputs.app-slug }}[bot]"
@@ -122,8 +162,16 @@ jobs:
       - name: Post Release Summary
         if: ${{ !inputs.dry_run }}
         run: |
-          {
-            echo "### Released \`$VERSION\`"
-            echo ""
-            echo "Tagged, pushed, and promoted \`develop\` to \`main\`."
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.version.outputs.release-due }}" = "true" ]; then
+            {
+              echo "### Released \`${{ steps.version.outputs.version }}\`"
+              echo ""
+              echo "Tagged, pushed, and promoted \`develop\` to \`main\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Promoted \`develop\` to \`main\` (no version bump)"
+              echo ""
+              echo "No commits since the last tag warranted a release -- fast-forwarded \`main\` as-is."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
