@@ -1,0 +1,21 @@
+name: "Pipeline | Promote Dependabot Merges"
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - develop
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Version, Tag, and Promote to Main
+    if: github.event.pull_request.merged == true && github.event.pull_request.user.login == 'dependabot[bot]'
+    uses: ./.github/workflows/release-core.yml
+    with:
+      dry_run: false
+      force_major: false
+    secrets: inherit
