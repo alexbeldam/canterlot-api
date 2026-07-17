@@ -39,11 +39,23 @@ jobs:
           GH_TOKEN: ${{ secrets.DEPENDABOT_MERGE_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          gh pr review "$PR_URL" --approve -b "Auto-approved: patch/minor dependency update."
+          review_decision=$(gh pr view "$PR_URL" --json reviewDecision --jq '.reviewDecision')
+          if [ "$review_decision" = "APPROVED" ]; then
+            echo "Already approved, skipping" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr review "$PR_URL" --approve -b "Auto-approved: patch/minor dependency update."
+            echo "Approved $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Enable Auto-Merge
         env:
           GH_TOKEN: ${{ secrets.DEPENDABOT_MERGE_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          gh pr merge "$PR_URL" --auto --merge
+          auto_merge_enabled=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')
+          if [ "$auto_merge_enabled" = "true" ]; then
+            echo "Auto-merge already enabled, skipping" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr merge "$PR_URL" --auto --merge
+            echo "Enabled auto-merge for $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+          fi

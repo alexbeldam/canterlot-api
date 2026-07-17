@@ -15,7 +15,7 @@ jobs:
       - name: Ensure Dispatched From main
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' }}
         run: |
-          echo "This workflow must be dispatched from 'main', not '${{ github.ref_name }}'." >&2
+          echo "This workflow must be dispatched from 'main', not '${{ github.ref_name }}'." | tee -a "$GITHUB_STEP_SUMMARY" >&2
           exit 1
 
       - name: Checkout Source Code
@@ -33,7 +33,12 @@ jobs:
           fi
 
           CHANGED_FILES=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
-          echo "$CHANGED_FILES"
+          {
+            echo "### Changed Files"
+            echo '```'
+            echo "$CHANGED_FILES"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if echo "$CHANGED_FILES" | grep -qE '^(src/|pyproject\.toml|uv\.lock)'; then
             echo "source-changed=true" >> "$GITHUB_OUTPUT"
