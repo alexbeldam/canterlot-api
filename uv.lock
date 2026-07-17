@@ -261,7 +261,7 @@ requires-dist = [
     { name = "curl-cffi", specifier = ">=0.15.0" },
     { name = "fastapi", specifier = ">=0.139.2" },
     { name = "google-auth", specifier = ">=2.56.0" },
-    { name = "langcodes", extras = ["data"], specifier = ">=3.4.0" },
+    { name = "langcodes", extras = ["data"], specifier = ">=3.5.1" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.13.4" },
     { name = "pydantic-core", specifier = ">=2.46.4" },
     { name = "pydantic-settings", specifier = ">=2.2.0" },
