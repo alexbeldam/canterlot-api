@@ -1,4 +1,3 @@
-
 name: "Pipeline | Prepare Release"
 
 on:
@@ -12,166 +11,27 @@ on:
         description: "Force a major version bump (e.g. cutting 1.0.0) regardless of commit analysis"
         type: boolean
         default: false
-  pull_request_target:
-    types: [closed]
-    branches:
-      - develop
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Version, Tag, and Promote to Main
+  guard:
+    name: Ensure Dispatched From develop
     runs-on: ubuntu-latest
-    # Dependabot's own merges auto-promote (no human dispatch needed for routine dependency bumps);
-    # every other merge to develop still waits for a maintainer to manually dispatch this workflow.
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request_target' &&
-       github.event.pull_request.merged == true &&
-       github.event.pull_request.user.login == 'dependabot[bot]')
-
     steps:
       - name: Ensure Dispatched From develop
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/develop' }}
+        if: ${{ github.ref != 'refs/heads/develop' }}
         run: |
           echo "This workflow must be dispatched from 'develop', not '${{ github.ref_name }}'." >&2
           exit 1
 
-      - name: Generate Release App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
-      - name: Checkout develop
-        uses: actions/checkout@v4
-        with:
-          ref: develop
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
-
-      - name: Ensure develop's Quality Gate Passed
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SHA=$(git rev-parse HEAD)
-
-          # Auto-triggered runs (Dependabot merges) can start before develop's own
-          # push-triggered quality run has finished, so poll instead of a single read.
-          CONCLUSION="pending"
-          for _ in $(seq 1 45); do
-            CONCLUSION=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
-              --jq '[.check_runs[] | select(.name == "Lint, Type Check, & Test Execution")] | sort_by(.completed_at) | last | .conclusion // "pending"')
-
-            if [ "$CONCLUSION" != "pending" ]; then
-              break
-            fi
-            sleep 20
-          done
-
-          if [ "$CONCLUSION" != "success" ]; then
-            echo "develop's HEAD ($SHA) does not have a successful 'Lint, Type Check, & Test" >&2
-            echo "Execution' check (conclusion: $CONCLUSION). Refusing to release untested code." >&2
-            exit 1
-          fi
-
-      - name: Install uv Ecosystem Manager
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Install Dependencies
-        run: uv sync --dev
-
-      - name: Preview Next Version and Changelog
-        if: ${{ inputs.dry_run }}
-        run: |
-          VERSION=$(uv run semantic-release --noop version --print)
-          uv run semantic-release --noop changelog
-
-          {
-            echo "### Preview: \`$VERSION\`"
-            echo ""
-            echo "Dry run -- nothing was committed, tagged, or pushed."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Determine If a Release Is Due
-        if: ${{ !inputs.dry_run }}
-        id: version
-        run: |
-          set +e
-          VERSION=$(uv run semantic-release --strict version --print ${{ inputs.force_major && '--major' || '' }})
-          STATUS=$?
-          set -e
-
-          if [ "$STATUS" -eq 0 ]; then
-            echo "release-due=true" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          elif [ "$STATUS" -eq 2 ]; then
-            # No commits since the last tag warrant a version bump (e.g. a Dependabot
-            # `chore(deps): ...` merge) -- fast-forward main without touching LICENSE/version.
-            echo "release-due=false" >> "$GITHUB_OUTPUT"
-          else
-            exit "$STATUS"
-          fi
-
-      - name: Render License for This Release
-        if: ${{ !inputs.dry_run && steps.version.outputs.release-due == 'true' }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          YEAR=$(date -u +%Y)
-          CHANGE_DATE=$(date -u -d "+4 years" +%Y-%m-%d)
-
-          sed \
-            -e "s/{{VERSION}}/$VERSION/g" \
-            -e "s/{{YEAR}}/$YEAR/g" \
-            -e "s/{{CHANGE_DATE}}/$CHANGE_DATE/g" \
-            .github/templates/LICENSE > LICENSE
-
-      - name: Bump Version, Update Changelog, Commit, Tag, Push, and Publish Release
-        if: ${{ !inputs.dry_run && steps.version.outputs.release-due == 'true' }}
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          BOT_NAME: "${{ steps.app-token.outputs.app-slug }}[bot]"
-          BOT_EMAIL: "${{ secrets.RELEASE_APP_ID }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
-        run: |
-          git config user.name "$BOT_NAME"
-          git config user.email "$BOT_EMAIL"
-          export GIT_COMMIT_AUTHOR="$BOT_NAME <$BOT_EMAIL>"
-
-          uv run semantic-release version \
-            --commit --tag --changelog --push --vcs-release \
-            ${{ inputs.force_major && '--major' || '' }}
-
-      - name: Promote develop to Main
-        if: ${{ !inputs.dry_run }}
-        run: |
-          git fetch origin main
-          if git merge-base --is-ancestor origin/main HEAD; then
-            git push origin HEAD:main
-          else
-            echo "main has commits not present on develop - refusing to fast-forward." >&2
-            exit 1
-          fi
-
-      - name: Post Release Summary
-        if: ${{ !inputs.dry_run }}
-        run: |
-          if [ "${{ steps.version.outputs.release-due }}" = "true" ]; then
-            {
-              echo "### Released \`${{ steps.version.outputs.version }}\`"
-              echo ""
-              echo "Tagged, pushed, and promoted \`develop\` to \`main\`."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "### Promoted \`develop\` to \`main\` (no version bump)"
-              echo ""
-              echo "No commits since the last tag warranted a release -- fast-forwarded \`main\` as-is."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+  release:
+    name: Version, Tag, and Promote to Main
+    needs: guard
+    uses: ./.github/workflows/release-core.yml
+    with:
+      dry_run: ${{ inputs.dry_run }}
+      force_major: ${{ inputs.force_major }}
+    secrets: inherit
