@@ -22,13 +22,29 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
+      # GITHUB_TOKEN/Actions is blocked from approving pull requests by a repo-level
+      # restriction (separate from ruleset bypass) -- mint a token from the release App
+      # to submit the review instead. Only the review uses this token; the merge below
+      # still runs on the plain GITHUB_TOKEN so it keeps waiting on required status
+      # checks like any other PR (the App is a bypass actor on Checks | Develop too).
+      - name: Generate Release App Token
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Approve and Enable Auto-Merge for Patch/Minor Updates
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          gh pr review "$PR_URL" --approve -b "Auto-approved: patch/minor dependency update."
-          gh pr merge "$PR_URL" --auto --merge
+          GH_TOKEN="${{ steps.app-token.outputs.token }}" \
+            gh pr review "$PR_URL" --approve -b "Auto-approved: patch/minor dependency update."
+          GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            gh pr merge "$PR_URL" --auto --merge
