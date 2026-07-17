@@ -57,7 +57,7 @@ jobs:
 
       - name: Install Just Command Runner
         if: steps.cache-check.outputs.cache-hit != 'true'
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Execute Quality Verification Gates
         if: steps.cache-check.outputs.cache-hit != 'true'
