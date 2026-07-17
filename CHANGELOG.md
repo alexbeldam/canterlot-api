@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.1 (2026-07-17)
+
+### Bug Fixes
+
+- **ci**: Use release App token to approve Dependabot PRs, group updates
+  ([`96253b2`](https://github.com/alexbeldam/canterlot-api/commit/96253b29c5f7bee72aff7f90cb988fc0cd893657))
+
+
 ## v0.2.0 (2026-07-17)
 
 ### Bug Fixes
