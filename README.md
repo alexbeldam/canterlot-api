@@ -16,173 +16,131 @@
 </p>
 
 <p align="center">
- <a href="#sobre-o-projeto">Sobre o Projeto</a> •
- <a href="#logica-de-funcionamento">Lógica de Funcionamento</a> •
- <a href="#primeiros-passos">Primeiros Passos</a> •
- <a href="#rotas-principais">Rotas Principais</a> •
+ <a href="#about-the-project">About the Project</a> •
+ <a href="#how-it-works">How It Works</a> •
+ <a href="#getting-started">Getting Started</a> •
  <a href="#roadmap">Roadmap</a> •
- <a href="#frontend">Frontend</a>
+ <a href="#contributing">Contributing</a> •
+ <a href="#releases">Releases</a> •
+ <a href="#deployment">Deployment</a>
 </p>
 
 <br/>
 
-<h2 id="sobre-o-projeto">📖 Sobre o Projeto</h2>
+<h2 id="about-the-project">📖 About the Project</h2>
 
-O **CanterlotAPI** é o motor backend para um aplicativo moderno de gestão de clubes do livro. Hoje ele cobre a criação e administração de clubes, o convite e gerenciamento de membros com hierarquia de papéis, o catálogo colaborativo de sugestões de livros, e a conta/perfil de cada usuário (autenticação por senha ou Google, troca de senha, e histórico pessoal de leitura).
+**CanterlotAPI** is the backend engine for a modern book club management app. Today it covers club creation and administration, member invitations and management with a role hierarchy, a collaborative catalog of book suggestions, and each user's account/profile (password or Google authentication, password changes, and a personal reading history).
 
-A orquestração de rodadas de leitura em si (votação ranqueada ou sorteio randômico) está **planejada, mas ainda não implementada** — veja o [Roadmap](#roadmap) mais abaixo para o que já está desenhado mas ainda não construído.
+Orchestrating reading rounds themselves (ranked voting or random draw) is **planned, but not yet implemented** -- see the [Roadmap](#roadmap) below for what's already designed but not yet built.
 
-<h2 id="logica-de-funcionamento">🧠 Lógica de Funcionamento</h2>
+The full interactive API reference (Swagger UI) lives at [`/docs`](https://api.canterlot.com.br/docs).
 
-O sistema é guiado por dois pilares de regras de negócio fundamentais, já implementados, que gerenciam a dinâmica de convivência dos leitores:
+<h2 id="how-it-works">🧠 How It Works</h2>
 
-- **Controle de Acesso Concorrente e Hierárquico:** Cada workspace de clube possui papéis bem definidos (`OWNER`, `ADMIN`, `MEMBER`). Ações administrativas — gerenciamento de cargos, remoção/banimento de membros, transferência de posse — seguem uma cadeia estrita de comando: um `ADMIN` nunca pode agir sobre outro `ADMIN` ou o `OWNER`, blindando o clube contra ações não autorizadas.
-- **Gestão Autónoma de Admissão:** A entrada de novos participantes é controlada por convites emitidos pelo clube — um link público (rotacionável a qualquer momento) ou um convite direto por e-mail. Administradores mantêm controle total sobre o fluxo de novos membros, incluindo aprovação manual em clubes restritos e banimento.
+The system is guided by two already-implemented business-rule pillars that manage how readers coexist within a club:
 
-A orquestração de sessões de leitura (curadoria → deliberação → acompanhamento de progresso) é o próximo pilar planejado — o catálogo colaborativo já existe hoje como a etapa de curadoria; deliberação (voto/sorteio) e acompanhamento de progresso ainda não foram construídos (ver [Roadmap](#roadmap)).
+- **Concurrent, Hierarchical Access Control:** Every club workspace has well-defined roles (`OWNER`, `ADMIN`, `MEMBER`). Administrative actions -- role management, member removal/banning, ownership transfer -- follow a strict chain of command: an `ADMIN` can never act on another `ADMIN` or the `OWNER`, shielding the club from unauthorized actions.
+- **Autonomous Admission Management:** New members join through invites issued by the club -- a public link (rotatable at any time) or a direct email invite. Admins retain full control over the flow of new members, including manual approval for restricted clubs and banning.
+
+Orchestrating reading sessions (curation -> deliberation -> progress tracking) is the next planned pillar -- the collaborative catalog already exists today as the curation step; deliberation (voting/draw) and progress tracking haven't been built yet (see [Roadmap](#roadmap)).
 
 ---
 
-<h2 id="primeiros-passos">🚀 Primeiros Passos</h2>
+<h2 id="getting-started">🚀 Getting Started</h2>
 
-Nossa stack utiliza o gerenciador de pacotes **`uv`** e o command runner **`just`**.
+Our stack uses the **`uv`** package manager and the **`just`** command runner.
 
-### Pré-requisitos
+### Prerequisites
 
 1. [uv](https://github.com/astral-sh/uv)
 2. [Just](https://github.com/casey/just)
 3. [Docker Desktop](https://www.docker.com/)
 
-### Instalação
+### Installation
 
 ```bash
-# 1. Clone o repositório
+# 1. Clone the repository
 git clone https://github.com/alexbeldam/canterlot-api.git
 cd canterlot-api
 
-# 2. Rode o Setup Automatizado
-# Este comando verifica suas ferramentas, sobe os containers (Mongo/Redis),
-# cria o arquivo .env e instala todas as dependências em milissegundos.
+# 2. Run the automated setup
+# This checks your tooling, brings up the containers (Mongo/Redis),
+# creates the .env file, and installs all dependencies in milliseconds.
 just setup
 
-# 3. Preencha suas credenciais
-# Abra o arquivo `.env` recém-criado e insira suas chaves (Google Books, JWT_SECRET, etc).
+# 3. Fill in your credentials
+# Open the freshly created `.env` file and fill in your keys (Google Books, JWT_SECRET, etc).
 ```
 
-### Inicialização e Testes
+### Running and Testing
 
-Toda a gestão do projeto é centralizada via `just`. Você não precisa ativar virtual environments manualmente.
+All project management is centralized through `just`. You don't need to manually activate virtual environments.
 
-| Comando       | Descrição                                                                              |
-| ------------- | -------------------------------------------------------------------------------------- |
-| `just dev`    | Inicia o servidor Uvicorn com live-reload (`localhost:8000`)                           |
-| `just verify` | Roda o pipeline completo (Lints, Tipagem, Imports, Complexidade e Testes de Cobertura) |
-| `just test`   | Executa a suíte de testes isolada via Pytest                                           |
-| `just format` | Aplica as correções automáticas de formatação (Ruff)                                   |
-
----
-
-<h2 id="rotas-principais">📍 Endpoints Principais da API</h2>
-
-A documentação interativa e completa (Swagger UI) fica disponível em `/docs` com o servidor rodando — é sempre a fonte da verdade sobre o contrato exato de cada rota. A tabela abaixo reflete apenas o que está **realmente implementado hoje**, com testes automatizados. Todas as rotas são montadas sob o prefixo `/v1`.
-
-### Autenticação
-
-Rotas protegidas exigem um header de autorização: `Authorization: Bearer <token>`. O access token é devolvido no corpo da resposta; o refresh token nunca aparece no corpo — ele é setado como cookie `httpOnly`, `Secure`, `SameSite=Strict`, restrito ao path `/auth`, e não deve ser lido ou manipulado pelo frontend.
-
-| Rota                                     | Descrição                                                                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| <kbd>POST /users</kbd>                   | Cria uma nova conta com usuário/senha, com suporte a convite embutido no corpo.                                              |
-| <kbd>POST /auth/sessions</kbd>           | Cria uma sessão (login por senha ou OAuth, discriminado pelo campo `type: PASSWORD \| OAUTH` no corpo) — devolve o access token; o refresh token é setado como cookie. Para OAuth, o status code distingue o resultado: `200` login em conta existente, `201` conta nova criada, `409` quando a identidade já pertence a uma conta com outro método de login (é preciso logar por lá e então vincular este provedor). |
-| <kbd>PUT /auth/sessions/current</kbd>    | Rotaciona o refresh token (lido do cookie) e emite um novo access token e um novo cookie.                                    |
-| <kbd>DELETE /auth/sessions/current</kbd> | Encerra a sessão atual e limpa o cookie de refresh (idempotente — também retorna sucesso se não havia sessão ativa).         |
-
-Há ainda uma rota oculta `POST /auth/login` (form-encoded, fora do schema OpenAPI) que existe apenas para alimentar o fluxo "Authorize" nativo do Swagger UI — não é uma via pública alternativa de login, e clientes reais devem sempre usar `POST /auth/sessions`.
-
-### Perfil & Conta
-
-| Rota                                                    | Descrição                                                                                                            |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| <kbd>GET /users/me</kbd>                                | Retorna o perfil do próprio usuário autenticado (nome, usuário, email, avatar).                                     |
-| <kbd>PATCH /users/me</kbd>                              | Atualiza nome de exibição e/ou nome de usuário.                                                                     |
-| <kbd>PATCH /users/me/avatar</kbd>                       | Define a fonte do avatar (`GENERATED`, `GOOGLE` ou `GRAVATAR`) — o servidor sempre resolve o valor, nunca aceita um valor enviado pelo cliente. |
-| <kbd>PUT /users/me/password</kbd>                       | Troca a senha (ou define a primeira senha de uma conta só-OAuth); revoga sessões antigas e devolve um novo access token (novo cookie de refresh). |
-| <kbd>GET /users/me/auth-providers</kbd>                 | Lista provedores de login conectados, se há senha cadastrada, e se cada provedor vinculado tem foto disponível para uso como avatar. |
-| <kbd>POST /users/me/auth-providers/{provider}</kbd>     | Vincula um novo provedor OAuth à conta autenticada (`GOOGLE` ou `GRAVATAR`). `GRAVATAR` usa o fluxo de código de autorização do WordPress.com — o corpo precisa incluir `redirect_uri`, que deve ser o mesmo usado na autorização original. |
-| <kbd>DELETE /users/me/auth-providers/{provider}</kbd>   | Desvincula um provedor OAuth (bloqueado se for a única forma de login restante).                                     |
-| <kbd>PUT /users/me/read-books/{identifier}</kbd>        | Marca um livro como lido no histórico pessoal do usuário.                                                            |
-
-### Clubes & Controle de Acesso
-
-| Rota                                                         | Descrição                                                                 |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| <kbd>POST /clubs</kbd>                                       | Cria um novo clube (autor = `OWNER`).                                        |
-| <kbd>GET /clubs/{slug}</kbd>                                 | Detalhes do clube; aprovações pendentes visíveis só para `OWNER`/`ADMIN`.    |
-| <kbd>PATCH /clubs/{slug}/settings</kbd>                      | Atualiza configurações do clube (nome, descrição, política de entrada, idiomas). |
-| <kbd>DELETE /clubs/{slug}</kbd>                              | Dissolve e apaga o clube (somente `OWNER`).                                  |
-| <kbd>POST /clubs/{slug}/invites</kbd>                        | Cria um convite público ou direto (corpo discriminado por `type`).          |
-| <kbd>GET /clubs/{slug}/invites/public</kbd>                  | Retorna o link de convite público ativo do clube.                           |
-| <kbd>PATCH /clubs/{slug}/pending-approvals/{user}</kbd>      | Aprova uma solicitação pendente de entrada (clube restrito).                |
-| <kbd>DELETE /clubs/{slug}/pending-approvals/{user}</kbd>     | Rejeita uma solicitação pendente de entrada.                                |
-| <kbd>GET /clubs/{slug}/members/{user}</kbd>                  | Perfil de um colega de clube (nome, usuário, avatar, papel, data de entrada) — sempre restrito a um clube compartilhado, nunca um diretório global de usuários. |
-| <kbd>DELETE /clubs/{slug}/members/me</kbd>                   | O próprio membro sai do clube.                                              |
-| <kbd>DELETE /clubs/{slug}/members/{user}</kbd>               | Remove (e bane) um membro — `Engine de Rank Protection` aplicado.           |
-| <kbd>PUT /clubs/{slug}/members/{user}/role</kbd>             | Promove ou rebaixa um membro.                                               |
-| <kbd>POST /clubs/{slug}/ownership-transfers</kbd>            | Inicia a transferência de posse do clube para outro membro.                |
-| <kbd>DELETE /clubs/{slug}/ownership-transfers/current</kbd>  | Reclama a posse de volta, dentro da janela de 24h.                          |
-
-### Convites
-
-| Rota                                            | Descrição                                                                    |
-| -------------------------------------------------- | --------------------------------------------------------------------------------- |
-| <kbd>GET /invites/{invite_id}/preview</kbd>     | Pré-visualiza um convite (nome do clube, tipo) antes de decidir aceitar.        |
-| <kbd>PATCH /invites/{invite_id}</kbd>           | Aceita um convite — entrou direto, ficou pendente de aprovação, ou banido.       |
-
-### Catálogo
-
-| Rota                                                     | Descrição                                        |
-| ------------------------------------------------------------ | --------------------------------------------------- |
-| <kbd>POST /clubs/{slug}/catalog</kbd>                    | Sugere um livro ao catálogo do clube.              |
-| <kbd>GET /clubs/{slug}/catalog</kbd>                     | Lista o catálogo do clube, paginado e ordenável.   |
-| <kbd>DELETE /clubs/{slug}/catalog/{identifier}</kbd>     | Remove um livro do catálogo do clube.              |
-
-### Livros
-
-| Rota                                             | Descrição                                                                                |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| <kbd>GET /books/external</kbd>                   | Busca livros na Google Books API (requer `club_slug`, já que toda busca existe para alimentar um clube). |
-| <kbd>GET /books/external/{identifier}</kbd>      | Detalhes de um livro direto do provedor externo, sem persistir.                             |
-| <kbd>GET /books/{identifier}</kbd>               | Detalhes de um livro já persistido (ISBN ou id do provedor); `404` se ainda não existir na base — busca ao vivo é só via `/books/external`. |
+| Command       | Description                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `just dev`    | Starts the Uvicorn server with live-reload (`localhost:8000`)                          |
+| `just verify` | Runs the full pipeline (lints, type checking, imports, complexity, and coverage tests) |
+| `just test`   | Runs the isolated test suite via Pytest                                                |
+| `just format` | Applies automatic formatting fixes (Ruff)                                              |
 
 ---
 
 <h2 id="roadmap">🗺️ Roadmap</h2>
 
-Funcionalidades com as regras de negócio já desenhadas, mas **ainda não implementadas**:
+Features with business rules already designed, but **not yet implemented**:
 
-- **Sessões de Leitura & Votação:** o ciclo completo de rodadas de leitura — iniciar uma rodada (sorteio automático ou pool curado), votação ponderada por membro, acompanhamento de progresso individual, e conclusão/cancelamento da rodada.
-- **Verificação e troca de e-mail:** confirmação de e-mail no cadastro, e um fluxo para trocar o e-mail de uma conta existente.
-- **Histórico de leitura navegável:** consultar (paginado) e remover entradas do histórico de leitura pessoal — hoje só é possível adicionar.
-- **Logout de todos os dispositivos:** encerrar todas as sessões ativas de uma vez, como ação deliberada e independente da troca de senha.
-- **Lembretes automáticos de prazo de leitura:** notificação por e-mail um dia antes e no dia do prazo de uma rodada, disparado por um cron externo.
+- **Reading Sessions & Voting:** the full reading-round cycle -- starting a round (automatic draw or curated pool), member-weighted voting, individual progress tracking, and round completion/cancellation.
+- **Email verification and change:** email confirmation on signup, and a flow to change an existing account's email.
+- **Browsable reading history:** querying (paginated) and removing entries from the personal reading history -- today you can only add to it.
+- **Log out of all devices:** ending every active session at once, as a deliberate action independent of a password change.
+- **Automatic reading-deadline reminders:** an email notification a day before and on the day of a round's deadline, triggered by an external cron.
 
-Vinculação de pontes sociais externas (Discord/WhatsApp) foi cogitada, mas **descartada**: hoje não há forma de verificar se um link enviado por um administrador de clube leva a um conteúdo apropriado, e sem uma equipe de moderação, o risco de abuso (conteúdo impróprio, malware, spam) foi considerado inaceitável.
-
----
-
-<h2 id="frontend">🖥️ Frontend</h2>
-
-O frontend que consome esta API pode ser encontrado neste repositório:  
-👉 **[https://github.com/alexbeldam/canterlot](https://github.com/alexbeldam/canterlot)**
+Linking external social bridges (Discord/WhatsApp) was considered, but **rejected**: there's currently no way to verify that a link a club admin sends actually leads to appropriate content, and without a moderation team, the risk of abuse (inappropriate content, malware, spam) was considered unacceptable.
 
 ---
 
-<h2 id="licenca">📄 Licença</h2>
+<h2 id="contributing">🤝 Contributing</h2>
 
-Este projeto está licenciado sob a **Business Source License 1.1 (BSL)**. Isto significa que qualquer pessoa pode usar, modificar e redistribuir este código, inclusive para fins comerciais, **exceto** para operar um serviço hospedado concorrente que ofereça funcionalidade de clube de leitura substancialmente similar à do Canterlot a terceiros.
+Pull requests are welcome. Before diving in, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the codebase's layering conventions, and test expectations -- the highlights:
 
-Essa restrição converte-se automaticamente, na "Change Date" especificada no ficheiro [LICENSE](LICENSE), na **GNU Affero General Public License v3 (AGPLv3)**: irrestrita e totalmente de código aberto, incluindo a obrigação de manter aberto o código-fonte de qualquer modificação hospedada em rede (SaaS).
+- Pull requests are opened against `develop`, not `main`.
+- Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, ...) -- this isn't just style, releases are generated automatically from commit history (see [Releases](#releases) below).
+- Before a pull request can be merged, you'll need to sign the [Contributor License Agreement](CLA.md) -- a bot will walk you through it with a single comment reply on your first PR.
 
 ---
 
-<p align="center">Feito com ⭐</p>
+<h2 id="releases">🏷️ Releases</h2>
+
+Versioning is automated via [`python-semantic-release`](https://python-semantic-release.readthedocs.io/), computing the next [SemVer](https://semver.org/) version from Conventional Commit history -- but it isn't triggered on every merge to `develop`. A maintainer manually dispatches the "Prepare Release" GitHub Actions workflow (with a `dry_run` mode to preview the next version/changelog first), which:
+
+- Bumps the version and regenerates the `LICENSE` file (version, copyright year, and change date).
+- Tags the release (`vX.Y.Z`) and publishes a GitHub Release with an automatically generated changelog.
+- Promotes `develop` to `main`, which in turn triggers a production deploy (see [Deployment](#deployment) below).
+
+Release notes for each version are published on the repository's [GitHub Releases](https://github.com/alexbeldam/canterlot-api/releases) page.
+
+---
+
+<h2 id="deployment">☁️ Deployment</h2>
+
+The API runs on [Render](https://render.com/), defined as a Blueprint (`render.yaml`): a `canterlot-api` web service alongside a companion `canterlot-redis` instance. It's live at:
+
+👉 **https://api.canterlot.com.br**
+
+Deploys are triggered by a GitHub Actions hook (`.github/workflows/deploy.yml`) on pushes to `main` that touch source or dependency files -- the hook is skipped when `render.yaml` itself changes, since Render's own Blueprint sync picks that case up instead, avoiding a duplicate deploy. MongoDB is hosted externally (its connection string is a Render secret, not part of the Blueprint).
+
+The frontend that consumes this API lives in a separate repository, [alexbeldam/canterlot](https://github.com/alexbeldam/canterlot), and is served at:
+
+👉 **https://canterlot.com.br**
+
+---
+
+<h2 id="license">📄 License</h2>
+
+This project is licensed under the **Business Source License 1.1 (BSL)**. This means anyone can use, modify, and redistribute this code, including for commercial purposes, **except** to operate a competing hosted service that offers substantially similar book-club functionality to Canterlot's to third parties.
+
+That restriction automatically converts, on the "Change Date" specified in the [LICENSE](LICENSE) file, into the **GNU Affero General Public License v3 (AGPLv3)**: unrestricted and fully open source, including the obligation to keep the source of any network-hosted (SaaS) modification open.
+
+---
+
+<p align="center">Made with ⭐</p>
