@@ -26,7 +26,14 @@ from canterlot.models.book import BookExternalId
 from canterlot.models.club import ClubSlugStr
 from canterlot.models.enums import AuthProviderName, SessionType
 from canterlot.models.user import UsernameStr
-from canterlot.providers import BookProvider, LinkProvider, get_all_book_providers, get_all_link_providers
+from canterlot.providers import (
+    BookProvider,
+    EmailClient,
+    LinkProvider,
+    get_all_book_providers,
+    get_all_link_providers,
+    get_email_client,
+)
 from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
 from canterlot.providers.risc import GoogleRiscVerifier
 from canterlot.repositories import (
@@ -133,6 +140,10 @@ def get_oauth_providers(
     session: Annotated[AsyncSession, Depends(get_curl_cffi_session)],
 ) -> dict[AuthProviderName, OAuthProvider]:
     return get_all_oauth_providers(session)
+
+
+def get_email_provider() -> EmailClient:
+    return get_email_client()
 
 
 def get_google_risc_verifier(

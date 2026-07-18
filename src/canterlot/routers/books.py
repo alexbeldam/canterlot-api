@@ -11,6 +11,7 @@ from canterlot.exceptions import (
     BookProviderUnavailableError,
     BookSearchCriteriaMissingError,
     ClubNotFoundError,
+    GatewayConfigurationError,
     InvalidCredentialsError,
     TokenExpiredError,
     UnauthorizedClubMemberError,
@@ -64,6 +65,11 @@ class ExternalBookSearchFilters:
             "description": "Unexpected global or integration breakdown.",
             "content": INTERNAL_SERVER_ERROR_EXAMPLE,
         },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ErrorResponseModel,
+            "description": "GatewayConfigurationError: External books provider is not configured.",
+            "content": error_example(GatewayConfigurationError),
+        },
         status.HTTP_502_BAD_GATEWAY: {
             "model": ErrorResponseModel,
             "description": (
@@ -116,6 +122,11 @@ async def get_external_book_details(
             "model": ErrorResponseModel,
             "description": "Unexpected backend error, cache layer failure, or upstream timeout.",
             "content": INTERNAL_SERVER_ERROR_EXAMPLE,
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ErrorResponseModel,
+            "description": "GatewayConfigurationError: External books provider is not configured.",
+            "content": error_example(GatewayConfigurationError),
         },
     },
 )

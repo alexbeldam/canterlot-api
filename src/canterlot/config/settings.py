@@ -13,10 +13,12 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
-    google_books_api_key: str
+    google_books_api_key: str | None = None
     google_oauth_client_id: str | None = None
     gravatar_oauth_client_id: str | None = None
     gravatar_oauth_client_secret: str | None = None
+    resend_api_key: str | None = None
+    email_dry_run: bool = True
     jwt_secret_key: str
     jwt_algorithm: str
     access_token_expiry_minutes: int = 15
