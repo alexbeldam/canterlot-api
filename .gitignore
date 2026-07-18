@@ -2,8 +2,6 @@
 .env
 .env.*
 !.env.example
-.infisical.json
-.void/
 
 # --- Virtual Environments & Package Managers ---
 .venv/
@@ -30,3 +28,27 @@ coverage.json
 data/
 logs/
 *.log
+
+# --- IDE & Editor Configurations ---
+# JetBrains IDEs (PyCharm, IntelliJ, etc.)
+.idea/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+
+# --- OS Generated Files ---
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# --- Github Configuration Files ---
+.github/*
+!.github/dependabot.yml
+!.github/pull_request_template.md
+!.github/workflows/
+!.github/templates/
