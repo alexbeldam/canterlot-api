@@ -3,7 +3,12 @@ import json
 import math
 
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
-from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
+from canterlot.exceptions import (
+    BookDetailsNotFoundError,
+    BookNotFoundError,
+    BookSearchCriteriaMissingError,
+    GatewayConfigurationError,
+)
 from canterlot.models.book import BookExternalId, BookProviderIdentifier, SearchParams, TitleStr, split_isbn
 from canterlot.models.enums import BookProviderName
 from canterlot.providers import BookProvider, ProviderSearchResponse
@@ -68,6 +73,10 @@ class BookService:
         if not title and not author and not isbn:
             log.warn("Search rejected: no search criteria provided")
             raise BookSearchCriteriaMissingError("At least one of title, author, or isbn must be provided.")
+
+        if not self.__providers:
+            log.warn("Search rejected: no external book providers are configured")
+            raise GatewayConfigurationError("External book search is not configured.")
 
         provider_chunk_page = math.ceil((page * limit) / self.MAX_PROVIDER_CHUNK)
         start_index = (provider_chunk_page - 1) * self.MAX_PROVIDER_CHUNK
@@ -272,10 +281,14 @@ class BookService:
         log = logger.bind(external_book_id=provider_book_id, provider_name=provider)
         log.info("Fetching volume details card from external provider engine")
 
+        if not self.__providers:
+            log.warn("Details query rejected: no external book providers are configured")
+            raise GatewayConfigurationError("External book search is not configured.")
+
         provider_engine = self.__providers.get(provider)
         if not provider_engine:
             log.warn("Query aborted: provider engine key does not exist")
-            raise BookDetailsNotFoundError(f"No active provider engine found matching '{provider}'")
+            raise GatewayConfigurationError(f"The '{provider}' book provider is not available.")
 
         details = await provider_engine.fetch_volume_details(provider_book_id)
         if not details:

@@ -24,7 +24,7 @@ def session() -> AsyncMock:
 
 @pytest.fixture
 def provider(session: AsyncMock) -> GoogleBookProvider:
-    return GoogleBookProvider(session)
+    return GoogleBookProvider(session, "AIzaSy-test")
 
 
 def describe_name():
@@ -179,6 +179,14 @@ def describe_fetch_volumes():
         query = call_kwargs["params"]["q"]
         assert query == "isbn:9783161484100"
 
+    async def it_sends_the_key_param_from_constructor(provider: GoogleBookProvider, session: AsyncMock):
+        session.get.return_value = _response(json_data={"totalItems": 0, "items": []})
+
+        await provider.fetch_volumes(SearchParams(title="The Hobbit"), 0, 40)
+
+        call_kwargs = session.get.call_args.kwargs
+        assert call_kwargs["params"]["key"] == "AIzaSy-test"
+
 
 def describe_fetch_volume_details():
     async def it_returns_none_on_a_404_response(provider: GoogleBookProvider, session: AsyncMock):
@@ -219,3 +227,17 @@ def describe_fetch_volume_details():
 
         assert details is not None
         assert details.description is None
+
+    async def it_sends_the_key_param_for_volume_details(provider: GoogleBookProvider, session: AsyncMock):
+        session.get.return_value = _response(json_data={"volumeInfo": {}})
+
+        await provider.fetch_volume_details("abc123")
+
+        call_kwargs = session.get.call_args.kwargs
+        assert call_kwargs["params"]["key"] == "AIzaSy-test"
+
+
+def describe_init():
+    def it_raises_when_api_key_is_empty(session: AsyncMock):
+        with pytest.raises(ValueError, match="requires a non-empty API key"):
+            GoogleBookProvider(session, "")

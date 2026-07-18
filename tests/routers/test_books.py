@@ -9,6 +9,7 @@ from canterlot.exceptions import (
     BookDetailsNotFoundError,
     BookNotFoundError,
     BookSearchCriteriaMissingError,
+    GatewayConfigurationError,
     UnauthorizedClubMemberError,
 )
 from canterlot.models.book import BookProviderIdentifier
@@ -59,6 +60,14 @@ def describe_get_external_book_details():
 
         assert response.status_code == 422
         book_service.get_external_book_details.assert_not_called()
+
+    def it_returns_503_when_external_provider_is_not_configured(client: TestClient, book_service: AsyncMock):
+        book_service.get_external_book_details.side_effect = GatewayConfigurationError("not configured")
+
+        response = client.get("/v1/books/external/google-books__some-id")
+
+        assert response.status_code == 503
+        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"
 
 
 def describe_get_book():
@@ -221,3 +230,15 @@ def describe_search_external_books():
 
         assert response.status_code == 500
         assert response.json()["error"]["error_code"] == "INTERNAL_SERVER_ERROR"
+
+    def it_returns_503_when_external_provider_is_not_configured(
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+    ):
+        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_preferred_languages.return_value = []
+        book_service.search_external_books.side_effect = GatewayConfigurationError("not configured")
+
+        response = client.get("/v1/books/external", params={"club_slug": SOME_CLUB_SLUG, "title": "The Hobbit"})
+
+        assert response.status_code == 503
+        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"

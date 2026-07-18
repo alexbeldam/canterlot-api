@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from canterlot.dto.book import BookDetails, BookSearchResult
-from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
+from canterlot.exceptions import (
+    BookDetailsNotFoundError,
+    BookNotFoundError,
+    BookSearchCriteriaMissingError,
+    GatewayConfigurationError,
+)
 from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.models.enums import BookProviderName
 from canterlot.services.book import BookService
@@ -347,10 +352,10 @@ def describe_search_external_books_scoring():
 
 
 def describe_get_external_book_details():
-    async def it_raises_for_an_unknown_provider(cache_repo: AsyncMock, book_repo: AsyncMock):
+    async def it_raises_when_no_external_book_provider_is_configured(cache_repo: AsyncMock, book_repo: AsyncMock):
         service = BookService(cache_repo, book_repo, providers=[])
 
-        with pytest.raises(BookDetailsNotFoundError):
+        with pytest.raises(GatewayConfigurationError):
             await service.get_external_book_details("some-id", BookProviderName.GOOGLE)
 
     async def it_raises_when_the_provider_cannot_find_the_book(
@@ -372,6 +377,21 @@ def describe_get_external_book_details():
         result = await service.get_external_book_details("some-id", BookProviderName.GOOGLE)
 
         assert result is details
+
+
+def describe_search_external_books_configuration():
+    async def it_raises_when_no_external_book_provider_is_configured(cache_repo: AsyncMock, book_repo: AsyncMock):
+        service = BookService(cache_repo, book_repo, providers=[])
+
+        with pytest.raises(GatewayConfigurationError):
+            await service.search_external_books(
+                title="The Hobbit",
+                author=None,
+                isbn=None,
+                preferred_languages=[],
+                page=1,
+                limit=10,
+            )
 
 
 def _book_document(**overrides) -> BookModel:

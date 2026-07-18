@@ -2,7 +2,6 @@ from curl_cffi.requests import AsyncSession
 from fastapi import status
 from pydantic import HttpUrl
 
-from canterlot.config import get_settings
 from canterlot.dto.book import BookDetails, BookSearchResult
 from canterlot.exceptions import BookProviderUnavailableError
 from canterlot.models.book import BookProviderIdentifier, SearchParams
@@ -16,8 +15,12 @@ logger = get_logger(__name__)
 
 
 class GoogleBookProvider(BookProvider):
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, api_key: str):
+        if not api_key:
+            raise ValueError("GoogleBookProvider requires a non-empty API key.")
+
         self.__session = session
+        self.__api_key = api_key
 
     @property
     def name(self) -> BookProviderName:
@@ -106,13 +109,13 @@ class GoogleBookProvider(BookProvider):
         return int(year_slice) if year_slice.isdigit() else None
 
     async def fetch_volume_details(self, provider_book_id: str) -> BookDetails | None:
-        api_key = get_settings().google_books_api_key
-        url = f"https://www.googleapis.com/books/v1/volumes/{provider_book_id}?key={api_key}"
+        params = {"key": self.__api_key}
+        url = f"https://www.googleapis.com/books/v1/volumes/{provider_book_id}"
 
         log = logger.bind(provider=self.name, volume_id=provider_book_id)
         log.info("Dispatching HTTP GET request to Google Books API volume details endpoint")
 
-        response = await self.__session.get(url)
+        response = await self.__session.get(url, params=params)
 
         log = log.bind(http_status_code=response.status_code)
 
@@ -149,12 +152,14 @@ class GoogleBookProvider(BookProvider):
 
             query_parts.extend(f'inauthor:"{author}"' for author in params.authors)
 
-        return {
+        query_params = {
             "q": " ".join(query_parts),
             "startIndex": start_index,
             "maxResults": max_results,
-            "key": get_settings().google_books_api_key,
+            "key": self.__api_key,
         }
+
+        return query_params
 
     def __parse_isbn(self, identifiers: list[dict]) -> tuple[str | None, str | None]:
         isbn_10 = None
