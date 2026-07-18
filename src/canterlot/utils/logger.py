@@ -6,6 +6,39 @@ from structlog.typing import Processor
 
 from canterlot.config.enums import Environment
 
+_UVICORN_ACCESS_ARGS_MIN_LEN = 3
+_UVICORN_ACCESS_PATH_ARG_INDEX = 2
+
+_NOISY_ACCESS_PATHS = {
+    "/",
+    "/v1",
+    "/health",
+    "/docs",
+    "/redoc",
+    "/favicon.ico",
+    "/openapi.json",
+}
+_NOISY_ACCESS_PATH_PREFIXES = ("/static",)
+
+
+class UvicornAccessPathFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "uvicorn.access":
+            return True
+
+        if not isinstance(record.args, tuple) or len(record.args) < _UVICORN_ACCESS_ARGS_MIN_LEN:
+            return True
+
+        raw_path = record.args[_UVICORN_ACCESS_PATH_ARG_INDEX]
+        if not isinstance(raw_path, str):
+            return True
+
+        path = raw_path.split("?", 1)[0]
+        if path in _NOISY_ACCESS_PATHS:
+            return False
+
+        return not any(path == prefix or path.startswith(f"{prefix}/") for prefix in _NOISY_ACCESS_PATH_PREFIXES)
+
 
 def setup_logging(environment: Environment) -> None:
     is_local = environment in (Environment.LOCAL, Environment.TEST)
@@ -35,6 +68,7 @@ def setup_logging(environment: Environment) -> None:
             foreign_pre_chain=shared_processors,
         )
     )
+    console_handler.addFilter(UvicornAccessPathFilter())
 
     target_loggers = ["", "uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"]
     for logger_name in target_loggers:

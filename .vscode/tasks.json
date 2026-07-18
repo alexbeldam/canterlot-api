@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Create PR",
+      "type": "shell",
+      "command": "gh pr create --base develop --fill --web",
+      "problemMatcher": []
+    }
+  ]
+}
