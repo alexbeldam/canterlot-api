@@ -152,14 +152,12 @@ class GoogleBookProvider(BookProvider):
 
             query_parts.extend(f'inauthor:"{author}"' for author in params.authors)
 
-        query_params = {
+        return {
             "q": " ".join(query_parts),
             "startIndex": start_index,
             "maxResults": max_results,
             "key": self.__api_key,
         }
-
-        return query_params
 
     def __parse_isbn(self, identifiers: list[dict]) -> tuple[str | None, str | None]:
         isbn_10 = None
