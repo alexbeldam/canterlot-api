@@ -11,7 +11,7 @@ from canterlot.models.book import (
     SearchParams,
     validate_published_year,
 )
-from canterlot.models.enums import BookProviderName
+from canterlot.types import BookProviderName
 
 published_year_adapter: TypeAdapter[PublishedYear] = TypeAdapter(PublishedYear)
 

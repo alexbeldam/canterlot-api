@@ -1,5 +1,5 @@
 from canterlot.dto.invite import InvitePreviewResponse
-from canterlot.models.enums import InviteType, JoinPolicy
+from canterlot.types import InviteType, JoinPolicy
 
 
 def describe_invite_preview_response():

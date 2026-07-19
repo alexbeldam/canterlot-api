@@ -11,7 +11,7 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.models.book import BookProviderIdentifier
-from canterlot.models.enums import BookProviderName
+from canterlot.types import BookProviderName
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"

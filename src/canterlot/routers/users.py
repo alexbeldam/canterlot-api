@@ -38,7 +38,6 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
 from canterlot.routers.cookies import set_refresh_token_cookie
 from canterlot.routers.dependencies import (
     get_auth_service,
@@ -51,6 +50,7 @@ from canterlot.routers.dependencies import (
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService, ClubService, InviteService, UserService
+from canterlot.types import AuthProviderName, ClubOnboardingStatus
 
 router = APIRouter(prefix="/users", tags=["Users"])
 _profile = APIRouter(prefix="/me", tags=["Users"])

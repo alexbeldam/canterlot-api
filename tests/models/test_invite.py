@@ -1,7 +1,7 @@
 from beanie import PydanticObjectId
 
-from canterlot.models.enums import InviteType
 from canterlot.models.invite import InviteModel
+from canterlot.types import InviteType
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

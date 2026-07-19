@@ -9,7 +9,7 @@ from canterlot.dto.book import BookResponse
 from canterlot.models.book import AuthorList, BookExternalId, BookModel, PageCount, PublishedYear, TitleStr
 from canterlot.models.user import UsernameStr
 from canterlot.pagination import Page, PageRequest
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
+from canterlot.types import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
 
 
 class BookSuggestionRequest(BaseModel):

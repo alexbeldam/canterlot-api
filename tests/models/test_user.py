@@ -1,8 +1,8 @@
 import pytest
 from pydantic import HttpUrl, ValidationError
 
-from canterlot.models.enums import AuthProviderName
 from canterlot.models.user import AvatarSchema, LinkedProviderSchema, UserModel
+from canterlot.types import AuthProviderName
 
 
 def describe_username_normalization():

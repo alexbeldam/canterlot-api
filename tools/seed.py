@@ -18,7 +18,6 @@ from canterlot.dto.club import ClubCreateRequest, ClubSettingsUpdateRequest
 from canterlot.models import BookModel, ClubModel, InviteModel, JoinPolicy, MemberRole, UserModel
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.enums import AuthProviderName, BookProviderName
 from canterlot.models.user import LinkedProviderSchema
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
@@ -27,6 +26,7 @@ from canterlot.repositories.beanie import (
     BeanieUserRepository,
 )
 from canterlot.services import AuthService, ClubService, InviteService
+from canterlot.types import AuthProviderName, BookProviderName
 
 # This goes through the same ClubService/InviteService calls the real routers use, so a freshly
 # seeded club ends up in exactly the state a club created through the API would be in (e.g. it

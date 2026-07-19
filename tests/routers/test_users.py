@@ -17,10 +17,10 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models.enums import AuthProviderName, ClubOnboardingStatus
 from canterlot.models.user import AvatarSchema, UserModel
 from canterlot.services.auth import RegisterResult
 from canterlot.services.invite import InviteValidationResult
+from canterlot.types import AuthProviderName, ClubOnboardingStatus
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

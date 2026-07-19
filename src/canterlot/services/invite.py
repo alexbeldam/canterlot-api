@@ -12,12 +12,11 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.models.club import ClubNameStr
-from canterlot.models.enums import InviteType, MemberRole
 from canterlot.models.invite import InviteModel
 from canterlot.models.user import UsernameStr
 from canterlot.repositories import ClubRepository, InviteRepository, UserRepository
+from canterlot.types import InviteType, MemberRole, NormalizedEmailStr
 from canterlot.utils import get_logger
-from canterlot.utils.format import NormalizedEmailStr
 
 logger = get_logger(__name__)
 

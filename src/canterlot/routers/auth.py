@@ -18,7 +18,6 @@ from canterlot.exceptions import (
     TokenMalformedError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import AuthOutcome, AuthProviderName, SessionType
 from canterlot.models.user import UsernameStr
 from canterlot.routers.cookies import clear_refresh_token_cookie, set_refresh_token_cookie
 from canterlot.routers.dependencies import (
@@ -32,6 +31,7 @@ from canterlot.routers.dependencies import (
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import AuthService, InviteService
+from canterlot.types import AuthOutcome, AuthProviderName, SessionType
 from canterlot.utils import get_logger
 
 logger = get_logger(__name__)

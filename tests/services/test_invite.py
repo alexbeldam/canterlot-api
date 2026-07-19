@@ -12,8 +12,8 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.enums import InviteType, MemberRole
 from canterlot.services.invite import InviteService
+from canterlot.types import InviteType, MemberRole
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")

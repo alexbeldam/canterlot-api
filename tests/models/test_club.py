@@ -3,7 +3,7 @@ from beanie import PydanticObjectId
 from pydantic import ValidationError
 
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import JoinPolicy
+from canterlot.types import JoinPolicy
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

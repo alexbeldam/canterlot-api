@@ -6,10 +6,10 @@ from beanie import Document, Indexed
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 from pymongo import ASCENDING, IndexModel
 
-from canterlot.utils.format import HttpsUrl, NonEmptyStr, NormalizedEmailStr
+from canterlot.types import HttpsUrl, NonEmptyStr, NormalizedEmailStr
 
+from ..types import AuthProviderName, BadgeReason
 from .book import ReadBook
-from .enums import AuthProviderName, BadgeReason
 
 type UsernameStr = Annotated[
     NonEmptyStr,

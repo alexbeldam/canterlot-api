@@ -8,8 +8,8 @@ from canterlot.dto.auth import (
     LinkProviderRequest,
     UserRegisterRequest,
 )
-from canterlot.models.enums import AuthProviderName, SessionType
 from canterlot.models.user import LinkedProviderSchema, UserModel
+from canterlot.types import AuthProviderName, SessionType
 
 
 def describe_username_normalization_and_constraints():

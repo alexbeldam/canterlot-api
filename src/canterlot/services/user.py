@@ -11,11 +11,10 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.models.book import ReadBook
-from canterlot.models.enums import AuthProviderName
 from canterlot.models.user import AvatarSchema, PersonNameStr, UserModel, UsernameStr
 from canterlot.repositories.interfaces import UserRepository
+from canterlot.types import AuthProviderName, HttpsUrl
 from canterlot.utils import get_logger
-from canterlot.utils.format import HttpsUrl
 
 logger = get_logger(__name__)
 

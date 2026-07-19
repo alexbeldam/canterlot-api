@@ -10,7 +10,7 @@ from pymongo.results import UpdateResult
 from canterlot.models import AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.repositories import UserRepository
-from canterlot.utils.format import HttpsUrl, NormalizedEmailStr
+from canterlot.types import HttpsUrl, NormalizedEmailStr
 
 
 class UsernameProjection(BaseModel):

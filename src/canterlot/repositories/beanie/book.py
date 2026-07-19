@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from canterlot.models import BookModel
 from canterlot.models.book import BookProviderIdentifier, UrlList
 from canterlot.repositories import BookRepository
-from canterlot.utils.format import ISBNStr
+from canterlot.types import ISBNStr
 
 
 class IdProjection(BaseModel):

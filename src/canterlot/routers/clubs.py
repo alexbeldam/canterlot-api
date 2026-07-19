@@ -35,7 +35,6 @@ from canterlot.exceptions import (
 from canterlot.exceptions.club import ClubMemberNotFoundError, ClubNotFoundError
 from canterlot.models import ErrorResponseModel
 from canterlot.models.club import ClubSlugStr
-from canterlot.models.enums import InviteType
 from canterlot.routers.dependencies import (
     get_club_id_from_slug,
     get_club_service,
@@ -47,7 +46,7 @@ from canterlot.routers.dependencies import (
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService, UserService
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import InviteType, NormalizedEmailStr
 
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
 

@@ -11,8 +11,8 @@ from canterlot.dto.user import (
     UpdateProfileRequest,
     UserProfileResponse,
 )
-from canterlot.models.enums import AuthProviderName, BadgeReason
 from canterlot.models.user import AvatarSchema, UserModel
+from canterlot.types import AuthProviderName, BadgeReason
 
 
 def describe_update_profile_request():

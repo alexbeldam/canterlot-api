@@ -26,7 +26,7 @@ from canterlot.routers.dependencies import (
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import BookService, ClubService
-from canterlot.utils.format import ISBNStr
+from canterlot.types import ISBNStr
 
 router = APIRouter(prefix="/books", tags=["Books"])
 

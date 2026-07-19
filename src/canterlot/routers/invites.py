@@ -16,10 +16,10 @@ from canterlot.exceptions import (
     TokenMalformedError,
 )
 from canterlot.models import ErrorResponseModel
-from canterlot.models.enums import ClubOnboardingStatus
 from canterlot.models.user import UserModel, UsernameStr
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService
+from canterlot.types import ClubOnboardingStatus
 
 from .dependencies import get_club_service, get_current_user, get_invite_service
 

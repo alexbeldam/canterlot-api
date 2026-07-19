@@ -20,7 +20,7 @@ from canterlot.models.book import BookProviderIdentifier, ReadBook, UrlList
 from canterlot.models.club import ClubNameStr, ClubSlugStr
 from canterlot.models.user import PersonNameStr, UsernameStr
 from canterlot.pagination import Page, SortDirection
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NormalizedEmailStr
+from canterlot.types import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NormalizedEmailStr
 
 
 class BookRepository(Protocol):

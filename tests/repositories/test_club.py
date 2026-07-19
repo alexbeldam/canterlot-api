@@ -7,9 +7,9 @@ from pymongo.errors import OperationFailure
 from canterlot.exceptions import ClubNotFoundError
 from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.models.club import CatalogEntryModel, ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import BookProviderName, JoinPolicy, MemberRole
 from canterlot.pagination import SortDirection
 from canterlot.repositories.beanie.club import BeanieClubRepository
+from canterlot.types import BookProviderName, JoinPolicy, MemberRole
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

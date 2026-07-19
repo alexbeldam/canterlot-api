@@ -29,8 +29,8 @@ from canterlot.models import (
 from canterlot.models.club import OWNERSHIP_RECLAIM_WINDOW, OWNERSHIP_TRANSFER_COOLDOWN, ClubSlugStr
 from canterlot.models.user import UsernameStr
 from canterlot.repositories import ClubRepository, UserRepository
+from canterlot.types import LanguageStr
 from canterlot.utils import get_logger, make_slug
-from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
 

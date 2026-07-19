@@ -1,22 +1,5 @@
 import re
-from collections.abc import Callable, Coroutine
 from difflib import SequenceMatcher
-from typing import Annotated, Any
-
-import shortuuid
-from pydantic import (
-    AfterValidator,
-    BeforeValidator,
-    EmailStr,
-    Field,
-    HttpUrl,
-    StringConstraints,
-    UrlConstraints,
-    validate_call,
-)
-from slugify import slugify
-
-from .language import normalize_language
 
 ISBN10_LEN = 10
 ISBN13_LEN = 13
@@ -24,10 +7,8 @@ ISBN13_LEN = 13
 
 def normalize_isbn(isbn_str: str) -> str:
     cleaned = re.sub(r"[^0-9Xx]", "", isbn_str)
-
     if len(cleaned) not in [ISBN10_LEN, ISBN13_LEN]:
         raise ValueError(f"{isbn_str!r} is not a valid ISBN")
-
     return cleaned.upper()
 
 
@@ -35,68 +16,11 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-type LanguageStr = Annotated[str, AfterValidator(normalize_language), Field(examples=["en", "pt-BR"])]
-type ISBNStr = Annotated[
-    str,
-    BeforeValidator(normalize_isbn),
-    Field(examples=["123456789X", "9781234567897"]),
-]
-type ISBN10Str = Annotated[
-    ISBNStr,
-    StringConstraints(min_length=ISBN10_LEN, max_length=ISBN10_LEN),
-    Field(examples=["123456789X", "0804139296"]),
-]
-type ISBN13Str = Annotated[
-    ISBNStr,
-    StringConstraints(min_length=ISBN13_LEN, max_length=ISBN13_LEN),
-    Field(examples=["9781234567897", "9780804139298"]),
-]
-type HttpsUrl = Annotated[HttpUrl, UrlConstraints(allowed_schemes=["https"])]
-type NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-type NormalizedEmailStr = Annotated[EmailStr, BeforeValidator(normalize_email)]
-
-
-@validate_call
-def split_isbn(isbn: ISBNStr) -> tuple[ISBN10Str | None, ISBN13Str | None]:
-    if len(isbn) == ISBN10_LEN:
-        return isbn, None
-    return None, isbn
+def make_uppercase(text: str) -> str:
+    return text.upper().strip()
 
 
 def similarity_ratio(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
-
-
-async def make_slug(
-    text: str,
-    duplicate_verifier: Callable[[str], Coroutine[Any, Any, bool]],
-    max_length: int = 32,
-    suffix_length: int = 5,
-    separator: str = "-",
-) -> str:
-    slug = slugify(text=text, max_length=max_length, separator=separator, word_boundary=True, save_order=True)
-
-    base_max_length = max_length - suffix_length - 1
-
-    while await duplicate_verifier(slug):
-        suffix = shortuuid.random(length=suffix_length)
-
-        base_slug = slugify(
-            text=text,
-            max_length=base_max_length,
-            separator=separator,
-            word_boundary=True,
-            save_order=True,
-        )
-        slug = f"{base_slug}{separator}{suffix}"
-
-    return slug
-
-
-async def make_username(
-    text: str,
-    duplicate_verifier: Callable[[str], Coroutine[Any, Any, bool]],
-) -> str:
-    return await make_slug(text, duplicate_verifier, max_length=30, suffix_length=5, separator="_")

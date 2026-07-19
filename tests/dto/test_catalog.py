@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from canterlot.dto.catalog import BookSuggestionRequest, CatalogEntryResponse, SuggestionResponse, SuggestionStatus
 from canterlot.models.book import BookModel, BookProviderIdentifier
-from canterlot.models.enums import BookProviderName
+from canterlot.types import BookProviderName
 
 
 def _book_document(**overrides) -> BookModel:

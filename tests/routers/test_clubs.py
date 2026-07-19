@@ -22,9 +22,9 @@ from canterlot.exceptions import (
     UserNotFoundError,
 )
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import AuthProviderName, MemberRole
 from canterlot.models.user import AvatarSchema, UserModel
 from canterlot.services.club import ClubView
+from canterlot.types import AuthProviderName, MemberRole
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"

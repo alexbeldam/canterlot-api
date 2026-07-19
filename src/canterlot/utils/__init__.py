@@ -1,4 +1,4 @@
-from .format import make_slug, make_username, similarity_ratio
+from .format import similarity_ratio
 from .language import (
     LANGUAGE_MATCH_SUBSCORES,
     LanguageMatchLevel,
@@ -17,6 +17,7 @@ from .security import (
     hash_password,
     verify_password,
 )
+from .slugs import make_slug, make_username
 
 __all__ = [
     "LANGUAGE_MATCH_SUBSCORES",

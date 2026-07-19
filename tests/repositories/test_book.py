@@ -6,9 +6,8 @@ from beanie import PydanticObjectId
 from pydantic import TypeAdapter
 
 from canterlot.models.book import BookModel, BookProviderIdentifier
-from canterlot.models.enums import BookProviderName, ExtensionType
 from canterlot.repositories.beanie.book import BeanieBookRepository
-from canterlot.utils.format import HttpsUrl
+from canterlot.types import BookProviderName, ExtensionType, HttpsUrl
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
