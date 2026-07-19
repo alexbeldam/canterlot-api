@@ -1,0 +1,114 @@
+{# 1. Brand Name Helper #}
+{% macro canterlot(punc="") -%}
+  <span translate="no">Canterlot{{ punc }}</span>
+{%- endmacro %}
+
+{# 2. Non-translated text with inline punctuation #}
+{% macro t_no(text, punc="") -%}
+  <span translate="no">{{ text }}{{ punc }}</span>
+{%- endmacro %}
+
+{# 3. Bold variables with inline punctuation #}
+{% macro strong(text, punc="") -%}
+  <strong>{{ text }}{{ punc }}</strong>
+{%- endmacro %}
+
+{# 3b. Bold non-translated variables with inline punctuation #}
+{% macro strong_no(text, punc="") -%}
+  <strong><span translate="no">{{ text }}{{ punc }}</span></strong>
+{%- endmacro %}
+
+{# 4. Brand Persona Badge #}
+{% macro persona_badge(persona, category, bg_color=badge_bg) -%}
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right">
+    <tr>
+      <td bgcolor="{{ bg_color or '#7c3aed' }}" style="border-radius:999px;padding:6px 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;color:#f7f5fa;white-space:nowrap;">
+        <span translate="no">{{ persona }}</span> · {{ category }}
+      </td>
+    </tr>
+  </table>
+{%- endmacro %}
+
+{# --- Layout Components --- #}
+
+{% macro space_top(size=8) %}
+  <tr><td style="padding-top:{{ size }}px; font-size:0; line-height:0;">&nbsp;</td></tr>
+{% endmacro %}
+
+{% macro salutation(name, punc="!") %}
+  <tr>
+    <td class="stack-pad" style="padding:12px 32px 4px 32px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#1c1722;">
+      Hello, {{ t_no(name, punc=punc) }}
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro text_block() %}
+  <tr>
+    <td style="padding:0 32px 18px 32px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:160%;color:#1c1722;">
+      {{ caller() }}
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro code_box(code) %}
+  <tr>
+    <td style="padding:0 32px 24px 32px;" align="left">
+      <table role="presentation" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="background:#f7f5fa;border:1px dashed #c2bad1;border-radius:10px;padding:16px 24px;">
+            <span translate="no" style="font-family:ui-monospace,Consolas,monospace;font-size:26px;letter-spacing:6px;font-weight:600;color:#1c1722;">{{ code }}</span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro alert_box(type="info") %}
+  {% set border_color = '#6d28d9' %}
+  {% set bg_color = '#f5f3ff' %}
+  
+  {% if type == "danger" %}
+    {% set border_color = '#c10007' %}
+    {% set bg_color = '#fef2f2' %}
+  {% elif type == "warning" %}
+    {% set border_color = '#fe9a00' %}
+    {% set bg_color = '#fff8ec' %}
+  {% endif %}
+  <tr>
+    <td style="padding:0 32px 24px 32px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{ bg_color }};border-left:4px solid {{ border_color }};border-radius:8px;">
+        <tr>
+          <td style="padding:16px 20px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:150%;color:#1c1722;">
+            <p style="margin:0;">{{ caller() }}</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro action_button(url, text, color=brand_color) %}
+  <tr>
+    <td style="padding:0 32px 24px 32px;" align="left">
+      <table role="presentation" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="border-radius:10px;background:{{ color or '#7c3aed' }};">
+            <a href="{{ url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;color:#f7f5fa;text-decoration:none;border-radius:10px;">
+              {{ text }}
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:12px 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:150%;color:#5a5069;">
+        If the button doesn't work, copy and paste this link into your browser:<br/>
+        <a href="{{ url }}" target="_blank" style="color:{{ color or '#7c3aed' }};word-break:break-all;">{{ url }}</a>
+      </p>
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro support_button(text="Contact support") -%}
+  {{ action_button("mailto:sunset@canterlot.com.br", text) }}
+{%- endmacro %}

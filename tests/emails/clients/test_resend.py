@@ -1,6 +1,7 @@
 import resend
 
-from canterlot.providers.email import EmailMessage, ResendEmailClient
+from canterlot.emails import EmailMessage
+from canterlot.emails.clients import ResendEmailClient
 
 
 def describe_name():
@@ -9,7 +10,7 @@ def describe_name():
 
 
 def describe_send():
-    async def it_maps_message_into_resend_payload_and_returns_message_id(monkeypatch):
+    async def it_maps_message_into_resend_payload_and_returns_message_id(monkeypatch) -> None:
         captured_payload: dict[str, object] = {}
 
         def fake_send(payload):

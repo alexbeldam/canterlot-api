@@ -1,0 +1,19 @@
+{% extends "celestia/layout.html.j2" %}
+{% set badge_category = "Verification" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    You requested to update your {{ ui.canterlot() }} account email to this address. Use the code below to confirm the change.
+  {% endcall %}
+
+  {{ ui.code_box(code) }}
+
+  {% call ui.alert_box(type="info") %}
+    The code expires in 30 minutes. If you didn't request this change, please contact support.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Confirm new email") }}
+{% endblock %}

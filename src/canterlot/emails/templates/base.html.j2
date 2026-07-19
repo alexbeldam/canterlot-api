@@ -1,0 +1,97 @@
+{% import "macros.html.j2" as ui with context %}
+<!DOCTYPE html>
+<html lang="en-US" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light" />
+<meta name="supported-color-schemes" content="light" />
+<title>{{ subject }}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
+  body { margin:0; padding:0; background:#f7f5fa; }
+  img { border:0; outline:none; text-decoration:none; }
+  a { color: {% block link_color %}#6d28d9{% endblock %}; }
+  .serif { font-family:'Fraunces', Georgia, serif; }
+  @media (max-width: 620px) {
+    .container { width:100% !important; }
+    .stack-pad { padding-left:20px !important; padding-right:20px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f7f5fa;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{ preheader }}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f5fa;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="container" style="width:600px;max-width:600px;">
+          <tr>
+            <td style="height:6px;line-height:6px;font-size:0;background:{% block brand_color %}#7c3aed{% endblock %};border-radius:14px 14px 0 0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="background:#edeaf3;border:1px solid #c2bad1;border-top:none;border-radius:0 0 14px 14px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td class="stack-pad" style="padding:28px 32px 20px 32px;" >
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td valign="middle">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td width="10" height="10" valign="middle" style="width:10px;height:10px;">
+                                <table role="presentation" width="10" height="10" cellpadding="0" cellspacing="0" border="0" style="width:10px;height:10px;">
+                                  <tr style="height:10px;">
+                                    <td width="10" height="10" bgcolor="#7c3aed" style="width:10px;height:10px;line-height:10px;font-size:0;background:#7c3aed;border-radius:50%;">&nbsp;</td>
+                                  </tr>
+                                </table>
+                              </td>
+                              <td width="8" style="width:8px;font-size:0;line-height:1px;">&nbsp;</td>
+                              <td class="serif" valign="middle" style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:600;color:#6d28d9;white-space:nowrap;">
+                                {{ ui.canterlot() }}
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td width="16" style="width:16px;font-size:0;line-height:1px;">&nbsp;</td>
+                        <td width="190" valign="middle" align="right" style="width:190px;">
+                          {% block header_badge %}
+                            {{ ui.persona_badge("Canterlot", "System") }}
+                          {% endblock %}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="stack-pad" style="padding:0 32px 8px 32px;">
+                    <h1 class="serif" style="margin:0;font-family:'Fraunces',Georgia,serif;font-size:23px;font-weight:600;line-height:130%;color:#1c1722;">{{ heading }}</h1>
+                  </td>
+                </tr>
+                
+                {% block content %}{% endblock %}
+                
+                <tr>
+                  <td style="padding:24px 32px 32px 32px;border-top:1px solid #c2bad1;">
+                    <p style="margin:0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:160%;color:#5a5069;">
+                      This email was sent automatically — this inbox does not accept replies. Need help? Contact us at <a href="mailto:sunset@canterlot.com.br" style="color:#5a5069;">sunset@canterlot.com.br</a>.
+                    </p>
+                    {% block footer_preferences %}{% endblock %}
+                    <p style="margin:16px 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#5a5069;">
+                      {{ ui.canterlot() }} · canterlot.com.br
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:20px 12px 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#5a5069;">
+              {% block footer_reason %}You received this email because you have a {{ ui.canterlot() }} account.{% endblock %}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

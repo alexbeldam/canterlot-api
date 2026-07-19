@@ -1,0 +1,16 @@
+{% extends "luna/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc=".") }}
+
+  {% call ui.text_block() %}
+    The {{ ui.t_no(provider_name) }} account that was linked to your {{ ui.canterlot() }} account has been unlinked. It can no longer be used to log in.
+  {% endcall %}
+
+  {% call ui.alert_box(type="danger") %}
+    If this wasn't you, contact support.
+  {% endcall %}
+
+  {{ ui.action_button("mailto:sunset@canterlot.com.br", "Contact support") }}
+{% endblock %}

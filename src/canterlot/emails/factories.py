@@ -1,9 +1,7 @@
 from canterlot.config import get_settings
 
-from .disabled import DisabledEmailClient
-from .dry_run import DryRunEmailClient
+from .clients import DisabledEmailClient, DryRunEmailClient, ResendEmailClient
 from .interfaces import EmailClient
-from .resend import ResendEmailClient
 
 
 def get_email_client() -> EmailClient:

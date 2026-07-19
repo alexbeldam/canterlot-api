@@ -1,7 +1,6 @@
 from canterlot.config import get_settings
-from canterlot.providers.email import DryRunEmailClient, ResendEmailClient
-from canterlot.providers.email.disabled import DisabledEmailClient
-from canterlot.providers.email.factories import get_email_client
+from canterlot.emails.clients import DisabledEmailClient, DryRunEmailClient, ResendEmailClient
+from canterlot.emails.factories import get_email_client
 
 
 def describe_get_email_client():

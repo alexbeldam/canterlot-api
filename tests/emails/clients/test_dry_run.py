@@ -1,4 +1,5 @@
-from canterlot.providers.email import DryRunEmailClient, EmailMessage
+from canterlot.emails import EmailMessage
+from canterlot.emails.clients import DryRunEmailClient
 
 
 def describe_send():
