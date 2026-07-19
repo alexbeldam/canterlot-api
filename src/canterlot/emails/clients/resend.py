@@ -4,7 +4,7 @@ import resend
 
 from canterlot.utils import get_logger
 
-from .interfaces import EmailClient, EmailMessage, EmailSendResult
+from ..interfaces import EmailClient, EmailMessage, EmailSendResult
 
 logger = get_logger(__name__)
 

@@ -1,0 +1,20 @@
+{% extends "luna/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc=".") }}
+
+  {% call ui.text_block() %}
+    You transferred ownership of the {{ ui.strong_no(club_name) }} to {{ ui.strong_no(actor_name, punc=".") }}
+  {% endcall %}
+
+  {% call ui.text_block() %}
+    You have <strong>24 hours</strong> to reclaim ownership if this wasn't intentional. Additionally, for the next <strong>30 days</strong> you are protected against removal or role demotion in this club.
+  {% endcall %}
+
+  {% call ui.alert_box(type="warning") %}
+    If you don't recognize this transfer, reclaim now or contact support.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Reclaim ownership") }}
+{% endblock %}

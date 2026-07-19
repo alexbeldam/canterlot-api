@@ -1,0 +1,15 @@
+{% extends "base.html.j2" %}
+{% import "macros.html.j2" as ui with context %}
+
+{% set link_color = '#4c1d95' %}
+{% set brand_color = '#2e1065' %}
+{% set badge_bg = '#2e1065' %}
+{% set badge_category = badge_category | default("Security") %}
+
+{% block link_color %}{{ link_color }}{% endblock %}
+{% block brand_color %}{{ brand_color }}{% endblock %}
+{% block badge_bg %}{{ badge_bg }}{% endblock %}
+
+{% block header_badge %}
+  {{ ui.persona_badge("Luna", badge_category, bg_color=badge_bg) }}
+{% endblock %}

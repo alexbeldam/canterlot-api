@@ -1,0 +1,16 @@
+{% extends "luna/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc=".") }}
+
+  {% call ui.text_block() %}
+    Your {{ ui.canterlot() }} account email was changed from this address to a new one.
+  {% endcall %}
+
+  {% call ui.alert_box(type="danger") %}
+    If this wasn't you, contact support immediately.
+  {% endcall %}
+
+  {{ ui.support_button() }}
+{% endblock %}

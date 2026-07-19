@@ -1,0 +1,20 @@
+{% extends "luna/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc=".") }}
+
+  {% call ui.text_block() %}
+    The connection between your {{ ui.canterlot() }} account and {{ ui.strong_no(provider_name) }} has been revoked — and that was your only way to log in, since this account never had a password set.
+  {% endcall %}
+
+  {% call ui.text_block() %}
+    This means you currently cannot access your account.
+  {% endcall %}
+
+  {% call ui.alert_box(type="danger") %}
+    Reset your password to regain access. If you don't recognize this revocation, contact support as soon as you regain access.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Reset password") }}
+{% endblock %}

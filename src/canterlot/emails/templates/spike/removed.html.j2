@@ -1,0 +1,15 @@
+{% extends "spike/layout.html.j2" %}
+{% set badge_category = "Status" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    You have been removed from the {{ ui.strong_no(club_name, punc=".") }} You no longer have access to the catalog, reading rounds, or votes for this club.
+  {% endcall %}
+
+  {% call ui.alert_box(type="warning") %}
+    If you believe this was a mistake, please contact the club administrators.
+  {% endcall %}
+{% endblock %}

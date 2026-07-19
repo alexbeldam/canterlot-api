@@ -1,0 +1,16 @@
+{% extends "luna/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc=".") }}
+
+  {% call ui.text_block() %}
+    A {{ ui.t_no(provider_name) }} account has been linked to your {{ ui.canterlot() }} account.
+  {% endcall %}
+
+  {% call ui.alert_box(type="danger") %}
+    If this wasn't you, unlink the provider and change your password immediately.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "View connected providers") }}
+{% endblock %}

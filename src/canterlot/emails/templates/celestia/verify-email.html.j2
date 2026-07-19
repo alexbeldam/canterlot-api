@@ -1,0 +1,19 @@
+{% extends "celestia/layout.html.j2" %}
+{% set badge_category = "Onboarding" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    Welcome to {{ ui.canterlot(punc="!") }} To start joining reading clubs, verify your email address with the code below.
+  {% endcall %}
+
+  {{ ui.code_box(code) }}
+
+  {% call ui.alert_box(type="info") %}
+    The code expires in 30 minutes. If you didn't create this account, you can safely ignore this email.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Verify email") }}
+{% endblock %}

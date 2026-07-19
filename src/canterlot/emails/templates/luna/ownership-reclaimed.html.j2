@@ -1,0 +1,16 @@
+{% extends "luna/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(actor_name, punc=".") }}
+
+  {% call ui.text_block() %}
+    The transfer of the {{ ui.strong_no(club_name) }} by {{ ui.strong_no(recipient_name) }} to you was reverted within the 24-hour reclaim window.
+  {% endcall %}
+
+  {% call ui.text_block() %}
+    You are now back to being {{ ui.strong_no(role_name) }} of the club.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "View club") }}
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "spike/layout.html.j2" %}
+{% set badge_category = "Deadline" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    Today is the deadline for {{ ui.strong_no(book_title) }} in the {{ ui.strong_no(club_name, punc=".") }} You haven't marked the book as finished yet.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Mark as finished") }}
+{% endblock %}

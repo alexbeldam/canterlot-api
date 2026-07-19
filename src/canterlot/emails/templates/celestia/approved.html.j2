@@ -1,0 +1,13 @@
+{% extends "celestia/layout.html.j2" %}
+{% set badge_category = "Access" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    Good news: your request to join the {{ ui.strong_no(club_name) }} was approved. You can now view the catalog, track the current reading round, and participate in upcoming votes.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Go to club") }}
+{% endblock %}

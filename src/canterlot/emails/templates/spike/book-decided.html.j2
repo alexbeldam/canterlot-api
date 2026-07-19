@@ -1,0 +1,13 @@
+{% extends "spike/layout.html.j2" %}
+{% set badge_category = "Activity" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    The {{ ui.strong_no(club_name) }} decided the next book: {{ ui.strong_no(book_title, punc=".") }} The reading round is now open.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "View reading round") }}
+{% endblock %}

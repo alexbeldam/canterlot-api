@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import NormalizedEmailStr
 
 
 @dataclass(frozen=True)
@@ -10,7 +10,7 @@ class EmailMessage:
     to: list[NormalizedEmailStr]
     subject: str
     html: str
-    reply_to: str
+    reply_to: NormalizedEmailStr
     headers: dict[str, str] | None = None
 
 

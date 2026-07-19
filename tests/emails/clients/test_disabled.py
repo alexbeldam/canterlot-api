@@ -1,5 +1,5 @@
-from canterlot.providers.email.disabled import DisabledEmailClient
-from canterlot.providers.email.interfaces import EmailMessage
+from canterlot.emails import EmailMessage
+from canterlot.emails.clients.disabled import DisabledEmailClient
 
 
 def describe_send():
