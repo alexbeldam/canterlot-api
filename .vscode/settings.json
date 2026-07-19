@@ -14,5 +14,11 @@
   "[just]": {
     "editor.defaultFormatter": "nefrob.vscode-just-syntax",
     "editor.formatOnSave": true
+  },
+  "liveJinjaRenderer.templates.searchPaths": [
+    "src/canterlot/emails/templates"
+  ],
+  "files.associations": {
+    "**/*.html.j2": "jinja-html"
   }
 }
