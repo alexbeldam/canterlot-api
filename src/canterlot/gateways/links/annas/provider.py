@@ -6,11 +6,11 @@ from curl_cffi.requests import AsyncSession
 from fastapi import status
 
 from canterlot.models.book import LinkCandidate, SearchParams
-from canterlot.models.enums import ExtensionType, LinkProviderName
-from canterlot.providers.interfaces import LinkProvider
+from canterlot.types import ExtensionType, LinkProviderName
 from canterlot.utils import get_logger
 from canterlot.utils.mirror import MirrorPool
 
+from ..interfaces import LinkProvider
 from .parser import SearchResult, parse_response
 
 type SearchResponse = list[SearchResult] | BaseException

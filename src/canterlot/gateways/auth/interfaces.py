@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from canterlot.models.enums import AuthProviderName
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import AuthProviderName, NormalizedEmailStr
 
 
 @dataclass(frozen=True)

@@ -5,10 +5,10 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from canterlot.exceptions import InvalidOAuthCredentialError
-from canterlot.models.enums import AuthProviderName
+from canterlot.types import AuthProviderName
 from canterlot.utils import get_logger
 
-from .interfaces import OAuthIdentity, OAuthProvider
+from ..interfaces import OAuthIdentity, OAuthProvider
 
 logger = get_logger(__name__)
 

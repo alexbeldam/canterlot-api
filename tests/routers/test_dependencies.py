@@ -14,10 +14,10 @@ from canterlot.app import create_app
 from canterlot.config import get_settings
 from canterlot.dto.auth import CreateSessionRequest
 from canterlot.exceptions import InvalidCredentialsError, RateLimitExceededError, TokenExpiredError, TokenMalformedError
-from canterlot.models.enums import AuthProviderName, SessionType
-from canterlot.providers import BookProvider, GoogleBookProvider, LinkProvider
-from canterlot.providers.annas import AnnaLinkProvider
-from canterlot.providers.auth import GoogleAuthProvider
+from canterlot.gateways import BookProvider, LinkProvider
+from canterlot.gateways.auth.clients import GoogleAuthProvider
+from canterlot.gateways.books.google import GoogleBookProvider
+from canterlot.gateways.links.annas import AnnaLinkProvider
 from canterlot.repositories import (
     BookRepository,
     CacheRepository,
@@ -68,6 +68,7 @@ from canterlot.routers.dependencies import (
     rate_limit_register_attempt,
 )
 from canterlot.services import AuthService, BookService, CatalogService, ClubService, HealthService, InviteService
+from canterlot.types import AuthProviderName, SessionType
 from canterlot.utils.security import create_access_token, create_jwt_token, create_refresh_token
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")

@@ -5,9 +5,8 @@ from pydantic import HttpUrl
 from canterlot.dto.book import BookDetails, BookSearchResult
 from canterlot.exceptions import BookProviderUnavailableError
 from canterlot.models.book import BookProviderIdentifier, SearchParams
-from canterlot.models.enums import BookProviderName
+from canterlot.types import BookProviderName, HttpsUrl
 from canterlot.utils import get_logger
-from canterlot.utils.format import HttpsUrl
 
 from .interfaces import BookProvider, ProviderSearchResponse
 

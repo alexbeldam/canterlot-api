@@ -1,11 +1,10 @@
 from curl_cffi.requests import AsyncSession
 
 from canterlot.config import get_settings
-from canterlot.models.enums import AuthProviderName
+from canterlot.types import AuthProviderName
 from canterlot.utils import get_logger
 
-from .google import GoogleAuthProvider
-from .gravatar import GravatarAuthProvider
+from .clients import GoogleAuthProvider, GravatarAuthProvider
 from .interfaces import OAuthProvider
 
 logger = get_logger(__name__)

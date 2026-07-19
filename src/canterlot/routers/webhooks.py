@@ -2,10 +2,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from canterlot.models.enums import AuthProviderName
-from canterlot.providers.risc import GoogleRiscVerifier, RiscVerificationError
+from canterlot.gateways.auth.risc import GoogleRiscVerifier, RiscVerificationError
 from canterlot.routers.dependencies import get_auth_service, get_google_risc_verifier
 from canterlot.services import AuthService
+from canterlot.types import AuthProviderName
 
 webhooks_router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 

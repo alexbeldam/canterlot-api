@@ -21,21 +21,18 @@ from canterlot.exceptions import (
 )
 from canterlot.exceptions.book import BookNotFoundError
 from canterlot.exceptions.user import UserNotFoundError
-from canterlot.models import UserModel
-from canterlot.models.book import BookExternalId
-from canterlot.models.club import ClubSlugStr
-from canterlot.models.enums import AuthProviderName, SessionType
-from canterlot.models.user import UsernameStr
-from canterlot.providers import (
+from canterlot.gateways import (
     BookProvider,
-    EmailClient,
     LinkProvider,
     get_all_book_providers,
     get_all_link_providers,
-    get_email_client,
 )
-from canterlot.providers.auth import OAuthProvider, get_all_oauth_providers
-from canterlot.providers.risc import GoogleRiscVerifier
+from canterlot.gateways.auth import OAuthProvider, get_all_oauth_providers
+from canterlot.gateways.auth.risc import GoogleRiscVerifier
+from canterlot.models import UserModel
+from canterlot.models.book import BookExternalId
+from canterlot.models.club import ClubSlugStr
+from canterlot.models.user import UsernameStr
 from canterlot.repositories import (
     BookRepository,
     CacheRepository,
@@ -62,8 +59,8 @@ from canterlot.services import (
     InviteService,
     UserService,
 )
+from canterlot.types import AuthProviderName, ISBNStr, SessionType
 from canterlot.utils import decode_jwt_payload
-from canterlot.utils.format import ISBNStr
 
 LOGIN_PATH = "/v1/auth/login"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
@@ -140,10 +137,6 @@ def get_oauth_providers(
     session: Annotated[AsyncSession, Depends(get_curl_cffi_session)],
 ) -> dict[AuthProviderName, OAuthProvider]:
     return get_all_oauth_providers(session)
-
-
-def get_email_provider() -> EmailClient:
-    return get_email_client()
 
 
 def get_google_risc_verifier(
