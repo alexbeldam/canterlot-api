@@ -17,9 +17,9 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     OAuthLinkRequiredError,
 )
-from canterlot.models.enums import AuthOutcome, AuthProviderName, InviteType, JoinPolicy
 from canterlot.routers.dependencies import get_optional_refresh_token_context
 from canterlot.services.auth import OAuthSignInResult
+from canterlot.types import AuthOutcome, AuthProviderName, InviteType, JoinPolicy
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

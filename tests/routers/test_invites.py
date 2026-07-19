@@ -11,8 +11,8 @@ from canterlot.exceptions import (
     InvalidInviteTokenError,
     InviteLinkDeactivatedError,
 )
-from canterlot.models.enums import ClubOnboardingStatus, InviteType, JoinPolicy
 from canterlot.services.invite import InviteValidationResult
+from canterlot.types import ClubOnboardingStatus, InviteType, JoinPolicy
 
 SOME_INVITE_ID = "some-invite-id"
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")

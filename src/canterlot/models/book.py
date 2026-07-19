@@ -5,8 +5,17 @@ from beanie import Document, Indexed, PydanticObjectId
 from pydantic import AfterValidator, BaseModel, Field, GetCoreSchemaHandler, StringConstraints, model_validator
 from pydantic_core import CoreSchema, core_schema
 
-from canterlot.models.enums import BookProviderName, ExtensionType
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, ISBNStr, LanguageStr, NonEmptyStr, split_isbn
+from canterlot.types import (
+    BookProviderName,
+    ExtensionType,
+    HttpsUrl,
+    ISBN10Str,
+    ISBN13Str,
+    ISBNStr,
+    LanguageStr,
+    NonEmptyStr,
+)
+from canterlot.utils.isbn import split_isbn
 
 MIN_PUBLISHED_YEAR = 868  # Diamond Sutra publication date
 

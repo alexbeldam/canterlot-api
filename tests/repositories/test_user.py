@@ -5,9 +5,9 @@ from beanie import PydanticObjectId
 from pydantic import HttpUrl
 
 from canterlot.models.book import ReadBook
-from canterlot.models.enums import AuthProviderName
 from canterlot.models.user import AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.repositories.beanie.user import BeanieUserRepository
+from canterlot.types import AuthProviderName
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

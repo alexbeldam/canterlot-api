@@ -12,8 +12,8 @@ from canterlot.dto.club import (
     ClubSettingsUpdateRequest,
 )
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.enums import AuthProviderName, JoinPolicy, MemberRole
 from canterlot.models.user import AvatarSchema, UserModel
+from canterlot.types import AuthProviderName, JoinPolicy, MemberRole
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")

@@ -11,7 +11,7 @@ from canterlot.models.book import (
     UrlList,
 )
 from canterlot.pagination import Page
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
+from canterlot.types import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
 
 
 class BookSearchResult(BaseModel):

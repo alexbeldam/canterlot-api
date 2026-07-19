@@ -12,8 +12,8 @@ from canterlot.exceptions import (
     GatewayConfigurationError,
 )
 from canterlot.models.book import BookModel, BookProviderIdentifier
-from canterlot.models.enums import BookProviderName
 from canterlot.services.book import BookService
+from canterlot.types import BookProviderName
 
 
 def _book_payload(**overrides) -> dict:

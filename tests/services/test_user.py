@@ -12,9 +12,9 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.models.book import ReadBook
-from canterlot.models.enums import AuthProviderName
 from canterlot.models.user import AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.services.user import UserService
+from canterlot.types import AuthProviderName
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439012")

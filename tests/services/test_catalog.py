@@ -12,9 +12,9 @@ from canterlot.exceptions import (
 )
 from canterlot.models.book import BookModel, LinkCandidate
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.enums import ExtensionType, LinkProviderName, MemberRole
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.catalog import CatalogService
+from canterlot.types import ExtensionType, LinkProviderName, MemberRole
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")

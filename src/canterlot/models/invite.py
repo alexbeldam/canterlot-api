@@ -5,9 +5,9 @@ import shortuuid
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import NormalizedEmailStr
 
-from .enums import InviteType
+from ..types import InviteType
 
 
 class InviteModel(Document):

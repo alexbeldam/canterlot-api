@@ -1,8 +1,6 @@
 from beanie import Document
 
-from .book import BookModel, LinkCandidate
-from .club import CatalogEntryModel, ClubModel, MemberSchema, PendingApprovalSchema
-from .enums import (
+from ..types import (
     AuthOutcome,
     AuthProviderName,
     BadgeReason,
@@ -10,7 +8,11 @@ from .enums import (
     InviteType,
     JoinPolicy,
     MemberRole,
+    TitleCaseAuthProviderName,
+    TitleCaseMemberRole,
 )
+from .book import BookModel, LinkCandidate
+from .club import CatalogEntryModel, ClubModel, MemberSchema, PendingApprovalSchema
 from .error import ErrorCode, ErrorDetail, ErrorResponseModel
 from .invite import InviteModel
 from .user import AvatarSchema, LinkedProviderSchema, UserModel
@@ -38,5 +40,7 @@ __all__ = [
     "MemberRole",
     "MemberSchema",
     "PendingApprovalSchema",
+    "TitleCaseAuthProviderName",
+    "TitleCaseMemberRole",
     "UserModel",
 ]

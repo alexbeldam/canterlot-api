@@ -12,7 +12,7 @@ from canterlot.models import BookModel, ClubModel, JoinPolicy, MemberRole, Membe
 from canterlot.models.club import CatalogEntryModel, ClubNameStr, ClubSlugStr
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import ClubRepository
-from canterlot.utils.format import LanguageStr
+from canterlot.types import LanguageStr
 
 _CATALOG_SORT_FIELD_PATHS = {
     "suggested_at": "catalog.suggested_at",

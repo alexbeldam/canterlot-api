@@ -3,9 +3,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from canterlot.config import get_settings
-from canterlot.models.enums import AuthProviderName, BadgeReason
 from canterlot.models.user import AvatarSchema, EarnedBadgeSchema, PersonNameStr, UserModel, UsernameStr
-from canterlot.utils.format import HttpsUrl, NormalizedEmailStr
+from canterlot.types import AuthProviderName, BadgeReason, HttpsUrl, NormalizedEmailStr
 
 
 class UpdateProfileRequest(BaseModel):

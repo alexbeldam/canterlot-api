@@ -14,9 +14,8 @@ from canterlot.models.club import (
     ClubSlugStr,
     MemberSchema,
 )
-from canterlot.models.enums import ClubOnboardingStatus, JoinPolicy, MemberRole
 from canterlot.models.user import PersonNameStr, UserModel, UsernameStr
-from canterlot.utils.format import LanguageStr
+from canterlot.types import ClubOnboardingStatus, JoinPolicy, LanguageStr, MemberRole
 
 
 class ClubCreateRequest(BaseModel):

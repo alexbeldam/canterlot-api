@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
 from canterlot.models.book import BookModel, BookProviderIdentifier
-from canterlot.models.enums import BookProviderName
+from canterlot.types import BookProviderName
 
 
 def describe_book_search_result():

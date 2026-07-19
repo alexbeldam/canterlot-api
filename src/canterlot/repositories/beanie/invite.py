@@ -2,7 +2,7 @@ from beanie import PydanticObjectId
 
 from canterlot.models import InviteModel, InviteType
 from canterlot.repositories import InviteRepository
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import NormalizedEmailStr
 
 
 class BeanieInviteRepository(InviteRepository):

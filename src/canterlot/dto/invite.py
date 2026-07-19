@@ -1,9 +1,8 @@
 from pydantic import BaseModel, model_validator
 
 from canterlot.models.club import ClubNameStr, ClubSlugStr
-from canterlot.models.enums import InviteType, JoinPolicy
 from canterlot.models.user import UsernameStr
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import InviteType, JoinPolicy, NormalizedEmailStr
 
 
 class InvitePreviewResponse(BaseModel):

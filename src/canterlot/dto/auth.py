@@ -3,9 +3,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from canterlot.dto.club import ClubOnboarding
-from canterlot.models.enums import AuthProviderName, SessionType
 from canterlot.models.user import PersonNameStr, UserModel, UsernameStr
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import AuthProviderName, NormalizedEmailStr, SessionType
 
 
 class UserRegisterRequest(BaseModel):
