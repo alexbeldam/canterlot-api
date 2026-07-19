@@ -11,14 +11,14 @@ from canterlot.dto.catalog import (
     SuggestionStatus,
 )
 from canterlot.exceptions import BookNotFoundError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
+from canterlot.gateways import LinkProvider
 from canterlot.models import BookModel, LinkCandidate
 from canterlot.models.book import AuthorList, SearchParams, TitleStr, UrlList
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.enums import ExtensionType, MemberRole
 from canterlot.models.user import UsernameStr
 from canterlot.pagination import SortDirection
-from canterlot.providers import LinkProvider
 from canterlot.repositories import BookRepository, ClubRepository, UserRepository
+from canterlot.types import ExtensionType, LanguageStr, MemberRole
 from canterlot.utils import (
     LANGUAGE_MATCH_SUBSCORES,
     LanguageMatchLevel,
@@ -27,7 +27,6 @@ from canterlot.utils import (
     redistribute_weights,
     similarity_ratio,
 )
-from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
 

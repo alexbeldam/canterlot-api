@@ -9,10 +9,10 @@ from canterlot.exceptions import (
     BookSearchCriteriaMissingError,
     GatewayConfigurationError,
 )
-from canterlot.models.book import BookExternalId, BookProviderIdentifier, SearchParams, TitleStr, split_isbn
-from canterlot.models.enums import BookProviderName
-from canterlot.providers import BookProvider, ProviderSearchResponse
+from canterlot.gateways.books import BookProvider, ProviderSearchResponse
+from canterlot.models.book import BookExternalId, BookProviderIdentifier, SearchParams, TitleStr
 from canterlot.repositories import BookRepository, CacheRepository
+from canterlot.types import BookProviderName, ISBNStr, LanguageStr
 from canterlot.utils import (
     LANGUAGE_MATCH_SUBSCORES,
     best_language_match,
@@ -20,7 +20,7 @@ from canterlot.utils import (
     redistribute_weights,
     similarity_ratio,
 )
-from canterlot.utils.format import ISBNStr, LanguageStr
+from canterlot.utils.isbn import split_isbn
 
 logger = get_logger(__name__)
 

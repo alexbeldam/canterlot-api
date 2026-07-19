@@ -4,9 +4,9 @@ import pytest
 from curl_cffi.requests import AsyncSession
 
 from canterlot.exceptions import BookProviderUnavailableError
+from canterlot.gateways.books.google import GoogleBookProvider
 from canterlot.models.book import SearchParams
-from canterlot.models.enums import BookProviderName
-from canterlot.providers.google import GoogleBookProvider
+from canterlot.types import BookProviderName
 
 
 def _response(status_code: int = 200, json_data: dict | None = None, text: str = "") -> AsyncMock:

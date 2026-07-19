@@ -19,10 +19,10 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
+from canterlot.gateways.auth import OAuthProvider
+from canterlot.gateways.auth.interfaces import OAuthIdentity
 from canterlot.models import AuthOutcome, AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
 from canterlot.models.user import UsernameStr
-from canterlot.providers.auth import OAuthProvider
-from canterlot.providers.auth.interfaces import OAuthIdentity
 from canterlot.repositories import UserRepository
 from canterlot.utils import (
     create_access_token,

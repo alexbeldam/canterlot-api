@@ -6,7 +6,7 @@ from curl_cffi.requests import Response
 from pydantic import HttpUrl
 
 from canterlot.models.book import LinkCandidate
-from canterlot.models.enums import ExtensionType
+from canterlot.types import ExtensionType
 from canterlot.utils import get_logger
 
 logger = get_logger(__name__)

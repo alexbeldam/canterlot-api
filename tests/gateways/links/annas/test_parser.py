@@ -3,8 +3,8 @@ from typing import cast
 
 from curl_cffi.requests import Response
 
-from canterlot.models.enums import ExtensionType
-from canterlot.providers.annas.parser import parse_response
+from canterlot.gateways.links.annas.parser import parse_response
+from canterlot.types import ExtensionType
 
 
 def _response(html: str, url: str = "https://annas-archive.gl/search?q=hobbit") -> Response:

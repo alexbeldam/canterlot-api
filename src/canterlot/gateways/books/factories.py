@@ -1,11 +1,10 @@
 from curl_cffi.requests import AsyncSession
 
 from canterlot.config import get_settings
-from canterlot.providers.annas import AnnaLinkProvider
-from canterlot.providers.google import GoogleBookProvider
+from canterlot.gateways.books.google import GoogleBookProvider
 from canterlot.utils import get_logger
 
-from .interfaces import BookProvider, LinkProvider
+from .interfaces import BookProvider
 
 logger = get_logger(__name__)
 
@@ -18,7 +17,3 @@ def get_all_book_providers(session: AsyncSession) -> list[BookProvider]:
         return []
 
     return [GoogleBookProvider(session, api_key)]
-
-
-def get_all_link_providers(session: AsyncSession) -> list[LinkProvider]:
-    return [AnnaLinkProvider(session)]

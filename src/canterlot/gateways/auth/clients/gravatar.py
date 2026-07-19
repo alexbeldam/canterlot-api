@@ -2,10 +2,10 @@ from curl_cffi.requests import AsyncSession
 from fastapi import status
 
 from canterlot.exceptions import InvalidOAuthCredentialError
-from canterlot.models.enums import AuthProviderName
+from canterlot.types import AuthProviderName
 from canterlot.utils import get_logger
 
-from .interfaces import OAuthIdentity, OAuthProvider
+from ..interfaces import OAuthIdentity, OAuthProvider
 
 TOKEN_URL = "https://public-api.wordpress.com/oauth2/token"
 ME_URL = "https://public-api.wordpress.com/rest/v1.1/me"

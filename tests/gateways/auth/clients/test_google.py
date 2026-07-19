@@ -1,9 +1,9 @@
 import pytest
 
 from canterlot.exceptions import InvalidOAuthCredentialError
-from canterlot.models.enums import AuthProviderName
-from canterlot.providers.auth import google as google_module
-from canterlot.providers.auth.google import GoogleAuthProvider
+from canterlot.gateways.auth.clients import google as google_module
+from canterlot.gateways.auth.clients.google import GoogleAuthProvider
+from canterlot.types import AuthProviderName
 
 
 @pytest.fixture

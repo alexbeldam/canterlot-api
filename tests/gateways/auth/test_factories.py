@@ -3,10 +3,9 @@ from unittest.mock import AsyncMock
 from curl_cffi.requests import AsyncSession
 
 from canterlot.config import get_settings
-from canterlot.models.enums import AuthProviderName
-from canterlot.providers.auth.factories import get_all_oauth_providers
-from canterlot.providers.auth.google import GoogleAuthProvider
-from canterlot.providers.auth.gravatar import GravatarAuthProvider
+from canterlot.gateways.auth import get_all_oauth_providers
+from canterlot.gateways.auth.clients import GoogleAuthProvider, GravatarAuthProvider
+from canterlot.types import AuthProviderName
 
 
 def _session() -> AsyncSession:

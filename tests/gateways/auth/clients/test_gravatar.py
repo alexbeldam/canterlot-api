@@ -4,8 +4,8 @@ import pytest
 from curl_cffi.requests import AsyncSession
 
 from canterlot.exceptions import InvalidOAuthCredentialError
-from canterlot.models.enums import AuthProviderName
-from canterlot.providers.auth.gravatar import GravatarAuthProvider
+from canterlot.gateways.auth.clients import GravatarAuthProvider
+from canterlot.types import AuthProviderName
 
 SOME_REDIRECT_URI = "http://localhost:5173/auth/gravatar/callback"
 

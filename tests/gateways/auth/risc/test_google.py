@@ -5,7 +5,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from curl_cffi.requests import AsyncSession
 
-from canterlot.providers.risc.google import RISC_CONFIGURATION_URL, GoogleRiscVerifier, RiscVerificationError
+from canterlot.gateways.auth.risc.google import RISC_CONFIGURATION_URL, GoogleRiscVerifier, RiscVerificationError
 
 ISSUER = "https://accounts.google.com"
 CLIENT_ID = "some-client-id"
@@ -56,7 +56,7 @@ def _patch_jwk_client(public_key):
     signing_key = MagicMock(key=public_key)
     fake_client = MagicMock()
     fake_client.get_signing_key_from_jwt.return_value = signing_key
-    return patch("canterlot.providers.risc.google.jwt.PyJWKClient", return_value=fake_client)
+    return patch("canterlot.gateways.auth.risc.google.jwt.PyJWKClient", return_value=fake_client)
 
 
 def describe_verify():

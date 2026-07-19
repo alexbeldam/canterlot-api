@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from canterlot.providers.interfaces import BookProvider, LinkProvider
-from canterlot.repositories.interfaces import (
+from canterlot.gateways import BookProvider, LinkProvider
+from canterlot.repositories import (
     BookRepository,
     CacheRepository,
     ClubRepository,

@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from curl_cffi.requests import AsyncSession
 
+from canterlot.gateways.links.annas import provider as provider_module
+from canterlot.gateways.links.annas.parser import SearchResult
+from canterlot.gateways.links.annas.provider import AnnaLinkProvider
 from canterlot.models.book import SearchParams
-from canterlot.models.enums import ExtensionType, LinkProviderName
-from canterlot.providers.annas import provider as provider_module
-from canterlot.providers.annas.parser import SearchResult
-from canterlot.providers.annas.provider import AnnaLinkProvider
+from canterlot.types import ExtensionType, LinkProviderName
 
 
 def _search_result(md5: str = "abc123", **overrides) -> SearchResult:

@@ -19,10 +19,10 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models.enums import AuthOutcome, AuthProviderName, BadgeReason
+from canterlot.gateways.auth import OAuthIdentity, OAuthProvider
 from canterlot.models.user import AvatarSchema, LinkedProviderSchema
-from canterlot.providers.auth import OAuthIdentity, OAuthProvider
 from canterlot.services.auth import AuthService
+from canterlot.types import AuthOutcome, AuthProviderName, BadgeReason
 from canterlot.utils.security import hash_password
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")

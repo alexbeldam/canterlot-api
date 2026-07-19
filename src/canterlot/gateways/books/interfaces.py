@@ -1,16 +1,8 @@
 from typing import Protocol, TypedDict
 
 from canterlot.dto.book import BookDetails, BookSearchResult
-from canterlot.models import LinkCandidate
 from canterlot.models.book import SearchParams
-from canterlot.models.enums import BookProviderName, LinkProviderName
-
-
-class LinkProvider(Protocol):
-    @property
-    def name(self) -> LinkProviderName: ...
-
-    async def find_links(self, params: SearchParams) -> list[LinkCandidate]: ...
+from canterlot.types import BookProviderName
 
 
 class ProviderSearchResponse(TypedDict):
