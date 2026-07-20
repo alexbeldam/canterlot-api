@@ -8,9 +8,19 @@ from bson.errors import InvalidId
 from curl_cffi.requests import AsyncSession
 from fastapi import Cookie, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
+from saq import Queue
 
 from canterlot.config import get_settings
+from canterlot.constants import (
+    CLUB_OWNER_ACTION_RATELIMIT_TEMPLATE,
+    LOGIN_ACCOUNT_RATELIMIT_TEMPLATE,
+    LOGIN_IP_RATELIMIT_TEMPLATE,
+    OAUTH_SIGNIN_RATELIMIT_TEMPLATE,
+    REFRESH_RATELIMIT_TEMPLATE,
+    REGISTER_RATELIMIT_TEMPLATE,
+)
 from canterlot.dto.auth import CreateSessionRequest
+from canterlot.emails.webhooks import ResendWebhookHandler
 from canterlot.exceptions import (
     ClubNotFoundError,
     GatewayConfigurationError,
@@ -19,6 +29,7 @@ from canterlot.exceptions import (
     TokenExpiredError,
     TokenMalformedError,
 )
+from canterlot.exceptions.auth import EmailNotVerifiedError
 from canterlot.exceptions.book import BookNotFoundError
 from canterlot.exceptions.user import UserNotFoundError
 from canterlot.gateways import (
@@ -48,6 +59,7 @@ from canterlot.repositories.beanie import (
     BeanieInviteRepository,
     BeanieUserRepository,
 )
+from canterlot.repositories.interfaces import RateLimiter
 from canterlot.repositories.redis import RedisRepository
 from canterlot.routers.cookies import REFRESH_TOKEN_COOKIE_NAME
 from canterlot.services import (
@@ -59,6 +71,7 @@ from canterlot.services import (
     InviteService,
     UserService,
 )
+from canterlot.services.dispatch import EmailDispatchService
 from canterlot.types import AuthProviderName, ISBNStr, SessionType
 from canterlot.utils import decode_jwt_payload
 
@@ -66,12 +79,12 @@ LOGIN_PATH = "/v1/auth/login"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
 
 
-async def get_redis_client() -> AsyncGenerator[aioredis.Redis]:
-    client = aioredis.from_url(get_settings().redis_url, decode_responses=True)
-    try:
-        yield client
-    finally:
-        await client.aclose()
+def get_redis_client(request: Request) -> aioredis.Redis:
+    return request.app.state.redis_client
+
+
+def get_email_task_queue(request: Request) -> Queue:
+    return request.app.state.email_task_queue
 
 
 async def get_curl_cffi_session() -> AsyncGenerator[AsyncSession]:
@@ -83,6 +96,10 @@ async def get_curl_cffi_session() -> AsyncGenerator[AsyncSession]:
 
 
 def get_cache_repository(redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)]) -> CacheRepository:
+    return RedisRepository(redis_client)
+
+
+def get_rate_limiter(redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)]) -> RateLimiter:
     return RedisRepository(redis_client)
 
 
@@ -133,6 +150,23 @@ async def get_catalog_service(
     return CatalogService(book_repo=book_repo, club_repo=club_repo, user_repo=user_repo, link_providers=link_providers)
 
 
+async def get_resend_webhook_handler(
+    cache_repo: Annotated[CacheRepository, Depends(get_cache_repository)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> ResendWebhookHandler:
+    settings = get_settings()
+
+    if not settings.resend_api_key or not settings.resend_webhook_secret:
+        raise GatewayConfigurationError("Resend webhook is not configured.")
+
+    return ResendWebhookHandler(
+        cache_repo=cache_repo,
+        user_repo=user_repo,
+        resend_api_key=settings.resend_api_key,
+        resend_webhook_secret=settings.resend_webhook_secret,
+    )
+
+
 def get_oauth_providers(
     session: Annotated[AsyncSession, Depends(get_curl_cffi_session)],
 ) -> dict[AuthProviderName, OAuthProvider]:
@@ -172,8 +206,23 @@ async def get_invite_service(
     return InviteService(invite_repo, club_repo, user_repo)
 
 
-async def get_user_service(user_repo: Annotated[UserRepository, Depends(get_user_repository)]):
-    return UserService(user_repo)
+async def get_user_service(
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    cache_repo: Annotated[CacheRepository, Depends(get_cache_repository)],
+) -> UserService:
+    return UserService(user_repo, cache_repo)
+
+
+async def get_email_dispatch_service(
+    email_task_queue: Annotated[Queue, Depends(get_email_task_queue)],
+    cache_repo: Annotated[CacheRepository, Depends(get_cache_repository)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> EmailDispatchService:
+    return EmailDispatchService(
+        saq_queue=email_task_queue,
+        cache_repo=cache_repo,
+        user_service=user_service,
+    )
 
 
 async def get_health_service(
@@ -233,6 +282,16 @@ async def get_current_user_id(
     return _parse_subject_id(user_id)
 
 
+async def require_verified_email(
+    user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> None:
+    is_verified = await user_repo.is_email_verified_by_id(user_id)
+
+    if not is_verified:
+        raise EmailNotVerifiedError("Email address is not verified.")
+
+
 @dataclass(frozen=True, slots=True)
 class RefreshTokenContext:
     user_id: PydanticObjectId
@@ -282,24 +341,24 @@ async def get_current_user(
     return user
 
 
-async def _enforce_rate_limit(redis_client: aioredis.Redis, key: str, limit: int, window_seconds: int) -> None:
-    count = await redis_client.incr(key)
-    await redis_client.expire(key, window_seconds, nx=True)
-    if count > limit:
-        ttl = await redis_client.ttl(key)
-        raise RateLimitExceededError(ttl if ttl > 0 else window_seconds)
+async def _enforce_rate_limit(rate_limiter: RateLimiter, key: str, limit: int, window_seconds: int) -> None:
+    ttl = await rate_limiter.evaluate(key, limit, window_seconds)
+
+    if ttl:
+        raise RateLimitExceededError(ttl)
 
 
 def rate_limit_club_owner_action(scope: str):
     async def dependency(
         club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
         current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
-        redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+        rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     ) -> None:
         settings = get_settings()
+        key = CLUB_OWNER_ACTION_RATELIMIT_TEMPLATE.format(scope=scope, club_id=club_id, user_id=current_user_id)
         await _enforce_rate_limit(
-            redis_client,
-            key=f"ratelimit:{scope}:{club_id}:{current_user_id}",
+            rate_limiter,
+            key=key,
             limit=settings.club_ownership_action_rate_limit,
             window_seconds=settings.club_ownership_action_rate_limit_window_seconds,
         )
@@ -313,12 +372,12 @@ def _client_ip(request: Request) -> str:
 
 async def rate_limit_register_attempt(
     request: Request,
-    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> None:
     settings = get_settings()
     await _enforce_rate_limit(
-        redis_client,
-        key=f"ratelimit:register:{_client_ip(request)}",
+        rate_limiter,
+        key=REGISTER_RATELIMIT_TEMPLATE.format(ip=_client_ip(request)),
         limit=settings.auth_register_rate_limit,
         window_seconds=settings.auth_register_rate_limit_window_seconds,
     )
@@ -326,12 +385,12 @@ async def rate_limit_register_attempt(
 
 async def rate_limit_refresh_attempt(
     request: Request,
-    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> None:
     settings = get_settings()
     await _enforce_rate_limit(
-        redis_client,
-        key=f"ratelimit:refresh:{_client_ip(request)}",
+        rate_limiter,
+        key=REFRESH_RATELIMIT_TEMPLATE.format(ip=_client_ip(request)),
         limit=settings.auth_refresh_rate_limit,
         window_seconds=settings.auth_refresh_rate_limit_window_seconds,
     )
@@ -340,29 +399,29 @@ async def rate_limit_refresh_attempt(
 async def rate_limit_login_attempt(
     request: Request,
     payload: CreateSessionRequest,
-    redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> None:
     settings = get_settings()
     ip = _client_ip(request)
 
     if payload.type is SessionType.OAUTH:
         await _enforce_rate_limit(
-            redis_client,
-            key=f"ratelimit:oauth-sign-in:{ip}",
+            rate_limiter,
+            key=OAUTH_SIGNIN_RATELIMIT_TEMPLATE.format(ip=ip),
             limit=settings.auth_oauth_signin_rate_limit,
             window_seconds=settings.auth_oauth_signin_rate_limit_window_seconds,
         )
         return
 
     await _enforce_rate_limit(
-        redis_client,
-        key=f"ratelimit:login-ip:{ip}",
+        rate_limiter,
+        key=LOGIN_IP_RATELIMIT_TEMPLATE.format(ip=ip),
         limit=settings.auth_login_ip_rate_limit,
         window_seconds=settings.auth_login_rate_limit_window_seconds,
     )
     await _enforce_rate_limit(
-        redis_client,
-        key=f"ratelimit:login-account:{payload.username}",
+        rate_limiter,
+        key=LOGIN_ACCOUNT_RATELIMIT_TEMPLATE.format(username=payload.username),
         limit=settings.auth_login_account_rate_limit,
         window_seconds=settings.auth_login_rate_limit_window_seconds,
     )

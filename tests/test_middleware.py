@@ -7,7 +7,7 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from canterlot.middleware import LastSeenMiddleware
+from canterlot.middlewares import LastSeenMiddleware
 from canterlot.models.user import UserModel
 from canterlot.repositories.beanie.user import BeanieUserRepository
 from canterlot.utils import create_access_token, create_jwt_token

@@ -144,7 +144,7 @@ async def _attribute_oauth_referral(
     try:
         preview = await invite_service.get_preview_metadata(invite_id, invited_by=invited_by)
     except (InvalidInviteTokenError, InviteLinkDeactivatedError, ClubNotFoundError):
-        log.warn("Skipping referral attribution: invite could not be resolved for this new account")
+        log.warning("Skipping referral attribution: invite could not be resolved for this new account")
         return
 
     if preview.invited_by_username:

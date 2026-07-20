@@ -13,14 +13,17 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    admin_username: str = "admin"
+    admin_password: str = "admin"
     google_books_api_key: str | None = None
     google_oauth_client_id: str | None = None
     gravatar_oauth_client_id: str | None = None
     gravatar_oauth_client_secret: str | None = None
     resend_api_key: str | None = None
+    resend_webhook_secret: str | None = None
     email_dry_run: bool = True
     jwt_secret_key: str
-    jwt_algorithm: str
+    jwt_algorithm: str = "HS256"
     access_token_expiry_minutes: int = 15
     refresh_token_expiry_days: int = 60
     mongodb_url: str
@@ -37,6 +40,7 @@ class Settings(BaseSettings):
     auth_login_rate_limit_window_seconds: int = 900
     auth_refresh_rate_limit: int = 30
     auth_refresh_rate_limit_window_seconds: int = 60
+    email_rate_limit: int = 5
     current_terms_version: int = 1
     current_privacy_version: int = 1
 
