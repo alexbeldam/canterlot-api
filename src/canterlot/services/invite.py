@@ -48,22 +48,22 @@ class InviteService:
 
         invite = await self.__invite_repo.find_by_id(invite_id)
         if not invite:
-            log.warn("Preview aborted: metadata fetch failed because token does not exist")
+            log.warning("Preview aborted: metadata fetch failed because token does not exist")
             raise InvalidInviteTokenError("Invalid or unrecognized invitation link.")
 
         log = log.bind(club_id=str(invite.club_id), invite_type=str(invite.type))
 
         if not invite.is_active:
-            log.warn("Preview aborted: invitation token is soft-deactivated")
+            log.warning("Preview aborted: invitation token is soft-deactivated")
             raise InviteLinkDeactivatedError("This invitation link has been deactivated or rotated by an admin.")
 
         if invite.expires_at and invite.expires_at < datetime.now(UTC):
-            log.warn("Preview aborted: token validity window has closed")
+            log.warning("Preview aborted: token validity window has closed")
             raise InviteLinkDeactivatedError("This invitation link has expired.")
 
         club = await self.__club_repo.find_by_id(invite.club_id)
         if not club or not club.id:
-            log.warn("Preview aborted: relational parent club record is missing from database")
+            log.warning("Preview aborted: relational parent club record is missing from database")
             raise ClubNotFoundError("The club associated with this invitation does not exist.")
 
         inviter_username = await self.__resolve_inviter_username(invite, invited_by)
@@ -88,10 +88,10 @@ class InviteService:
 
         invite = await self.__invite_repo.find_by_id(invite_id)
         if not invite:
-            log.warn("Validation failed: token does not exist")
+            log.warning("Validation failed: token does not exist")
             raise InvalidInviteTokenError("Invalid or unrecognized invitation link.")
         if not invite.is_active:
-            log.warn("Validation failed: token is deactivated")
+            log.warning("Validation failed: token is deactivated")
             raise InviteLinkDeactivatedError("This invitation link is invalid or deactivated.")
 
         log = log.bind(club_id=str(invite.club_id), invite_type=str(invite.type))
@@ -99,7 +99,7 @@ class InviteService:
 
         club_name = await self.__club_repo.find_club_name_by_id(invite.club_id)
         if not club_name:
-            log.warn("Validation failed: destination club no longer exists")
+            log.warning("Validation failed: destination club no longer exists")
             raise ClubNotFoundError("Target club does not exist.")
 
         is_direct = invite.type == InviteType.DIRECT
@@ -116,7 +116,7 @@ class InviteService:
 
     def __assert_not_expired(self, invite: InviteModel, log) -> None:
         if invite.expires_at and invite.expires_at < datetime.now(UTC):
-            log.warn("Validation failed: ticket lifetime exceeded")
+            log.warning("Validation failed: ticket lifetime exceeded")
             raise InviteLinkDeactivatedError("This invitation link has expired.")
 
     def __assert_direct_identity_matches(
@@ -127,7 +127,7 @@ class InviteService:
         log,
     ) -> None:
         if is_direct and (not user_email or invite.target_email != user_email):
-            log.warn(
+            log.warning(
                 "Security Alert: Identity mismatch during direct admission attempt",
                 expected_email=invite.target_email,
             )
@@ -164,7 +164,7 @@ class InviteService:
 
         invite = await self.__invite_repo.find_one_active_public_by_club_id(club_id)
         if not invite:
-            log.warn("Public link lookup failed: no active token mapped for this club")
+            log.warning("Public link lookup failed: no active token mapped for this club")
             raise InviteLinkDeactivatedError("This club has no active public link.")
 
         return invite.id
@@ -219,7 +219,7 @@ class InviteService:
         role = await self.__club_repo.find_member_role_by_club_id_and_user_id(club_id, user_id)
 
         if not role or role not in [MemberRole.OWNER, MemberRole.ADMIN]:
-            logger.warn(
+            logger.warning(
                 "Access Denied: administrative scope escalation attempt intercepted",
                 club_id=str(club_id),
                 user_id=str(user_id),

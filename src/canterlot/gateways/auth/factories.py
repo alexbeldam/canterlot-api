@@ -18,7 +18,7 @@ def get_all_oauth_providers(session: AsyncSession) -> dict[AuthProviderName, OAu
         logger.debug("Google OAuth provider configured and enabled")
         providers[AuthProviderName.GOOGLE] = GoogleAuthProvider(settings.google_oauth_client_id)
     else:
-        logger.warn("Google OAuth client id not configured; Google sign-in will be unavailable")
+        logger.warning("Google OAuth client id not configured; Google sign-in will be unavailable")
 
     if settings.gravatar_oauth_client_id and settings.gravatar_oauth_client_secret:
         logger.debug("Gravatar OAuth provider configured and enabled")
@@ -28,6 +28,6 @@ def get_all_oauth_providers(session: AsyncSession) -> dict[AuthProviderName, OAu
             session,
         )
     else:
-        logger.warn("Gravatar OAuth client id/secret not configured; Gravatar linking will be unavailable")
+        logger.warning("Gravatar OAuth client id/secret not configured; Gravatar linking will be unavailable")
 
     return providers

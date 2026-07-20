@@ -2,6 +2,7 @@ import asyncio
 import json
 import math
 
+from canterlot.constants import BOOK_SEARCH_KEY_TEMPLATE
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
 from canterlot.exceptions import (
     BookDetailsNotFoundError,
@@ -71,11 +72,11 @@ class BookService:
         log = logger.bind(search_title=title, search_author=author, search_isbn=isbn, page=page, limit=limit)
 
         if not title and not author and not isbn:
-            log.warn("Search rejected: no search criteria provided")
+            log.warning("Search rejected: no search criteria provided")
             raise BookSearchCriteriaMissingError("At least one of title, author, or isbn must be provided.")
 
         if not self.__providers:
-            log.warn("Search rejected: no external book providers are configured")
+            log.warning("Search rejected: no external book providers are configured")
             raise GatewayConfigurationError("External book search is not configured.")
 
         provider_chunk_page = math.ceil((page * limit) / self.MAX_PROVIDER_CHUNK)
@@ -125,22 +126,27 @@ class BookService:
         provider_chunk_page: int,
     ) -> str:
         langs_key = "-".join(sorted(preferred_languages))
-        return (
-            f"cache:search:{(title or '').lower()}:auth:{author or ''}:"
-            f"isbn:{isbn or ''}:langs:{langs_key}:chunk_p:{provider_chunk_page}"
+
+        return BOOK_SEARCH_KEY_TEMPLATE.format(
+            title=(title or "").lower(),
+            author=author or "",
+            isbn=isbn or "",
+            langs=langs_key,
+            chunk_page=provider_chunk_page,
         )
 
     async def __try_cache_hit(self, cache_key: str, page: int, limit: int, log) -> PaginatedBooksResponse | None:
-        cached = await self.__cache.find(cache_key)
-        if not cached:
+        cached_map = await self.__cache.find(cache_key)
+        if not cached_map:
             return None
 
         try:
-            payload = json.loads(cached)
-            cached_books = [BookSearchResult.model_validate(b) for b in payload["books"]]
-            total_results = payload["total_results"]
+            total_results = int(cached_map["total_results"])
+
+            payload_books = json.loads(cached_map["books"])
+            cached_books = [BookSearchResult.model_validate(b) for b in payload_books]
         except (json.JSONDecodeError, ValueError, KeyError):
-            log.warn("Discarding corrupt or outdated cache entry, falling back to a live fetch")
+            log.warning("Discarding corrupt or outdated cache entry, falling back to a live fetch")
             return None
 
         log.info("External search satisfied via cache hit")
@@ -153,8 +159,11 @@ class BookService:
         total_results: int,
         log,
     ) -> None:
-        cache_payload = {"books": [b.model_dump(mode="json") for b in sorted_books], "total_results": total_results}
-        await self.__cache.save(cache_key, json.dumps(cache_payload), expire_seconds=300)
+        cache_map = {
+            "total_results": total_results,
+            "books": json.dumps([b.model_dump(mode="json") for b in sorted_books]),
+        }
+        await self.__cache.save(cache_key, cache_map, expire_seconds=300)
         log.info("Staged search results dataset in transient cache layers", total_results=total_results)
 
     def __aggregate_provider_results(
@@ -282,17 +291,17 @@ class BookService:
         log.info("Fetching volume details card from external provider engine")
 
         if not self.__providers:
-            log.warn("Details query rejected: no external book providers are configured")
+            log.warning("Details query rejected: no external book providers are configured")
             raise GatewayConfigurationError("External book search is not configured.")
 
         provider_engine = self.__providers.get(provider)
         if not provider_engine:
-            log.warn("Query aborted: provider engine key does not exist")
+            log.warning("Query aborted: provider engine key does not exist")
             raise GatewayConfigurationError(f"The '{provider}' book provider is not available.")
 
         details = await provider_engine.fetch_volume_details(provider_book_id)
         if not details:
-            log.warn("Upstream fetch mismatch: item record missing on external registry")
+            log.warning("Upstream fetch mismatch: item record missing on external registry")
             raise BookDetailsNotFoundError(f"Book with ID '{provider_book_id}' could not be found via {provider}.")
 
         log.info("Successfully recovered third-party detailed book context")
@@ -309,7 +318,7 @@ class BookService:
             book = await self.__repo.find_by_isbn(isbn_10, isbn_13)
 
         if book is None:
-            log.warn("Query mismatch: requested book identifier not found")
+            log.warning("Query mismatch: requested book identifier not found")
             raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
 
         log.info("Global book reference successfully mapped and returned")

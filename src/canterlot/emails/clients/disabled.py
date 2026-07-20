@@ -14,5 +14,5 @@ class DisabledEmailClient(EmailClient):
         return "disabled"
 
     async def send(self, _message: EmailMessage) -> EmailSendResult:
-        logger.warn("Email send skipped because client is disabled", provider=self.name, reason=self.__reason)
+        logger.warning("Email send skipped because client is disabled", provider=self.name, reason=self.__reason)
         return EmailSendResult(success=False, disabled=True, error_message=self.__reason)

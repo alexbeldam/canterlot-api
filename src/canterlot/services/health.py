@@ -15,6 +15,6 @@ class HealthService:
         if healthy:
             log.debug("Health check passed")
         else:
-            log.warn("Health check failed: a dependency is unreachable")
+            log.warning("Health check failed: a dependency is unreachable")
 
         return healthy

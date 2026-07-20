@@ -67,11 +67,11 @@ class AuthService:
         log.info("Attempting user registration account creation")
 
         if await self.__user_repo.exists_by_username(request.username):
-            log.warn("Registration rejected: username conflict", reason="username_taken")
+            log.warning("Registration rejected: username conflict", reason="username_taken")
             raise UsernameAlreadyExistsError(f"Username '{request.username}' is already taken.")
 
         if await self.__user_repo.exists_by_email(request.email):
-            log.warn("Registration rejected: email conflict", reason="email_registered")
+            log.warning("Registration rejected: email conflict", reason="email_registered")
             raise EmailAlreadyExistsError(f"Email '{request.email}' is already registered.")
 
         settings = get_settings()
@@ -79,7 +79,7 @@ class AuthService:
             request.terms_version != settings.current_terms_version
             or request.privacy_version != settings.current_privacy_version
         ):
-            log.warn("Registration rejected: submitted legal document version is stale")
+            log.warning("Registration rejected: submitted legal document version is stale")
             raise StaleLegalVersionError("The submitted terms/privacy version is out of date; reload and try again.")
 
         now = datetime.now(UTC)
@@ -124,7 +124,7 @@ class AuthService:
 
         user = await self.__user_repo.find_by_username(username)
         if not (user and user.id and user.hashed_password and verify_password(plain_password, user.hashed_password)):
-            log.warn("Authentication failed: invalid security credentials", error_type="credentials_mismatch")
+            log.warning("Authentication failed: invalid security credentials", error_type="credentials_mismatch")
             raise InvalidCredentialsError("Incorrect username or password")
 
         user_id = user.id
@@ -145,7 +145,7 @@ class AuthService:
 
         removed = await self.__user_repo.pull_refresh_token_by_id(user_id, old_token)
         if not removed:
-            log.warn("Refresh rotation rejected: token already rotated, revoked, or unknown")
+            log.warning("Refresh rotation rejected: token already rotated, revoked, or unknown")
             raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
 
         tokens = self.__create_tokens(user_id)
@@ -163,7 +163,7 @@ class AuthService:
 
         removed = await self.__user_repo.pull_refresh_token_by_id(user_id, token)
         if not removed:
-            log.warn("Logout no-op: refresh token already invalidated")
+            log.warning("Logout no-op: refresh token already invalidated")
             return
 
         log.info("Session logged out successfully")
@@ -178,7 +178,7 @@ class AuthService:
         try:
             return self.__oauth_providers[provider]
         except KeyError:
-            logger.bind(provider=provider).warn("Requested authentication provider is not configured")
+            logger.bind(provider=provider).warning("Requested authentication provider is not configured")
             raise GatewayConfigurationError(f"The '{provider}' authentication provider is not available.") from None
 
     async def __issue_login_tokens(self, user_id: PydanticObjectId, outcome: AuthOutcome) -> OAuthSignInResult:
@@ -224,7 +224,7 @@ class AuthService:
             return await self.__issue_login_tokens(existing_id, AuthOutcome.LOGGED_IN)
 
         if await self.__user_repo.find_by_email(identity.email):
-            log.warn("OAuth sign-in rejected: identity's email matches an account under a different auth method")
+            log.warning("OAuth sign-in rejected: identity's email matches an account under a different auth method")
             raise OAuthLinkRequiredError("An account with this email already exists using a different sign-in method.")
 
         username_seed = identity.name or identity.email.split("@")[0]
@@ -270,7 +270,7 @@ class AuthService:
 
         existing_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
         if existing_id and existing_id != user_id:
-            log.warn("Link rejected: credential already linked to a different account")
+            log.warning("Link rejected: credential already linked to a different account")
             raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
 
         if existing_id:
@@ -287,7 +287,7 @@ class AuthService:
             ),
         )
         if not linked:
-            log.warn("Link rejected: a concurrent request linked this credential to a different account first")
+            log.warning("Link rejected: a concurrent request linked this credential to a different account first")
             raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
 
         log.info("Authentication provider linked successfully")
@@ -313,16 +313,16 @@ class AuthService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Disconnect aborted: authenticated user profile record no longer exists")
+            log.warning("Disconnect aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         if not any(linked.provider == provider for linked in user.linked_providers):
-            log.warn("Disconnect rejected: provider is not linked to this account")
+            log.warning("Disconnect rejected: provider is not linked to this account")
             raise AuthProviderNotLinkedError(f"No linked '{provider}' account to disconnect.")
 
         remaining_providers = [linked for linked in user.linked_providers if linked.provider != provider]
         if not user.hashed_password and not remaining_providers:
-            log.warn("Disconnect rejected: this is the account's last remaining authentication method")
+            log.warning("Disconnect rejected: this is the account's last remaining authentication method")
             raise LastAuthenticationMethodError("Cannot disconnect your only remaining way to sign in.")
 
         await self.__user_repo.remove_linked_provider(user_id, provider)
@@ -336,12 +336,12 @@ class AuthService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Password change aborted: authenticated user profile record no longer exists")
+            log.warning("Password change aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         if user.hashed_password is not None:
             if not current_password or not verify_password(current_password, user.hashed_password):
-                log.warn("Password change rejected: current password verification failed")
+                log.warning("Password change rejected: current password verification failed")
                 raise IncorrectPasswordError("The current password provided is incorrect.")
         else:
             log.info("Setting an initial password for an OAuth-only account")
@@ -358,7 +358,7 @@ class AuthService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Lookup aborted: authenticated user profile record no longer exists")
+            log.warning("Lookup aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         return ConnectedProvidersResponse.from_model(user)

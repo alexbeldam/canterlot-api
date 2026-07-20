@@ -96,7 +96,7 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Admission aborted: requested club node does not exist")
+            log.warning("Admission aborted: requested club node does not exist")
             raise ClubNotFoundError("This club no longer exists.")
 
         log = log.bind(club_name=club.name, club_join_policy=str(club.join_policy))
@@ -117,7 +117,7 @@ class ClubService:
             log.info("User successfully admitted into the club roster", status=status)
         elif user_id in club.banned_users:
             status = ClubOnboardingStatus.BANNED
-            log.warn("Admission rejected: user is banned from this club", status=status)
+            log.warning("Admission rejected: user is banned from this club", status=status)
         elif club.join_policy == JoinPolicy.PUBLIC:
             status = ClubOnboardingStatus.JOINED
             await self.__club_repo.add_member(club_id, MemberSchema(user_id=user_id, role=MemberRole.MEMBER))
@@ -131,7 +131,7 @@ class ClubService:
 
     async def get_preferred_languages(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> list[LanguageStr]:
         if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
-            logger.bind(club_id=str(club_id), user_id=str(user_id)).warn(
+            logger.bind(club_id=str(club_id), user_id=str(user_id)).warning(
                 "Preferred languages lookup rejected: caller is not a club member"
             )
             raise UnauthorizedClubMemberError("Only members of this club can search for books to suggest.")
@@ -141,7 +141,7 @@ class ClubService:
     async def get_club_by_slug(self, slug: ClubSlugStr) -> ClubModel:
         club = await self.__club_repo.find_by_slug(slug)
         if not club:
-            logger.bind(club_slug=slug).warn("Club lookup failed: no club with this slug exists")
+            logger.bind(club_slug=slug).warning("Club lookup failed: no club with this slug exists")
             raise ClubNotFoundError(f"Club with slug '{slug}' not found")
 
         return club
@@ -158,7 +158,7 @@ class ClubService:
 
         viewer_role = await self.get_member_role(club_id, viewer_id)
         if viewer_role is None:
-            logger.bind(club_id=str(club_id), viewer_id=str(viewer_id)).warn(
+            logger.bind(club_id=str(club_id), viewer_id=str(viewer_id)).warning(
                 "Club view rejected: caller is not a member of this club"
             )
             raise UnauthorizedClubMemberError("Only members of this club can view it.")
@@ -195,11 +195,11 @@ class ClubService:
 
         reviewer_role = await self.get_member_role(club_id, reviewer_id)
         if reviewer_role not in (MemberRole.OWNER, MemberRole.ADMIN):
-            log.warn("Review rejected: caller lacks OWNER/ADMIN privileges")
+            log.warning("Review rejected: caller lacks OWNER/ADMIN privileges")
             raise UnauthorizedClubMemberError("Only an OWNER or ADMIN can review pending join requests.")
 
         if not await self.__club_repo.exists_by_club_id_and_pending_user_id(club_id, target_user_id):
-            log.warn("Review rejected: target user has no pending request in this club")
+            log.warning("Review rejected: target user has no pending request in this club")
             raise PendingRequestNotFoundError("This user has no pending join request for this club.")
 
         if approve:
@@ -219,16 +219,16 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Member profile lookup rejected: club no longer exists")
+            log.warning("Member profile lookup rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         if _find_member(club.members, viewer_id) is None:
-            log.warn("Member profile lookup rejected: caller is not a member of this club")
+            log.warning("Member profile lookup rejected: caller is not a member of this club")
             raise UnauthorizedClubMemberError("Only members of this club can view another member's profile.")
 
         target = _find_member(club.members, target_user_id)
         if target is None:
-            log.warn("Member profile lookup rejected: target user is not a member of this club")
+            log.warning("Member profile lookup rejected: target user is not a member of this club")
             raise ClubMemberNotFoundError("This user is not a member of this club.")
 
         log.info("Club member profile resolved successfully")
@@ -249,21 +249,21 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Removal rejected: club no longer exists")
+            log.warning("Removal rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         remover = _find_member(club.members, remover_id)
         if remover is None or remover.role not in (MemberRole.OWNER, MemberRole.ADMIN):
-            log.warn("Removal rejected: caller lacks OWNER/ADMIN privileges")
+            log.warning("Removal rejected: caller lacks OWNER/ADMIN privileges")
             raise UnauthorizedClubMemberError("Only an OWNER or ADMIN can remove a member.")
 
         target = _find_member(club.members, target_user_id)
         if target is None:
-            log.warn("Removal rejected: target user is not a member of this club")
+            log.warning("Removal rejected: target user is not a member of this club")
             raise ClubMemberNotFoundError("This user is not a member of this club.")
 
         if not _outranks(remover.role, target.role):
-            log.warn("Removal rejected: caller does not outrank the target", target_role=str(target.role))
+            log.warning("Removal rejected: caller does not outrank the target", target_role=str(target.role))
             raise UnauthorizedClubMemberError("You do not have sufficient rank to remove this member.")
 
         now = datetime.now(UTC)
@@ -272,7 +272,7 @@ class ClubService:
             and club.ownership_transferred_at is not None
             and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
-            log.warn("Removal rejected: target is a protected former owner")
+            log.warning("Removal rejected: target is a protected former owner")
             raise FormerOwnerProtectedError(
                 "This user transferred ownership away within the last 30 days and cannot be removed yet."
             )
@@ -291,12 +291,12 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Settings update rejected: club no longer exists")
+            log.warning("Settings update rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         caller = _find_member(club.members, caller_id)
         if caller is None or caller.role not in (MemberRole.OWNER, MemberRole.ADMIN):
-            log.warn("Settings update rejected: caller lacks OWNER/ADMIN privileges")
+            log.warning("Settings update rejected: caller lacks OWNER/ADMIN privileges")
             raise UnauthorizedClubMemberError("Only an OWNER or ADMIN can update club settings.")
 
         new_slug = None
@@ -317,7 +317,7 @@ class ClubService:
             preferred_languages=data.preferred_languages,
         )
         if not changed:
-            log.warn("Settings update rejected: club no longer exists at write time")
+            log.warning("Settings update rejected: club no longer exists at write time")
             raise ClubNotFoundError("This club no longer exists.")
 
         updates = data.model_dump(exclude_none=True)
@@ -346,21 +346,21 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Role change rejected: club no longer exists")
+            log.warning("Role change rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         caller = _find_member(club.members, caller_id)
         if caller is None or caller.role != MemberRole.OWNER:
-            log.warn("Role change rejected: caller is not the club OWNER")
+            log.warning("Role change rejected: caller is not the club OWNER")
             raise UnauthorizedClubMemberError("Only the club OWNER can change a member's role.")
 
         target = _find_member(club.members, target_user_id)
         if target is None:
-            log.warn("Role change rejected: target user is not a member of this club")
+            log.warning("Role change rejected: target user is not a member of this club")
             raise ClubMemberNotFoundError("This user is not a member of this club.")
 
         if target.role == MemberRole.OWNER:
-            log.warn("Role change rejected: target is the club OWNER")
+            log.warning("Role change rejected: target is the club OWNER")
             raise CannotChangeOwnerRoleError("Ownership can only be changed via the transfer-ownership action.")
 
         now = datetime.now(UTC)
@@ -369,14 +369,14 @@ class ClubService:
             and club.ownership_transferred_at is not None
             and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
-            log.warn("Role change rejected: target is a protected former owner")
+            log.warning("Role change rejected: target is a protected former owner")
             raise FormerOwnerProtectedError(
                 "This user transferred ownership away within the last 30 days and cannot be demoted further yet."
             )
 
         changed = await self.__club_repo.change_member_role(club_id, target_user_id, new_role)
         if not changed:
-            log.warn("Role change rejected: club membership changed before the update could complete")
+            log.warning("Role change rejected: club membership changed before the update could complete")
             raise MemberRoleChangeConflictError(
                 "This club's membership changed before the role update could complete; please retry."
             )
@@ -389,16 +389,16 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Leave rejected: club no longer exists")
+            log.warning("Leave rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         caller = _find_member(club.members, caller_id)
         if caller is None:
-            log.warn("Leave rejected: caller is not a member of this club")
+            log.warning("Leave rejected: caller is not a member of this club")
             raise UnauthorizedClubMemberError("Only members of this club can leave it.")
 
         if caller.role == MemberRole.OWNER:
-            log.warn("Leave rejected: the OWNER can never leave directly")
+            log.warning("Leave rejected: the OWNER can never leave directly")
             raise ClubOwnerCannotLeaveError(
                 "The OWNER cannot leave directly; transfer ownership or dissolve the club instead."
             )
@@ -409,7 +409,7 @@ class ClubService:
             and club.ownership_transferred_at is not None
             and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
-            log.warn("Leave rejected: caller is a protected former owner")
+            log.warning("Leave rejected: caller is a protected former owner")
             raise FormerOwnerProtectedError(
                 "You transferred ownership away within the last 30 days and cannot leave yet."
             )
@@ -423,12 +423,12 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Dissolution rejected: club no longer exists")
+            log.warning("Dissolution rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         caller = _find_member(club.members, caller_id)
         if caller is None or caller.role != MemberRole.OWNER:
-            log.warn("Dissolution rejected: caller is not the club OWNER")
+            log.warning("Dissolution rejected: caller is not the club OWNER")
             raise UnauthorizedClubMemberError("Only the club OWNER can dissolve this club.")
 
         now = datetime.now(UTC)
@@ -437,7 +437,7 @@ class ClubService:
             and club.ownership_transferred_at is not None
             and now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN
         ):
-            log.warn("Dissolution rejected: club has an active protected-former-owner window")
+            log.warning("Dissolution rejected: club has an active protected-former-owner window")
             raise FormerOwnerProtectedError(
                 "This club cannot be dissolved while a former owner is still protected from removal."
             )
@@ -460,14 +460,14 @@ class ClubService:
 
         target_user_id = await self.__user_repo.find_id_by_username(target_username)
         if target_user_id is None:
-            log.warn("Transfer rejected: target username does not resolve to any user")
+            log.warning("Transfer rejected: target username does not resolve to any user")
             raise UserNotFoundError("No user exists with this username.")
 
         log = log.bind(target_user_id=str(target_user_id))
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Transfer rejected: club no longer exists")
+            log.warning("Transfer rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         now = datetime.now(UTC)
@@ -475,7 +475,7 @@ class ClubService:
 
         transferred = await self.__club_repo.transfer_ownership(club_id, current_owner_id, target_user_id, now)
         if not transferred:
-            log.warn("Transfer rejected: club membership changed before the transfer could complete")
+            log.warning("Transfer rejected: club membership changed before the transfer could complete")
             raise OwnershipTransferConflictError(
                 "This club's membership changed before the transfer could complete; please retry."
             )
@@ -492,16 +492,16 @@ class ClubService:
         log,
     ) -> None:
         if target_user_id == current_owner_id:
-            log.warn("Transfer rejected: cannot transfer ownership to yourself")
+            log.warning("Transfer rejected: cannot transfer ownership to yourself")
             raise CannotTransferOwnershipToSelfError("You cannot transfer ownership to yourself.")
 
         caller = _find_member(club.members, current_owner_id)
         if caller is None or caller.role != MemberRole.OWNER:
-            log.warn("Transfer rejected: caller is not the club OWNER")
+            log.warning("Transfer rejected: caller is not the club OWNER")
             raise UnauthorizedClubMemberError("Only the club OWNER can transfer ownership.")
 
         if _find_member(club.members, target_user_id) is None:
-            log.warn("Transfer rejected: target user is not a member of this club")
+            log.warning("Transfer rejected: target user is not a member of this club")
             raise ClubMemberNotFoundError("This user is not a member of this club.")
 
         if target_user_id == club.protected_former_owner_id:
@@ -509,7 +509,7 @@ class ClubService:
 
         last_transfer = club.ownership_transferred_at
         if last_transfer is not None and now - last_transfer < OWNERSHIP_TRANSFER_COOLDOWN:
-            log.warn("Transfer rejected: new-owner cooldown is still active")
+            log.warning("Transfer rejected: new-owner cooldown is still active")
             raise OwnershipTransferCooldownError(
                 "You must wait 30 days after receiving ownership before transferring it again.",
                 cooldown_expires_at=last_transfer + OWNERSHIP_TRANSFER_COOLDOWN,
@@ -521,22 +521,22 @@ class ClubService:
 
         club = await self.__club_repo.find_by_id(club_id)
         if not club:
-            log.warn("Reclaim rejected: club no longer exists")
+            log.warning("Reclaim rejected: club no longer exists")
             raise ClubNotFoundError("This club no longer exists.")
 
         if club.protected_former_owner_id != caller_id:
-            log.warn("Reclaim rejected: caller is not the recorded former owner")
+            log.warning("Reclaim rejected: caller is not the recorded former owner")
             raise UnauthorizedClubMemberError("You are not the recorded former owner of this club.")
 
         transferred_at = club.ownership_transferred_at
         current_owner = _find_owner(club.members)
         if transferred_at is None or current_owner is None:
-            log.warn("Reclaim rejected: club ownership state is inconsistent")
+            log.warning("Reclaim rejected: club ownership state is inconsistent")
             raise OwnershipTransferConflictError("This club's ownership state is inconsistent; please retry.")
 
         now = datetime.now(UTC)
         if now - transferred_at > OWNERSHIP_RECLAIM_WINDOW:
-            log.warn("Reclaim rejected: the 24-hour reclaim window has elapsed")
+            log.warning("Reclaim rejected: the 24-hour reclaim window has elapsed")
             raise OwnershipReclaimWindowExpiredError(
                 "The 24-hour reclaim window has passed; ask the current owner to transfer it back.",
                 window_expired_at=transferred_at + OWNERSHIP_RECLAIM_WINDOW,
@@ -544,7 +544,7 @@ class ClubService:
 
         reclaimed = await self.__club_repo.reclaim_ownership(club_id, caller_id, current_owner.user_id)
         if not reclaimed:
-            log.warn("Reclaim rejected: club membership changed before the reclaim could complete")
+            log.warning("Reclaim rejected: club membership changed before the reclaim could complete")
             raise OwnershipTransferConflictError(
                 "This club's membership changed before the reclaim could complete; please retry."
             )
