@@ -1,7 +1,7 @@
 from fastapi import status
 
 from .auth import TokenError
-from .base import ErrorCode
+from .base import BusinessError, ErrorCode
 from .club import UnauthorizedClubMemberError
 
 
@@ -18,3 +18,8 @@ class InviteLinkDeactivatedError(InvalidInviteTokenError):
 class DirectInviteIdentityMismatchError(UnauthorizedClubMemberError):
     error_code = ErrorCode.INVITE_IDENTITY_MISMATCH
     status_code = status.HTTP_403_FORBIDDEN
+
+
+class InviteRecipientSuppressedError(BusinessError):
+    error_code = ErrorCode.INVITE_RECIPIENT_SUPPRESSED
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT

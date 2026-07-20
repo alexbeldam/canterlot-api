@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from pymongo.results import UpdateResult
 
 from canterlot.models import AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
-from canterlot.models.user import PersonNameStr, UsernameStr
+from canterlot.models.user import EmailPreferencesSchema, PersonNameStr, UsernameStr
 from canterlot.repositories import UserRepository
 from canterlot.types import HttpsUrl, NormalizedEmailStr
 
@@ -21,6 +21,12 @@ class IdProjection(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: PydanticObjectId = Field(alias="_id")
+
+
+class EmailPreferencesProjection(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    email_preferences: EmailPreferencesSchema = Field(alias="email_preferences")
 
 
 class AvatarProjection(BaseModel):
@@ -59,6 +65,13 @@ class BeanieUserRepository(UserRepository):
     async def find_by_email(self, email: NormalizedEmailStr) -> UserModel | None:
         return await UserModel.find_one(UserModel.email == email)
 
+    async def find_email_preferences_by_email(self, email: NormalizedEmailStr) -> EmailPreferencesSchema | None:
+        projection = await UserModel.find_one(UserModel.email == email).project(EmailPreferencesProjection)
+
+        if not projection:
+            return None
+        return projection.email_preferences
+
     async def find_id_by_linked_provider(self, provider: AuthProviderName, external_id: str) -> PydanticObjectId | None:
         projection = await UserModel.find_one(
             ElemMatch(UserModel.linked_providers, {"provider": provider, "external_id": external_id})
@@ -68,11 +81,17 @@ class BeanieUserRepository(UserRepository):
             return None
         return projection.id
 
+    async def is_email_verified_by_id(self, user_id: PydanticObjectId) -> bool:
+        return await UserModel.find(
+            UserModel.id == user_id,
+            UserModel.email_preferences.verified_at != None,  # noqa: E711
+        ).exists()
+
     async def exists_by_username(self, username: UsernameStr) -> bool:
-        return await UserModel.find(UserModel.username == username).count() > 0
+        return await UserModel.find(UserModel.username == username).exists()
 
     async def exists_by_email(self, email: NormalizedEmailStr) -> bool:
-        return await UserModel.find(UserModel.email == email).count() > 0
+        return await UserModel.find(UserModel.email == email).exists()
 
     async def save(self, user: UserModel) -> UserModel:
         return await user.save()
@@ -191,3 +210,36 @@ class BeanieUserRepository(UserRepository):
             UserModel.id == user_id,
             {"$or": [{"last_seen_at": None}, {"last_seen_at": {"$lt": stale_before}}]},
         ).update_one({"$set": {UserModel.last_seen_at: now}})
+
+    async def apply_global_suppression_by_email(self, email: NormalizedEmailStr, timestamp: datetime) -> bool:
+        result = await UserModel.find_one(UserModel.email == email).update_one(
+            {
+                "$set": {
+                    "email_preferences.delivery_failed": True,
+                    "email_preferences.categories_system_suppressed": {
+                        "transactional": timestamp,
+                        "engagement": timestamp,
+                        "promotional": timestamp,
+                    },
+                }
+            }
+        )
+        return cast(UpdateResult, result).modified_count > 0
+
+    async def apply_spam_suppression_by_email(self, email: NormalizedEmailStr, timestamp: datetime) -> bool:
+        result = await UserModel.find_one(UserModel.email == email).update_one(
+            {
+                "$set": {
+                    "email_preferences.delivery_failed": True,
+                    "email_preferences.categories_system_suppressed.engagement": timestamp,
+                    "email_preferences.categories_system_suppressed.promotional": timestamp,
+                }
+            }
+        )
+        return cast(UpdateResult, result).modified_count > 0
+
+    async def set_delivery_failed_by_email(self, email: NormalizedEmailStr, failed: bool) -> bool:
+        result = await UserModel.find_one(UserModel.email == email).update_one(
+            {"$set": {"email_preferences.delivery_failed": failed}}
+        )
+        return cast(UpdateResult, result).modified_count > 0

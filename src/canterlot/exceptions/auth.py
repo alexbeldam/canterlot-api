@@ -26,6 +26,11 @@ class InvalidCredentialsError(AuthenticationError):
         self.headers = {"WWW-Authenticate": "Bearer"}
 
 
+class EmailNotVerifiedError(AuthenticationError):
+    error_code = ErrorCode.EMAIL_NOT_VERIFIED
+    status_code = status.HTTP_403_FORBIDDEN
+
+
 class TokenError(BusinessError):
     pass
 
