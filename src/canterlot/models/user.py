@@ -2,10 +2,11 @@ from datetime import UTC, datetime
 from typing import Annotated, ClassVar
 
 import shortuuid
-from beanie import Document, Indexed
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 from pymongo import ASCENDING, IndexModel
 
+from canterlot.emails.core.definitions import EmailCategory
 from canterlot.types import HttpsUrl, NonEmptyStr, NormalizedEmailStr
 
 from ..types import AuthProviderName, BadgeReason
@@ -40,6 +41,14 @@ class EarnedBadgeSchema(BaseModel):
     earned_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class EmailPreferencesSchema(BaseModel):
+    verified_at: datetime | None = None
+    delivery_failed: bool = False
+    categories_opt_out: dict[EmailCategory, datetime] = Field(default_factory=dict)
+    categories_system_suppressed: dict[EmailCategory, datetime] = Field(default_factory=dict)
+    clubs_opt_out: dict[PydanticObjectId, datetime] = Field(default_factory=dict)
+
+
 class UserModel(Document):
     name: PersonNameStr
     username: Annotated[UsernameStr, Indexed(unique=True)]
@@ -58,6 +67,7 @@ class UserModel(Document):
     accepted_privacy_version: int | None = None
     accepted_privacy_at: datetime | None = None
     profile_completed_at: datetime | None = None
+    email_preferences: EmailPreferencesSchema = Field(default_factory=EmailPreferencesSchema)
     last_seen_at: datetime | None = None
 
     class Settings:

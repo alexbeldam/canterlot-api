@@ -1,9 +1,11 @@
+import json
 from datetime import UTC, datetime
 
 import shortuuid
 from beanie import PydanticObjectId
 
 from canterlot.config import get_settings
+from canterlot.constants import EMAIL_PREFERENCES_KEY_TEMPLATE
 from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     InvalidCredentialsError,
@@ -11,9 +13,15 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.models.book import ReadBook
-from canterlot.models.user import AvatarSchema, PersonNameStr, UserModel, UsernameStr
-from canterlot.repositories.interfaces import UserRepository
-from canterlot.types import AuthProviderName, HttpsUrl
+from canterlot.models.user import (
+    AvatarSchema,
+    EmailPreferencesSchema,
+    PersonNameStr,
+    UserModel,
+    UsernameStr,
+)
+from canterlot.repositories import CacheRepository, UserRepository
+from canterlot.types import AuthProviderName, HttpsUrl, NormalizedEmailStr
 from canterlot.utils import get_logger
 
 logger = get_logger(__name__)
@@ -29,8 +37,9 @@ def _resolve_linked_provider_avatar_value(user: UserModel, provider: AuthProvide
 
 
 class UserService:
-    def __init__(self, user_repo: UserRepository):
+    def __init__(self, user_repo: UserRepository, cache_repo: CacheRepository):
         self.__user_repo = user_repo
+        self.__cache_repo = cache_repo
 
     async def mark_book_read(self, user_id: PydanticObjectId, book_id: PydanticObjectId) -> None:
         log = logger.bind(user_id=str(user_id), book_id=str(book_id))
@@ -46,7 +55,7 @@ class UserService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Profile fetch aborted: authenticated user profile record no longer exists")
+            log.warning("Profile fetch aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         return user
@@ -65,16 +74,16 @@ class UserService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Profile update aborted: authenticated user profile record no longer exists")
+            log.warning("Profile update aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         if username is not None and username != user.username and await self.__user_repo.exists_by_username(username):
-            log.warn("Profile update rejected: username conflict", reason="username_taken")
+            log.warning("Profile update rejected: username conflict", reason="username_taken")
             raise UsernameAlreadyExistsError(f"Username '{username}' is already taken.")
 
         changed = await self.__user_repo.update_profile(user_id, name=name, username=username)
         if not changed:
-            log.warn("Profile update rejected: user no longer exists at write time")
+            log.warning("Profile update rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         if name is not None:
@@ -91,19 +100,19 @@ class UserService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Avatar update aborted: authenticated user profile record no longer exists")
+            log.warning("Avatar update aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         try:
             value = _resolve_linked_provider_avatar_value(user, source)
         except AuthProviderNotLinkedError:
-            log.warn("Avatar update rejected: no linked account with a profile picture for this source")
+            log.warning("Avatar update rejected: no linked account with a profile picture for this source")
             raise
 
         avatar = AvatarSchema(source=source, value=value)
         changed = await self.__user_repo.set_avatar(user_id, avatar)
         if not changed:
-            log.warn("Avatar update rejected: user no longer exists at write time")
+            log.warning("Avatar update rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         user.avatar = avatar
@@ -116,12 +125,12 @@ class UserService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Avatar clear aborted: authenticated user profile record no longer exists")
+            log.warning("Avatar clear aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         changed = await self.__user_repo.clear_avatar(user_id)
         if not changed:
-            log.warn("Avatar clear rejected: user no longer exists at write time")
+            log.warning("Avatar clear rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         user.avatar = None
@@ -134,13 +143,13 @@ class UserService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Seed regeneration aborted: authenticated user profile record no longer exists")
+            log.warning("Seed regeneration aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         new_seed = shortuuid.random()
         changed = await self.__user_repo.set_generated_avatar_seed(user_id, new_seed)
         if not changed:
-            log.warn("Seed regeneration rejected: user no longer exists at write time")
+            log.warning("Seed regeneration rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         user.generated_avatar_seed = new_seed
@@ -158,7 +167,7 @@ class UserService:
 
         settings = get_settings()
         if terms_version != settings.current_terms_version or privacy_version != settings.current_privacy_version:
-            log.warn(
+            log.warning(
                 "Legal acceptance rejected: submitted version is stale",
                 current_terms_version=settings.current_terms_version,
                 current_privacy_version=settings.current_privacy_version,
@@ -167,7 +176,7 @@ class UserService:
 
         user = await self.__user_repo.find_by_id(user_id)
         if not user:
-            log.warn("Legal acceptance aborted: authenticated user profile record no longer exists")
+            log.warning("Legal acceptance aborted: authenticated user profile record no longer exists")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         now = datetime.now(UTC)
@@ -182,7 +191,7 @@ class UserService:
             profile_completed_at=profile_completed_at,
         )
         if not changed:
-            log.warn("Legal acceptance rejected: user no longer exists at write time")
+            log.warning("Legal acceptance rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         user.accepted_terms_version = terms_version
@@ -193,3 +202,36 @@ class UserService:
 
         log.info("Legal document acceptance recorded successfully")
         return user
+
+    async def get_email_preferences(self, email: NormalizedEmailStr) -> EmailPreferencesSchema:
+        log = logger.bind(email=email)
+        log.info("Fetching email preferences")
+
+        cached_map = await self.__cache_repo.find(EMAIL_PREFERENCES_KEY_TEMPLATE.format(email=email))
+
+        if cached_map and "payload" in cached_map:
+            try:
+                raw_json = json.loads(cached_map["payload"])
+
+                log.info("Email preferences fetched successfully from cache")
+
+                return EmailPreferencesSchema.model_validate(raw_json)
+            except (json.JSONDecodeError, ValueError):
+                log.warning("Discarding malformed cache mapping payload, falling back to database")
+
+        db_prefs = await self.__user_repo.find_email_preferences_by_email(email)
+
+        if db_prefs is None:
+            log.info("Email address does not match an active user record, returning standard default layout")
+
+            return EmailPreferencesSchema()
+
+        serialized_blob = db_prefs.model_dump(mode="json")
+        await self.__cache_repo.save(
+            key=EMAIL_PREFERENCES_KEY_TEMPLATE.format(email=email),
+            mapping={"payload": json.dumps(serialized_blob)},
+            expire_seconds=86400,  # 24 hours
+        )
+
+        log.info("Email preferences fetched from database and synchronized into cache")
+        return db_prefs
