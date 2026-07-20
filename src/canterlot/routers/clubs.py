@@ -2,6 +2,7 @@ from typing import Annotated, cast
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Response, status
+from pydantic import HttpUrl
 
 from canterlot.dto.club import (
     ChangeMemberRoleRequest,
@@ -14,6 +15,8 @@ from canterlot.dto.club import (
     OwnershipTransferResponse,
 )
 from canterlot.dto.invite import CreateInviteRequest, InviteTokenResponse
+from canterlot.emails import EmailTaskPayload, Templates
+from canterlot.emails.core import schemas
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
     CannotTransferOwnershipToSelfError,
@@ -35,10 +38,13 @@ from canterlot.exceptions import (
 from canterlot.exceptions.club import ClubMemberNotFoundError, ClubNotFoundError
 from canterlot.models import ErrorResponseModel
 from canterlot.models.club import ClubSlugStr
+from canterlot.models.user import UserModel
 from canterlot.routers.dependencies import (
     get_club_id_from_slug,
     get_club_service,
+    get_current_user,
     get_current_user_id,
+    get_email_dispatch_service,
     get_invite_service,
     get_user_id_from_username,
     get_user_service,
@@ -46,6 +52,7 @@ from canterlot.routers.dependencies import (
 )
 from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
 from canterlot.services import ClubService, InviteService, UserService
+from canterlot.services.dispatch import EmailDispatchService
 from canterlot.types import InviteType, NormalizedEmailStr
 
 router = APIRouter(prefix="/clubs", tags=["Clubs"])
@@ -426,18 +433,33 @@ async def reject_pending_request(
 async def create_invite(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
     payload: CreateInviteRequest,
-    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    current_user: Annotated[UserModel, Depends(get_current_user)],
     invite_service: Annotated[InviteService, Depends(get_invite_service)],
+    email_dispatch: Annotated[EmailDispatchService, Depends(get_email_dispatch_service)],
     response: Response,
 ) -> InviteTokenResponse:
+    id = PydanticObjectId(current_user.id)
+
     if payload.type is InviteType.PUBLIC:
-        token = await invite_service.rotate_public_link(club_id, current_user_id)
+        token = await invite_service.rotate_public_link(club_id, id)
     else:
         token = await invite_service.create_direct_invite(
             club_id=club_id,
-            issuer_id=current_user_id,
+            issuer_id=id,
             target_email=cast(NormalizedEmailStr, payload.email),
         )
+
+        task = EmailTaskPayload(
+            template=Templates.CELESTIA_INVITE_EXTERNAL,
+            to=cast(NormalizedEmailStr, payload.email),
+            context=schemas.InviteExternalContext(
+                inviter_name=current_user.name,
+                club_name="",
+                action_url=HttpUrl(f"https://canterlot.com.br/register?invite={token}"),
+            ),
+        )
+
+        await email_dispatch.dispatch(task)
 
     response.headers["Location"] = f"/v1/invites/{token}/preview"
 

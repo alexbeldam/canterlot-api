@@ -77,7 +77,7 @@ def setup_logging(environment: Environment) -> None:
         logger_instance.setLevel(base_log_level)
         logger_instance.propagate = False
 
-    for library in ["pymongo", "beanie", "httpx", "httpcore"]:
+    for library in ["pymongo", "beanie", "httpx", "httpcore", "saq"]:
         logging.getLogger(library).setLevel(logging.WARNING)
 
 

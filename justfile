@@ -23,6 +23,11 @@ start:
     @echo "{{ info }}Bootstrapping production application container...{{ reset }}"
     @uv run uvicorn "canterlot.app:create_app" --factory --port 8080
 
+# Start background worker process for handling email tasks
+work:
+    @echo "{{ info }}Starting background worker process for email tasks...{{ reset }}"
+    @uv run start-worker
+
 # --- Environment Bootstrap & Pre-flight Checklist ---
 
 [private]

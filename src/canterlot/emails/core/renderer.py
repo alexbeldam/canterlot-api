@@ -80,10 +80,16 @@ def render_email_template(template: EmailTemplate, context: dict[str, Any] | Bas
     render_context = dict(context_dict)
     render_context["subject"] = subject
     render_context["preheader"] = _format_string(
-        "{subject}", render_context, field_name="preheader", template_enum=template
+        "{subject}",
+        render_context,
+        field_name="preheader",
+        template_enum=template,
     )
     render_context["heading"] = _format_string(
-        "{subject}", render_context, field_name="heading", template_enum=template
+        "{subject}",
+        render_context,
+        field_name="heading",
+        template_enum=template,
     )
 
     jinja_template = _ENV.get_template(template.template_path)

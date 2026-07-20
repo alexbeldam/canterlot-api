@@ -12,6 +12,40 @@ services:
     startCommand: uv run uvicorn canterlot.app:create_app --factory --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - fromGroup: canterlot-shared-env
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: canterlot-redis
+          property: connectionString
+
+  - type: worker
+    name: canterlot-worker
+    runtime: python
+    plan: free
+    branch: main
+    autoDeploy: false
+    buildCommand: |
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      export PATH="$HOME/.local/bin:$PATH"
+      uv sync --frozen --no-dev
+    startCommand: uv run start-worker
+    envVars:
+      - fromGroup: canterlot-shared-env
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: canterlot-redis
+          property: connectionString
+
+  - type: redis
+    name: canterlot-redis
+    plan: free
+    ipAllowList: []
+
+envVarGroups:
+  - name: canterlot-shared-env
+    envVars:
       - key: ENVIRONMENT
         value: prod
       - key: CORS_ORIGINS
@@ -20,6 +54,10 @@ services:
         value: "1"
       - key: CURRENT_PRIVACY_VERSION
         value: "1"
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
       - key: GOOGLE_BOOKS_API_KEY
         sync: false
       - key: GOOGLE_OAUTH_CLIENT_ID
@@ -28,29 +66,17 @@ services:
         sync: false
       - key: GRAVATAR_OAUTH_CLIENT_SECRET
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
+      - key: EMAIL_DRY_RUN
+        value: "false"
+      - key: EMAIL_RATE_LIMIT
+        value: "5"
       - key: JWT_SECRET_KEY
         generateValue: true
-      - key: JWT_ALGORITHM
-        value: HS256
-      - key: ACCESS_TOKEN_EXPIRY_MINUTES
-        value: "15"
-      - key: REFRESH_TOKEN_EXPIRY_DAYS
-        value: "60"
       - key: MONGODB_URL
         sync: false
       - key: MONGODB_DB_NAME
         value: canterlot_db
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: canterlot-redis
-          property: connectionString
-      - key: CLUB_OWNERSHIP_ACTION_RATE_LIMIT
-        value: "10"
-      - key: CLUB_OWNERSHIP_ACTION_RATE_LIMIT_WINDOW_SECONDS
-        value: "3600"
-
-  - type: redis
-    name: canterlot-redis
-    plan: free
-    ipAllowList: []
