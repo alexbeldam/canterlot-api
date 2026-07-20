@@ -44,7 +44,7 @@ class GoogleRiscVerifier:
 
             response = await self.__session.get(RISC_CONFIGURATION_URL)
             if response.status_code != status.HTTP_200_OK:
-                log.warn("Failed to fetch Google's RISC configuration", http_status_code=response.status_code)
+                log.warning("Failed to fetch Google's RISC configuration", http_status_code=response.status_code)
                 raise RiscVerificationError("Could not fetch Google's RISC configuration.")
 
             document = response.json()
@@ -72,7 +72,7 @@ class GoogleRiscVerifier:
                 options={"verify_exp": False},
             )
         except jwt.PyJWTError as exc:
-            log.warn("Google RISC token failed verification", error=str(exc))
+            log.warning("Google RISC token failed verification", error=str(exc))
             raise RiscVerificationError("The provided security event token could not be verified.") from exc
 
         log.info("Google RISC token successfully verified")

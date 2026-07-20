@@ -31,7 +31,7 @@ class GravatarAuthProvider(OAuthProvider):
         log = logger.bind(provider=self.name)
 
         if not redirect_uri:
-            log.warn("Gravatar verification rejected: no redirect_uri supplied for the authorization-code exchange")
+            log.warning("Gravatar verification rejected: no redirect_uri supplied for the authorization-code exchange")
             raise InvalidOAuthCredentialError("A redirect_uri is required to complete Gravatar authorization.")
 
         log.info("Exchanging Gravatar authorization code for an access token")
@@ -49,18 +49,18 @@ class GravatarAuthProvider(OAuthProvider):
         if token_response.status_code == status.HTTP_200_OK:
             access_token = token_response.json().get("access_token")
         if not access_token:
-            log.warn("Gravatar authorization code exchange failed", http_status_code=token_response.status_code)
+            log.warning("Gravatar authorization code exchange failed", http_status_code=token_response.status_code)
             raise InvalidOAuthCredentialError("The provided Gravatar authorization code could not be verified.")
 
         log.info("Fetching the linked Gravatar account's profile")
         me_response = await self.__session.get(ME_URL, headers={"Authorization": f"Bearer {access_token}"})
         if me_response.status_code != status.HTTP_200_OK:
-            log.warn("Gravatar profile fetch failed", http_status_code=me_response.status_code)
+            log.warning("Gravatar profile fetch failed", http_status_code=me_response.status_code)
             raise InvalidOAuthCredentialError("Could not fetch the linked Gravatar account's profile.")
 
         profile = me_response.json()
         if not profile.get("verified"):
-            log.warn("Gravatar reported this account's email as unverified", email=profile.get("email"))
+            log.warning("Gravatar reported this account's email as unverified", email=profile.get("email"))
             raise InvalidOAuthCredentialError("Gravatar has not verified this account's email address.")
 
         log.info("Gravatar identity successfully verified")

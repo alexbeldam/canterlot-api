@@ -13,7 +13,7 @@ def get_all_book_providers(session: AsyncSession) -> list[BookProvider]:
     api_key = get_settings().google_books_api_key
 
     if not api_key:
-        logger.warn("Google Books API key is not configured; external book search/details will be unavailable")
+        logger.warning("Google Books API key is not configured; external book search/details will be unavailable")
         return []
 
     return [GoogleBookProvider(session, api_key)]

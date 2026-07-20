@@ -37,11 +37,11 @@ class GoogleAuthProvider(OAuthProvider):
                 self.__client_id,
             )
         except (ValueError, GoogleAuthError) as exc:
-            log.warn("Google ID token failed cryptographic verification", error=str(exc))
+            log.warning("Google ID token failed cryptographic verification", error=str(exc))
             raise InvalidOAuthCredentialError("The provided Google credential could not be verified.") from exc
 
         if not claims.get("email_verified"):
-            log.warn("Google reported this account's email as unverified", email=claims.get("email"))
+            log.warning("Google reported this account's email as unverified", email=claims.get("email"))
             raise InvalidOAuthCredentialError("Google has not verified this account's email address.")
 
         log.info("Google ID token successfully verified")

@@ -147,7 +147,7 @@ class AnnaLinkProvider(LinkProvider):
                 dedup.setdefault(link.md5, link)
 
         if exception_count > 0:
-            logger.bind(provider=self.name).warn(
+            logger.bind(provider=self.name).warning(
                 "Some search operations encountered errors during concurrent execution",
                 failed_tasks_count=exception_count,
             )
