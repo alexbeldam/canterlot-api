@@ -1,6 +1,6 @@
 from curl_cffi.requests import AsyncSession
 from fastapi import status
-from pydantic import HttpUrl
+from pydantic import HttpUrl, SecretStr
 
 from canterlot.dto.book import BookDetails, BookSearchResult
 from canterlot.exceptions import BookProviderUnavailableError
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 
 class GoogleBookProvider(BookProvider):
-    def __init__(self, session: AsyncSession, api_key: str):
+    def __init__(self, session: AsyncSession, api_key: SecretStr):
         if not api_key:
             raise ValueError("GoogleBookProvider requires a non-empty API key.")
 
@@ -24,6 +24,10 @@ class GoogleBookProvider(BookProvider):
     @property
     def name(self) -> BookProviderName:
         return BookProviderName.GOOGLE
+
+    @property
+    def __headers(self) -> dict[str, str]:
+        return {"X-Goog-Api-Key": self.__api_key.get_secret_value()}
 
     async def fetch_volumes(self, search: SearchParams, start_index: int, max_results: int) -> ProviderSearchResponse:
         params = self.__build_params(search, start_index, max_results)
@@ -36,7 +40,11 @@ class GoogleBookProvider(BookProvider):
         )
         log.info("Dispatching HTTP GET request to Google Books API volumes endpoint")
 
-        response = await self.__session.get("https://www.googleapis.com/books/v1/volumes", params=params)
+        response = await self.__session.get(
+            "https://www.googleapis.com/books/v1/volumes",
+            params=params,
+            headers=self.__headers,
+        )
 
         log = log.bind(http_status_code=response.status_code)
 
@@ -108,13 +116,12 @@ class GoogleBookProvider(BookProvider):
         return int(year_slice) if year_slice.isdigit() else None
 
     async def fetch_volume_details(self, provider_book_id: str) -> BookDetails | None:
-        params = {"key": self.__api_key}
         url = f"https://www.googleapis.com/books/v1/volumes/{provider_book_id}"
 
         log = logger.bind(provider=self.name, volume_id=provider_book_id)
         log.info("Dispatching HTTP GET request to Google Books API volume details endpoint")
 
-        response = await self.__session.get(url, params=params)
+        response = await self.__session.get(url, headers=self.__headers)
 
         log = log.bind(http_status_code=response.status_code)
 
@@ -155,7 +162,6 @@ class GoogleBookProvider(BookProvider):
             "q": " ".join(query_parts),
             "startIndex": start_index,
             "maxResults": max_results,
-            "key": self.__api_key,
         }
 
     def __parse_isbn(self, identifiers: list[dict]) -> tuple[str | None, str | None]:

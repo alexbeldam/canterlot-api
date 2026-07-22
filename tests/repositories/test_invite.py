@@ -1,7 +1,7 @@
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.models.invite import InviteModel
+from canterlot.factories import InviteFactory
 from canterlot.repositories.beanie.invite import BeanieInviteRepository
 from canterlot.types import InviteType
 
@@ -10,14 +10,9 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 repo = BeanieInviteRepository()
 
 
-async def _invite(**overrides: object) -> InviteModel:
-    defaults = {"club_id": PydanticObjectId()}
-    return await InviteModel(**{**defaults, **overrides}).insert()
-
-
 def describe_find_by_id():
     async def it_finds_an_invite_by_id():
-        invite = await _invite()
+        invite = await InviteFactory.create_async()
 
         found = await repo.find_by_id(invite.id)
 
@@ -31,7 +26,7 @@ def describe_find_by_id():
 def describe_find_one_active_public_by_club_id():
     async def it_finds_the_active_public_invite():
         club_id = PydanticObjectId()
-        invite = await _invite(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        invite = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
 
         found = await repo.find_one_active_public_by_club_id(club_id)
 
@@ -40,13 +35,18 @@ def describe_find_one_active_public_by_club_id():
 
     async def it_ignores_an_inactive_public_invite():
         club_id = PydanticObjectId()
-        await _invite(club_id=club_id, type=InviteType.PUBLIC, is_active=False)
+        await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=False)
 
         assert await repo.find_one_active_public_by_club_id(club_id) is None
 
     async def it_ignores_a_direct_invite():
         club_id = PydanticObjectId()
-        await _invite(club_id=club_id, type=InviteType.DIRECT, is_active=True, target_email="a@example.com")
+        await InviteFactory.create_async(
+            club_id=club_id,
+            type=InviteType.DIRECT,
+            is_active=True,
+            target_email=InviteFactory.__faker__.email(),
+        )
 
         assert await repo.find_one_active_public_by_club_id(club_id) is None
 
@@ -54,9 +54,9 @@ def describe_find_one_active_public_by_club_id():
 def describe_find_by_club_id():
     async def it_returns_every_invite_for_the_club():
         club_id = PydanticObjectId()
-        first = await _invite(club_id=club_id)
-        second = await _invite(club_id=club_id)
-        await _invite(club_id=PydanticObjectId())
+        first = await InviteFactory.create_async(club_id=club_id)
+        second = await InviteFactory.create_async(club_id=club_id)
+        await InviteFactory.create_async(club_id=PydanticObjectId())
 
         found = await repo.find_by_club_id(club_id)
 
@@ -68,30 +68,32 @@ def describe_find_by_club_id():
 
 def describe_save():
     async def it_persists_changes_to_an_existing_invite():
-        invite = await _invite()
+        invite = await InviteFactory.create_async()
+        new_uses_count = invite.uses_count + InviteFactory.__faker__.random_int(min=1, max=10)
 
-        invite.uses_count = 5
+        invite.uses_count = new_uses_count
         await repo.save(invite)
 
         found = await repo.find_by_id(invite.id)
         assert found is not None
-        assert found.uses_count == 5
+        assert found.uses_count == new_uses_count
 
 
 def describe_increment_uses_count_by_id():
     async def it_increments_the_uses_count():
-        invite = await _invite(uses_count=1)
+        invite = await InviteFactory.create_async()
+        initial_count = invite.uses_count
 
         await repo.increment_uses_count_by_id(invite.id)
 
         found = await repo.find_by_id(invite.id)
         assert found is not None
-        assert found.uses_count == 2
+        assert found.uses_count == initial_count + 1
 
 
 def describe_deactivate_by_id():
     async def it_marks_the_invite_inactive():
-        invite = await _invite(is_active=True)
+        invite = await InviteFactory.create_async(is_active=True)
 
         await repo.deactivate_by_id(invite.id)
 
@@ -103,9 +105,18 @@ def describe_deactivate_by_id():
 def describe_deactivate_all_public_by_club_id():
     async def it_deactivates_only_active_public_invites_for_the_club():
         club_id = PydanticObjectId()
-        public = await _invite(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
-        direct = await _invite(club_id=club_id, type=InviteType.DIRECT, is_active=True, target_email="a@example.com")
-        other_club_public = await _invite(club_id=PydanticObjectId(), type=InviteType.PUBLIC, is_active=True)
+        public = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        direct = await InviteFactory.create_async(
+            club_id=club_id,
+            type=InviteType.DIRECT,
+            is_active=True,
+            target_email=InviteFactory.__faker__.email(),
+        )
+        other_club_public = await InviteFactory.create_async(
+            club_id=PydanticObjectId(),
+            type=InviteType.PUBLIC,
+            is_active=True,
+        )
 
         await repo.deactivate_all_public_by_club_id(club_id)
 
@@ -117,16 +128,52 @@ def describe_deactivate_all_public_by_club_id():
 def describe_deactivate_all_direct_by_club_id_and_target_email():
     async def it_deactivates_only_matching_direct_invites():
         club_id = PydanticObjectId()
-        matching = await _invite(
-            club_id=club_id, type=InviteType.DIRECT, is_active=True, target_email="target@example.com"
-        )
-        other_email = await _invite(
-            club_id=club_id, type=InviteType.DIRECT, is_active=True, target_email="other@example.com"
-        )
-        public = await _invite(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        target_email = InviteFactory.__faker__.email()
+        other_email = InviteFactory.__faker__.email()
 
-        await repo.deactivate_all_direct_by_club_id_and_target_email(club_id, "target@example.com")
+        matching = await InviteFactory.create_async(
+            club_id=club_id,
+            type=InviteType.DIRECT,
+            is_active=True,
+            target_email=target_email,
+        )
+        non_matching_email = await InviteFactory.create_async(
+            club_id=club_id,
+            type=InviteType.DIRECT,
+            is_active=True,
+            target_email=other_email,
+        )
+        public = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+
+        await repo.deactivate_all_direct_by_club_id_and_target_email(club_id, target_email)
 
         assert (await repo.find_by_id(matching.id)).is_active is False  # type: ignore[union-attr]
-        assert (await repo.find_by_id(other_email.id)).is_active is True  # type: ignore[union-attr]
+        assert (await repo.find_by_id(non_matching_email.id)).is_active is True  # type: ignore[union-attr]
+        assert (await repo.find_by_id(public.id)).is_active is True  # type: ignore[union-attr]
+
+
+def describe_deactivate_all_direct_by_club_id_and_target_user_id():
+    async def it_deactivates_only_matching_direct_user_invites():
+        club_id = PydanticObjectId()
+        target_user_id = PydanticObjectId()
+        other_user_id = PydanticObjectId()
+
+        matching = await InviteFactory.create_async(
+            club_id=club_id,
+            type=InviteType.DIRECT,
+            is_active=True,
+            target_user_id=target_user_id,
+        )
+        non_matching_user = await InviteFactory.create_async(
+            club_id=club_id,
+            type=InviteType.DIRECT,
+            is_active=True,
+            target_user_id=other_user_id,
+        )
+        public = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+
+        await repo.deactivate_all_direct_by_club_id_and_target_user_id(club_id, target_user_id)
+
+        assert (await repo.find_by_id(matching.id)).is_active is False  # type: ignore[union-attr]
+        assert (await repo.find_by_id(non_matching_user.id)).is_active is True  # type: ignore[union-attr]
         assert (await repo.find_by_id(public.id)).is_active is True  # type: ignore[union-attr]

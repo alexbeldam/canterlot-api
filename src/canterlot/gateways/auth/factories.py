@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 
 def get_all_oauth_providers(session: AsyncSession) -> dict[AuthProviderName, OAuthProvider]:
-    settings = get_settings()
+    settings = get_settings().gateways
     providers: dict[AuthProviderName, OAuthProvider] = {}
 
     if settings.google_oauth_client_id:
@@ -24,7 +24,7 @@ def get_all_oauth_providers(session: AsyncSession) -> dict[AuthProviderName, OAu
         logger.debug("Gravatar OAuth provider configured and enabled")
         providers[AuthProviderName.GRAVATAR] = GravatarAuthProvider(
             settings.gravatar_oauth_client_id,
-            settings.gravatar_oauth_client_secret,
+            settings.gravatar_oauth_client_secret.get_secret_value(),
             session,
         )
     else:

@@ -1,8 +1,8 @@
 from beanie import PydanticObjectId
 
-from canterlot.models import InviteModel, InviteType
+from canterlot.models import InviteModel
 from canterlot.repositories import InviteRepository
-from canterlot.types import NormalizedEmailStr
+from canterlot.types import InviteType, NormalizedEmailStr
 
 
 class BeanieInviteRepository(InviteRepository):
@@ -43,6 +43,18 @@ class BeanieInviteRepository(InviteRepository):
         await InviteModel.find(
             InviteModel.club_id == club_id,
             InviteModel.target_email == target_email,
+            InviteModel.type == InviteType.DIRECT,
+            InviteModel.is_active == True,
+        ).update_many({"$set": {InviteModel.is_active: False}})
+
+    async def deactivate_all_direct_by_club_id_and_target_user_id(
+        self,
+        club_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+    ) -> None:
+        await InviteModel.find(
+            InviteModel.club_id == club_id,
+            InviteModel.target_user_id == target_user_id,
             InviteModel.type == InviteType.DIRECT,
             InviteModel.is_active == True,
         ).update_many({"$set": {InviteModel.is_active: False}})

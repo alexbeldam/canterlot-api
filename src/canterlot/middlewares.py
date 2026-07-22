@@ -16,6 +16,7 @@ from starlette.responses import Response
 
 from canterlot.exceptions import BusinessError
 from canterlot.repositories.beanie.user import BeanieUserRepository
+from canterlot.types import TokenType
 from canterlot.utils import get_logger
 from canterlot.utils.security import decode_jwt_payload
 
@@ -46,7 +47,7 @@ class LastSeenMiddleware(BaseHTTPMiddleware):
         token = auth_header.removeprefix(_BEARER_PREFIX)
         try:
             payload = decode_jwt_payload(token)
-            if payload.get("type") != "access":
+            if payload.get("type") != TokenType.ACCESS:
                 return None
             return PydanticObjectId(payload["sub"])
         except (BusinessError, InvalidId, KeyError):

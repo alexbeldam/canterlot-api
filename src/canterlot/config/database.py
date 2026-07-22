@@ -21,8 +21,13 @@ class DatabaseManager:
         await self.close()
 
     async def open(self):
-        settings = get_settings()
-        self.__client = AsyncMongoClient(settings.mongodb_url, maxPoolSize=10, minPoolSize=2, tz_aware=True)
+        settings = get_settings().db
+        self.__client = AsyncMongoClient(
+            settings.mongodb_url.get_secret_value(),
+            maxPoolSize=10,
+            minPoolSize=2,
+            tz_aware=True,
+        )
         database = self.__client[settings.mongodb_db_name]
 
         await init_beanie(database=database, document_models=BEANIE_DOCUMENT_MODELS)

@@ -6,6 +6,7 @@ from .interfaces import (
     InviteRepository,
     RateLimiter,
     UserRepository,
+    VerificationRepository,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "InviteRepository",
     "RateLimiter",
     "UserRepository",
+    "VerificationRepository",
 ]

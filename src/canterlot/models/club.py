@@ -1,38 +1,11 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated, ClassVar
 
 from beanie import Document, Indexed, PydanticObjectId
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, model_validator
 from pymongo import ASCENDING, IndexModel
 
-from canterlot.types import LanguageStr, NonEmptyStr
-
-from ..types import JoinPolicy, MemberRole
-
-OWNERSHIP_TRANSFER_COOLDOWN = timedelta(days=30)
-OWNERSHIP_RECLAIM_WINDOW = timedelta(hours=24)
-
-type ClubNameStr = Annotated[
-    NonEmptyStr,
-    StringConstraints(min_length=3, max_length=50),
-    Field(examples=["The Canterlot Archives", "Manehattan Literature Society"]),
-]
-type ClubSlugStr = Annotated[
-    NonEmptyStr,
-    StringConstraints(max_length=32),
-    Field(
-        examples=[
-            "the-canterlot-archives",
-            "manehattan-literature-society",
-        ]
-    ),
-]
-
-
-class MemberSchema(BaseModel):
-    user_id: PydanticObjectId
-    role: MemberRole = MemberRole.MEMBER
-    joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr, MemberSchema
 
 
 class PendingApprovalSchema(BaseModel):

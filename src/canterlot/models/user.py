@@ -3,25 +3,22 @@ from typing import Annotated, ClassVar
 
 import shortuuid
 from beanie import Document, Indexed, PydanticObjectId
-from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo import ASCENDING, IndexModel
 
-from canterlot.emails.core.definitions import EmailCategory
-from canterlot.types import HttpsUrl, NonEmptyStr, NormalizedEmailStr
+from canterlot.emails import EmailCategory
+from canterlot.types import (
+    AuthProviderName,
+    AvatarSchema,
+    BadgeReason,
+    EarnedBadgeSchema,
+    HttpsUrl,
+    NormalizedEmailStr,
+    PersonNameStr,
+    UsernameStr,
+)
 
-from ..types import AuthProviderName, BadgeReason
 from .book import ReadBook
-
-type UsernameStr = Annotated[
-    NonEmptyStr,
-    StringConstraints(min_length=3, max_length=30, pattern=r"^[a-zA-Z0-9_]+$"),
-    Field(examples=["twilight_sparkle", "bookworm99"]),
-]
-type PersonNameStr = Annotated[
-    NonEmptyStr,
-    StringConstraints(min_length=2, max_length=50),
-    Field(examples=["Twilight Sparkle", "Alex Smith"]),
-]
 
 
 class LinkedProviderSchema(BaseModel):
@@ -29,16 +26,6 @@ class LinkedProviderSchema(BaseModel):
     external_id: str
     picture_url: HttpsUrl | None = None
     linked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
-class AvatarSchema(BaseModel):
-    source: AuthProviderName
-    value: HttpsUrl
-
-
-class EarnedBadgeSchema(BaseModel):
-    reason: BadgeReason
-    earned_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class EmailPreferencesSchema(BaseModel):
@@ -93,9 +80,9 @@ class UserModel(Document):
 
     @model_validator(mode="after")
     def verify_unique_linked_providers(self):
-        identities = [(linked.provider, linked.external_id) for linked in self.linked_providers]
+        providers = [linked.provider for linked in self.linked_providers]
 
-        if len(identities) != len(set(identities)):
+        if len(providers) != len(set(providers)):
             raise ValueError("The same provider credential cannot be linked twice on one account.")
 
         return self

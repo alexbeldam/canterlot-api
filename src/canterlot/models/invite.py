@@ -6,9 +6,7 @@ from beanie import Document, PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
 
-from canterlot.types import NormalizedEmailStr
-
-from ..types import InviteType
+from canterlot.types import InviteType, NormalizedEmailStr
 
 
 class InviteModel(Document):

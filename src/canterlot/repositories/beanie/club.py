@@ -8,11 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
-from canterlot.models import BookModel, ClubModel, JoinPolicy, MemberRole, MemberSchema, PendingApprovalSchema
-from canterlot.models.club import CatalogEntryModel, ClubNameStr, ClubSlugStr
+from canterlot.models import BookModel, ClubModel, PendingApprovalSchema
+from canterlot.models.club import CatalogEntryModel
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import ClubRepository
-from canterlot.types import LanguageStr
+from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr, MemberRole, MemberSchema
 
 _CATALOG_SORT_FIELD_PATHS = {
     "suggested_at": "catalog.suggested_at",

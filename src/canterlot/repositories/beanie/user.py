@@ -2,15 +2,16 @@ from datetime import datetime, timedelta
 from typing import cast
 
 from beanie import PydanticObjectId
-from beanie.operators import ElemMatch, In, Pull, Push
+from beanie.operators import In, Or, Pull, Push, Set
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo.errors import DuplicateKeyError
 from pymongo.results import UpdateResult
 
-from canterlot.models import AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
-from canterlot.models.user import EmailPreferencesSchema, PersonNameStr, UsernameStr
+from canterlot.emails import EmailCategory
+from canterlot.models import LinkedProviderSchema, UserModel
+from canterlot.models.user import EmailPreferencesSchema
 from canterlot.repositories import UserRepository
-from canterlot.types import HttpsUrl, NormalizedEmailStr
+from canterlot.types import AuthProviderName, AvatarSchema, HttpsUrl, NormalizedEmailStr, PersonNameStr, UsernameStr
 
 
 class UsernameProjection(BaseModel):
@@ -26,7 +27,7 @@ class IdProjection(BaseModel):
 class EmailPreferencesProjection(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    email_preferences: EmailPreferencesSchema = Field(alias="email_preferences")
+    email_preferences: EmailPreferencesSchema = Field(default_factory=EmailPreferencesSchema, alias="email_preferences")
 
 
 class AvatarProjection(BaseModel):
@@ -44,7 +45,13 @@ class BeanieUserRepository(UserRepository):
             return None
         return p.username
 
-    async def find_usernames_by_ids(self, user_ids: list[PydanticObjectId]) -> dict[PydanticObjectId, UsernameStr]:
+    async def get_by_ids(self, ids: list[PydanticObjectId]) -> list[UserModel]:
+        if not ids:
+            return []
+
+        return await UserModel.find(In(UserModel.id, ids)).to_list()
+
+    async def get_usernames_by_ids(self, user_ids: list[PydanticObjectId]) -> dict[PydanticObjectId, UsernameStr]:
         if not user_ids:
             return {}
 
@@ -74,12 +81,21 @@ class BeanieUserRepository(UserRepository):
 
     async def find_id_by_linked_provider(self, provider: AuthProviderName, external_id: str) -> PydanticObjectId | None:
         projection = await UserModel.find_one(
-            ElemMatch(UserModel.linked_providers, {"provider": provider, "external_id": external_id})
+            {"linked_providers.provider": provider, "linked_providers.external_id": external_id}
         ).project(IdProjection)
 
         if not projection:
             return None
         return projection.id
+
+    async def find_by_linked_provider(self, provider: AuthProviderName, external_id: str) -> UserModel | None:
+        user = await UserModel.find_one(
+            {"linked_providers.provider": provider, "linked_providers.external_id": external_id}
+        )
+
+        if not user:
+            return None
+        return user
 
     async def is_email_verified_by_id(self, user_id: PydanticObjectId) -> bool:
         return await UserModel.find(
@@ -194,15 +210,22 @@ class BeanieUserRepository(UserRepository):
         )
         return cast(UpdateResult, result).matched_count > 0
 
-    async def change_password(self, user_id: PydanticObjectId, hashed_password: str, new_refresh_token: str) -> None:
-        await UserModel.find_one(UserModel.id == user_id).update_one(
-            {
-                "$set": {
-                    UserModel.hashed_password: hashed_password,
-                    UserModel.refresh_tokens: [new_refresh_token],
-                }
-            }
-        )
+    async def change_password(
+        self,
+        user_id: PydanticObjectId,
+        hashed_password: str,
+        new_refresh_token: str,
+        mark_verified_at: datetime | None = None,
+    ) -> None:
+        set_fields = {
+            UserModel.hashed_password: hashed_password,
+            UserModel.refresh_tokens: [new_refresh_token],
+        }
+
+        if mark_verified_at is not None:
+            set_fields["email_preferences.verified_at"] = mark_verified_at
+
+        await UserModel.find_one(UserModel.id == user_id).update_one(Set(set_fields))
 
     async def touch_last_seen(self, user_id: PydanticObjectId, now: datetime) -> None:
         stale_before = now - timedelta(days=1)
@@ -243,3 +266,52 @@ class BeanieUserRepository(UserRepository):
             {"$set": {"email_preferences.delivery_failed": failed}}
         )
         return cast(UpdateResult, result).modified_count > 0
+
+    async def opt_out_club_by_id(
+        self,
+        user_id: PydanticObjectId,
+        club_id: PydanticObjectId,
+        timestamp: datetime,
+    ) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id).update_one(
+            {"$set": {f"email_preferences.clubs_opt_out.{club_id}": timestamp}}
+        )
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def opt_out_category_by_id(
+        self,
+        user_id: PydanticObjectId,
+        category: EmailCategory,
+        timestamp: datetime,
+    ) -> bool:
+        result = await UserModel.find_one(UserModel.id == user_id).update_one(
+            {"$set": {f"email_preferences.categories_opt_out.{category.value}": timestamp}}
+        )
+        return cast(UpdateResult, result).matched_count > 0
+
+    async def find_by_identifier(
+        self,
+        identifier: NormalizedEmailStr | UsernameStr,
+    ) -> UserModel | None:
+        conditions = [UserModel.email == identifier, UserModel.username == identifier]
+        return await UserModel.find_one(Or(*conditions))
+
+    async def find_id_by_identifier(
+        self,
+        identifier: NormalizedEmailStr | UsernameStr,
+    ) -> PydanticObjectId | None:
+        conditions = [UserModel.email == identifier, UserModel.username == identifier]
+        projection = await UserModel.find_one(Or(*conditions)).project(IdProjection)
+
+        if not projection:
+            return None
+        return projection.id
+
+    async def mark_email_as_verified(
+        self,
+        user_id: PydanticObjectId,
+        verified_at: datetime,
+    ) -> None:
+        await UserModel.find_one(UserModel.id == user_id).update_one(
+            Set({"email_preferences.verified_at": verified_at})
+        )

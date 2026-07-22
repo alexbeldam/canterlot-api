@@ -3,6 +3,7 @@ from .club import BeanieClubRepository
 from .database import BeanieDatabaseRepository
 from .invite import BeanieInviteRepository
 from .user import BeanieUserRepository
+from .verification import BeanieVerificationRepository
 
 __all__ = [
     "BeanieBookRepository",
@@ -10,4 +11,5 @@ __all__ = [
     "BeanieDatabaseRepository",
     "BeanieInviteRepository",
     "BeanieUserRepository",
+    "BeanieVerificationRepository",
 ]
