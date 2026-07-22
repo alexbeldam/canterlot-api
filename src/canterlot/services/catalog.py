@@ -13,12 +13,19 @@ from canterlot.dto.catalog import (
 from canterlot.exceptions import BookNotFoundError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
 from canterlot.gateways import LinkProvider
 from canterlot.models import BookModel, LinkCandidate
-from canterlot.models.book import AuthorList, SearchParams, TitleStr, UrlList
+from canterlot.models.book import SearchParams
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.user import UsernameStr
 from canterlot.pagination import SortDirection
 from canterlot.repositories import BookRepository, ClubRepository, UserRepository
-from canterlot.types import ExtensionType, LanguageStr, MemberRole
+from canterlot.types import (
+    AuthorList,
+    ExtensionType,
+    LanguageStr,
+    MemberRole,
+    TitleStr,
+    UrlList,
+    UsernameStr,
+)
 from canterlot.utils import (
     LANGUAGE_MATCH_SUBSCORES,
     LanguageMatchLevel,
@@ -161,7 +168,7 @@ class CatalogService:
         )
 
         books = await self.__book_repo.find_by_ids([entry.book_id for entry in catalog_page.items])
-        usernames = await self.__user_repo.find_usernames_by_ids([entry.suggested_by for entry in catalog_page.items])
+        usernames = await self.__user_repo.get_usernames_by_ids([entry.suggested_by for entry in catalog_page.items])
 
         return catalog_page.map(
             lambda entry: CatalogEntryResponse.from_model(

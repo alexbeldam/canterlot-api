@@ -48,12 +48,12 @@ def describe_get_usernames_by_ids():
         alice = await UserFactory.create_async()
         bob = await UserFactory.create_async()
 
-        result = await repo.find_usernames_by_ids([_id(alice), _id(bob)])
+        result = await repo.get_usernames_by_ids([_id(alice), _id(bob)])
 
         assert result == {_id(alice): alice.username, _id(bob): bob.username}
 
     async def it_returns_an_empty_dict_for_an_empty_list():
-        assert await repo.find_usernames_by_ids([]) == {}
+        assert await repo.get_usernames_by_ids([]) == {}
 
 
 def describe_find_by_username():

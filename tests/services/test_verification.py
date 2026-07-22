@@ -27,12 +27,12 @@ def describe_create_code():
         mock_model = MagicMock(spec=VerificationCodeModel)
 
         with (
-            patch("canterlot.services.verification.generate_secure_alphanumeric_code", return_value="CODE4567"),
+            patch("canterlot.services.verification.generate_secure_code", return_value="12345678"),
             patch("canterlot.models.verification.VerificationCodeModel.create", return_value=mock_model),
         ):
             plaintext = await service.create_code(sample_user_id, VerificationScope.EMAIL)
 
-            assert plaintext == "CODE4567"
+            assert plaintext == "12345678"
             verification_repo.create_and_invalidate_previous.assert_awaited_once_with(mock_model)
 
 
@@ -47,7 +47,7 @@ def describe_validate_code():
             InvalidCodeError,
             match="The verification code provided is incorrect or has already been used",
         ):
-            await service.validate_code("WRONGCOD", sample_user_id, VerificationScope.EMAIL)
+            await service.validate_code("87654321", sample_user_id, VerificationScope.EMAIL)
 
     async def it_raises_code_expired_error_if_code_lifetime_has_elapsed(service, verification_repo, sample_user_id):
         mock_model = MagicMock(spec=VerificationCodeModel)
@@ -57,7 +57,7 @@ def describe_validate_code():
 
         expected_msg = re.escape("This verification code has expired. Please request a new one")
         with pytest.raises(CodeExpiredError, match=expected_msg):
-            await service.validate_code("EXPIRED4", sample_user_id, VerificationScope.EMAIL)
+            await service.validate_code("87654321", sample_user_id, VerificationScope.EMAIL)
 
     async def it_successfully_validates_and_deactivates_an_active_valid_code(
         service,
@@ -69,6 +69,6 @@ def describe_validate_code():
         mock_model.expires_at = datetime.now(UTC) + timedelta(minutes=15)
         verification_repo.find_active_code.return_value = mock_model
 
-        await service.validate_code("VALIDCOD", sample_user_id, VerificationScope.EMAIL)
+        await service.validate_code("12345678", sample_user_id, VerificationScope.EMAIL)
 
         verification_repo.deactivate_code_by_id.assert_awaited_once_with(mock_model.id)

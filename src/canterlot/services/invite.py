@@ -11,11 +11,9 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.club import ClubNameStr
 from canterlot.models.invite import InviteModel
-from canterlot.models.user import UsernameStr
 from canterlot.repositories import ClubRepository, InviteRepository, UserRepository
-from canterlot.types import InviteType, MemberRole, NormalizedEmailStr
+from canterlot.types import ClubNameStr, InviteType, MemberRole, NormalizedEmailStr, UsernameStr
 from canterlot.utils import get_logger
 
 logger = get_logger(__name__)
@@ -169,7 +167,7 @@ class InviteService:
 
         return invite.id
 
-    async def create_direct_invite(
+    async def create_external_invite(
         self,
         club_id: PydanticObjectId,
         issuer_id: PydanticObjectId,
@@ -188,6 +186,35 @@ class InviteService:
             club_id=club_id,
             created_by=issuer_id,
             target_email=target_email,
+            type=InviteType.DIRECT,
+            created_at=now,
+            expires_at=expires_at,
+        )
+
+        saved = await self.__invite_repo.save(invite)
+
+        log.info("Direct secure single-use token registered and live", direct_invite_id=saved.id)
+        return saved.id
+
+    async def create_internal_invite(
+        self,
+        club_id: PydanticObjectId,
+        issuer_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+    ) -> str:
+        log = logger.bind(club_id=str(club_id), issuer_id=str(issuer_id), target_id=str(target_user_id))
+        log.info("Issuing secure identity-bound direct invite key")
+
+        await self.__verify_privileged_role(club_id=club_id, user_id=issuer_id)
+        await self.__invite_repo.deactivate_all_direct_by_club_id_and_target_user_id(club_id, target_user_id)
+
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(weeks=1)
+
+        invite = InviteModel(
+            club_id=club_id,
+            created_by=issuer_id,
+            target_user_id=target_user_id,
             type=InviteType.DIRECT,
             created_at=now,
             expires_at=expires_at,

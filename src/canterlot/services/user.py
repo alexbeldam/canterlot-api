@@ -12,17 +12,13 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
+from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models.book import ReadBook
-from canterlot.models.user import (
-    AvatarSchema,
-    EmailPreferencesSchema,
-    PersonNameStr,
-    UserModel,
-    UsernameStr,
-)
+from canterlot.models.user import EmailPreferencesSchema, UserModel
 from canterlot.repositories import CacheRepository, UserRepository
-from canterlot.types import AuthProviderName, HttpsUrl, NormalizedEmailStr
+from canterlot.types import AuthProviderName, AvatarSchema, HttpsUrl, NormalizedEmailStr, PersonNameStr, UsernameStr
 from canterlot.utils import get_logger
+from canterlot.utils.security import UnsubscribeScope, UnsubscribeTokenData
 
 logger = get_logger(__name__)
 
@@ -41,6 +37,15 @@ class UserService:
         self.__user_repo = user_repo
         self.__cache_repo = cache_repo
 
+    async def _invalidate_email_preferences_cache(self, email: NormalizedEmailStr) -> None:
+        await self.__cache_repo.invalidate(EMAIL_PREFERENCES_KEY_TEMPLATE.format(email=email))
+
+    async def get_by_username(self, username: UsernameStr) -> UserModel:
+        user = await self.__user_repo.find_by_username(username)
+        if not user:
+            raise UserNotFoundError(f"User with username {username} not found")
+        return user
+
     async def mark_book_read(self, user_id: PydanticObjectId, book_id: PydanticObjectId) -> None:
         log = logger.bind(user_id=str(user_id), book_id=str(book_id))
         log.info("Marking book as read for user")
@@ -49,39 +54,20 @@ class UserService:
 
         log.info("Book marked as read successfully")
 
-    async def get_profile(self, user_id: PydanticObjectId) -> UserModel:
-        log = logger.bind(user_id=str(user_id))
-        log.info("Fetching own profile")
-
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warning("Profile fetch aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
-
-        return user
-
-    async def find_profile_by_id(self, user_id: PydanticObjectId) -> UserModel | None:
-        return await self.__user_repo.find_by_id(user_id)
-
     async def update_profile(
         self,
-        user_id: PydanticObjectId,
+        user: UserModel,
         name: PersonNameStr | None,
         username: UsernameStr | None,
     ) -> UserModel:
-        log = logger.bind(user_id=str(user_id))
+        log = logger.bind(user_id=str(user.id))
         log.info("Attempting profile update")
-
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warning("Profile update aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         if username is not None and username != user.username and await self.__user_repo.exists_by_username(username):
             log.warning("Profile update rejected: username conflict", reason="username_taken")
             raise UsernameAlreadyExistsError(f"Username '{username}' is already taken.")
 
-        changed = await self.__user_repo.update_profile(user_id, name=name, username=username)
+        changed = await self.__user_repo.update_profile(PydanticObjectId(user.id), name=name, username=username)
         if not changed:
             log.warning("Profile update rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
@@ -94,14 +80,9 @@ class UserService:
         log.info("Profile updated successfully")
         return user
 
-    async def set_avatar_source(self, user_id: PydanticObjectId, source: AuthProviderName) -> UserModel:
-        log = logger.bind(user_id=str(user_id), source=str(source))
+    async def set_avatar_source(self, user: UserModel, source: AuthProviderName) -> UserModel:
+        log = logger.bind(user_id=str(user.id), source=str(source))
         log.info("Attempting to set avatar to a linked provider's photo")
-
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warning("Avatar update aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         try:
             value = _resolve_linked_provider_avatar_value(user, source)
@@ -110,7 +91,7 @@ class UserService:
             raise
 
         avatar = AvatarSchema(source=source, value=value)
-        changed = await self.__user_repo.set_avatar(user_id, avatar)
+        changed = await self.__user_repo.set_avatar(PydanticObjectId(user.id), avatar)
         if not changed:
             log.warning("Avatar update rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
@@ -119,35 +100,23 @@ class UserService:
         log.info("Avatar set to linked provider's photo successfully")
         return user
 
-    async def clear_avatar(self, user_id: PydanticObjectId) -> UserModel:
+    async def clear_avatar(self, user_id: PydanticObjectId) -> None:
         log = logger.bind(user_id=str(user_id))
         log.info("Attempting to clear the active avatar photo")
-
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warning("Avatar clear aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
         changed = await self.__user_repo.clear_avatar(user_id)
         if not changed:
             log.warning("Avatar clear rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
 
-        user.avatar = None
         log.info("Avatar cleared, generated avatar now active")
-        return user
 
-    async def regenerate_avatar_seed(self, user_id: PydanticObjectId) -> UserModel:
-        log = logger.bind(user_id=str(user_id))
+    async def regenerate_avatar_seed(self, user: UserModel) -> UserModel:
+        log = logger.bind(user_id=str(user.id))
         log.info("Attempting to regenerate the generated-avatar seed")
 
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warning("Seed regeneration aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
-
         new_seed = shortuuid.random()
-        changed = await self.__user_repo.set_generated_avatar_seed(user_id, new_seed)
+        changed = await self.__user_repo.set_generated_avatar_seed(PydanticObjectId(user.id), new_seed)
         if not changed:
             log.warning("Seed regeneration rejected: user no longer exists at write time")
             raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
@@ -158,14 +127,14 @@ class UserService:
 
     async def accept_legal_documents(
         self,
-        user_id: PydanticObjectId,
+        user: UserModel,
         terms_version: int,
         privacy_version: int,
     ) -> UserModel:
-        log = logger.bind(user_id=str(user_id), terms_version=terms_version, privacy_version=privacy_version)
+        log = logger.bind(user_id=str(user.id), terms_version=terms_version, privacy_version=privacy_version)
         log.info("Attempting to record legal document acceptance")
 
-        settings = get_settings()
+        settings = get_settings().auth
         if terms_version != settings.current_terms_version or privacy_version != settings.current_privacy_version:
             log.warning(
                 "Legal acceptance rejected: submitted version is stale",
@@ -174,16 +143,11 @@ class UserService:
             )
             raise StaleLegalVersionError("The submitted terms/privacy version is out of date; reload and try again.")
 
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warning("Legal acceptance aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
-
         now = datetime.now(UTC)
         profile_completed_at = user.profile_completed_at or now
 
         changed = await self.__user_repo.set_legal_acceptance(
-            user_id,
+            PydanticObjectId(user.id),
             terms_version=terms_version,
             terms_at=now,
             privacy_version=privacy_version,
@@ -235,3 +199,65 @@ class UserService:
 
         log.info("Email preferences fetched from database and synchronized into cache")
         return db_prefs
+
+    async def process_unsubscribe(self, token_data: UnsubscribeTokenData) -> UnsubscribeScope:
+        log = logger.bind(user_id=str(token_data.user_id), scope=str(token_data.scope))
+        log.info("Processing unsubscribe request")
+
+        user = await self.__user_repo.find_by_id(token_data.user_id)
+        if user is None:
+            log.warning("Unsubscribe rejected: user not found")
+            raise UserNotFoundError("User associated with this unsubscribe token does not exist.")
+
+        now = datetime.now(UTC)
+
+        if token_data.scope == UnsubscribeScope.CLUB and token_data.club_id is not None:
+            log.info("Applying club-scoped opt-out", club_id=str(token_data.club_id))
+            await self.__user_repo.opt_out_club_by_id(token_data.user_id, token_data.club_id, now)
+
+        elif token_data.scope == UnsubscribeScope.CATEGORY and token_data.category is not None:
+            log.info("Applying category-scoped opt-out", category=str(token_data.category))
+            await self.__user_repo.opt_out_category_by_id(token_data.user_id, token_data.category, now)
+
+        await self._invalidate_email_preferences_cache(user.email)
+        log.info("Unsubscribe request processed successfully")
+
+        return token_data.scope
+
+    async def is_verified_email(self, user_id: PydanticObjectId) -> bool:
+        return await self.__user_repo.is_email_verified_by_id(user_id)
+
+    async def find_by_id(self, user_id: PydanticObjectId) -> UserModel | None:
+        return await self.__user_repo.find_by_id(user_id)
+
+    async def get_by_id(self, user_id: PydanticObjectId) -> UserModel:
+        user = await self.__user_repo.find_by_id(user_id)
+        if user is None:
+            raise UserNotFoundError("This user does not exist")
+        return user
+
+    async def get_by_ids(self, ids: list[PydanticObjectId]) -> list[UserModel]:
+        return await self.__user_repo.get_by_ids(ids)
+
+    async def get_id_by_username(self, username: UsernameStr) -> PydanticObjectId:
+        user_id = await self.__user_repo.find_id_by_username(username)
+        if user_id is None:
+            raise UserNotFoundError(f"User with username '{username}' not found")
+        return user_id
+
+    async def find_by_identifier(self, identifier: NormalizedEmailStr | UsernameStr) -> UserModel | None:
+        return await self.__user_repo.find_by_identifier(identifier)
+
+    async def get_id_by_identifier(self, identifier: NormalizedEmailStr | UsernameStr) -> PydanticObjectId:
+        user_id = await self.__user_repo.find_id_by_identifier(identifier)
+        if user_id is None:
+            raise UserNotFoundError(f"User with identifier '{identifier}' not found.")
+        return user_id
+
+    async def mark_email_as_verified(
+        self,
+        user_id: PydanticObjectId,
+    ) -> None:
+        timestamp = datetime.now(UTC)
+
+        await self.__user_repo.mark_email_as_verified(user_id=user_id, verified_at=timestamp)

@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import Required
+from typing import Any, Required
 
 from redis.asyncio import Redis
 from saq import Queue, Status, Worker
@@ -31,6 +31,7 @@ class CanterlotContext(Context, total=False):
     email_client: Required[EmailClient]
     dlq_queue: Required[Queue]
     abort_job: bool
+    email_payload: EmailTaskPayload[Any]
 
 
 async def before_process_hook(ctx: CanterlotContext) -> bool:
@@ -58,7 +59,9 @@ async def before_process_hook(ctx: CanterlotContext) -> bool:
     try:
         if not payload_str or not isinstance(payload_str, str):
             raise ValueError("Job missing payload string argument.")
-        payload = EmailTaskPayload.model_validate_json(payload_str)
+
+        payload = EmailTaskPayload[Any].model_validate_json(payload_str)
+        ctx["email_payload"] = payload
     except Exception as parse_exc:
         log.critical("Failed parsing task metadata during hook evaluation.", exc_info=parse_exc)
         return False
@@ -80,8 +83,8 @@ async def before_process_hook(ctx: CanterlotContext) -> bool:
         return False
 
     # 3. Tracked Domain Rate-Limiting Pacing
-    settings = get_settings()
-    pacing_interval = (1.0 / settings.email_rate_limit) if settings.email_rate_limit > 0 else 0.0
+    settings = get_settings().email
+    pacing_interval = (1.0 / settings.dispatch_max_rps) if settings.dispatch_max_rps > 0 else 0.0
     if pacing_interval > 0:
         log.bind(pacing_interval=pacing_interval).debug("Applying rate-limiting pacing delay.")
         await asyncio.sleep(pacing_interval)
@@ -134,7 +137,15 @@ async def send_email_task(ctx: CanterlotContext, payload_str: str) -> None:
     user_service = ctx["user_service"]
     email_client = ctx["email_client"]
 
-    task = EmailTaskPayload.model_validate_json(payload_str)
+    task = ctx.get("email_payload")
+    if not task:
+        logger.debug("Job context missing email_payload. Falling back to explicit JSON validation.")
+        try:
+            task = EmailTaskPayload.model_validate_json(payload_str)
+        except Exception as parse_exc:
+            logger.bind(job_id=job_id).critical("Failed to parse fallback payload string.", exc_info=parse_exc)
+            return
+
     log = logger.bind(job_id=job_id, email=task.to, template_name=task.template.name)
 
     # 1. Evaluate Infrastructure Suppression Gate Checklist
@@ -177,8 +188,7 @@ async def run_worker() -> None:
 
     async with DatabaseManager():
         redis_client = Redis.from_url(
-            settings.redis_url,
-            decode_responses=True,
+            settings.db.redis_url.get_secret_value(),
             socket_timeout=15.0,
             socket_keepalive=True,
             health_check_interval=10,
