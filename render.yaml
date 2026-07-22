@@ -13,7 +13,7 @@ services:
     healthCheckPath: /health
     envVars:
       - fromGroup: canterlot-shared-env
-      - key: REDIS_URL
+      - key: DB__REDIS_URL
         fromService:
           type: redis
           name: canterlot-redis
@@ -32,7 +32,7 @@ services:
     startCommand: uv run start-worker
     envVars:
       - fromGroup: canterlot-shared-env
-      - key: REDIS_URL
+      - key: DB__REDIS_URL
         fromService:
           type: redis
           name: canterlot-redis
@@ -50,33 +50,43 @@ envVarGroups:
         value: prod
       - key: CORS_ORIGINS
         value: '["https://canterlot.com.br"]'
-      - key: CURRENT_TERMS_VERSION
-        value: "1"
-      - key: CURRENT_PRIVACY_VERSION
-        value: "1"
+      - key: FRONTEND_URL
+        value: "https://canterlot.com.br"
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: GOOGLE_BOOKS_API_KEY
-        sync: false
-      - key: GOOGLE_OAUTH_CLIENT_ID
-        sync: false
-      - key: GRAVATAR_OAUTH_CLIENT_ID
-        sync: false
-      - key: GRAVATAR_OAUTH_CLIENT_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: RESEND_WEBHOOK_SECRET
-        sync: false
-      - key: EMAIL_DRY_RUN
-        value: "false"
-      - key: EMAIL_RATE_LIMIT
-        value: "5"
-      - key: JWT_SECRET_KEY
+
+      # --- AUTH SETTINGS ---
+      - key: AUTH__JWT_SECRET_KEY
         generateValue: true
-      - key: MONGODB_URL
+      - key: AUTH__CURRENT_TERMS_VERSION
+        value: "1"
+      - key: AUTH__CURRENT_PRIVACY_VERSION
+        value: "1"
+
+      # --- EMAIL SETTINGS ---
+      - key: EMAIL__RESEND_API_KEY
         sync: false
-      - key: MONGODB_DB_NAME
+      - key: EMAIL__RESEND_WEBHOOK_SECRET
+        sync: false
+      - key: EMAIL__DRY_RUN
+        value: "false"
+      - key: EMAIL__DISPATCH_MAX_RPS
+        value: "5"
+
+      # --- DATABASE SETTINGS ---
+      - key: DB__MONGODB_URL
+        sync: false
+      - key: DB__MONGODB_DB_NAME
         value: canterlot_db
+
+      # --- GATEWAY SETTINGS ---
+      - key: GATEWAYS__GOOGLE_BOOKS_API_KEY
+        sync: false
+      - key: GATEWAYS__GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GATEWAYS__GRAVATAR_OAUTH_CLIENT_ID
+        sync: false
+      - key: GATEWAYS__GRAVATAR_OAUTH_CLIENT_SECRET
+        sync: false
