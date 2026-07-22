@@ -1,13 +1,27 @@
 import pytest
 from pydantic import HttpUrl, ValidationError
 
+from canterlot.config import get_settings
 from canterlot.emails.core.schemas import (
-    LunaOwnershipReclaimedContext,
+    AuthProviderContext,
+    BaseVerificationContext,
+    ClubActionContext,
+    ClubActorActionContext,
+    InviteExternalContext,
+    InviteInternalContext,
     LunaProviderActionContext,
+    PasswordChangedContext,
+    PasswordResetValidationContext,
+    RecipientContext,
+    SpikeActionContext,
+    SpikeBaseContext,
+    SpikeBookContext,
     SpikeRoleContext,
-    VerificationContext,
 )
-from canterlot.types import AuthProviderName, MemberRole
+from canterlot.factories import ClubFactory, UserFactory
+from canterlot.types import AuthProviderName, MemberRole, secret_code_adapter
+
+SOME_CODE = "12345678"
 
 
 def describe_verification_context_constraints():
@@ -17,23 +31,90 @@ def describe_verification_context_constraints():
             "1234567",  # Too short
             "123456789",  # Too long
             "1234-567",  # Contains special characters
-            "ABC!1234",  # Contains special characters
+            "ABCD1234",  # Contains letters
             "        ",  # Only spaces
         ],
     )
     def it_rejects_malformed_verification_codes(invalid_code):
         with pytest.raises(ValidationError):
-            VerificationContext(
-                recipient_name="Twilight", code=invalid_code, action_url=HttpUrl("https://canterlot.com.br/verify")
+            BaseVerificationContext(
+                recipient_name="Twilight",
+                code=invalid_code,
+                action_url=HttpUrl("https://canterlot.com.br/verify"),
             )
 
-    def it_accepts_and_automatically_capitalizes_mixed_case_eight_char_codes():
-        context = VerificationContext(
+    def it_accepts_eight_digit_codes():
+        context = BaseVerificationContext(
             recipient_name="Twilight",
-            code="a1b2c3d4",
+            code=SOME_CODE,
             action_url=HttpUrl("https://canterlot.com.br/verify"),
         )
-        assert context.code == "A1B2C3D4"
+        assert context.code == SOME_CODE
+
+    def it_raises_not_implemented_error_for_base_verification_expires_in_minutes():
+        class DummyVerificationContext(BaseVerificationContext):
+            pass
+
+        ctx = DummyVerificationContext(
+            recipient_name="Twilight",
+            code=SOME_CODE,
+            action_url=HttpUrl("https://canterlot.com.br/verify"),
+        )
+        with pytest.raises(NotImplementedError, match="Subclasses must define expires_in_minutes"):
+            _ = ctx.expires_in_minutes
+
+
+def describe_verification_expires_in_display():
+    def it_formats_display_for_under_sixty_minutes():
+        class MockMinutesContext(BaseVerificationContext):
+            @property
+            def expires_in_minutes(self) -> int:
+                return 10
+
+        ctx = MockMinutesContext(
+            recipient_name="Twilight",
+            code=SOME_CODE,
+            action_url=HttpUrl("https://canterlot.com.br/verify"),
+        )
+        assert ctx.expires_in_display == "10 minutes"
+
+    def it_formats_display_for_exact_single_or_multiple_hours():
+        class MockHoursContext(BaseVerificationContext):
+            @property
+            def expires_in_minutes(self) -> int:
+                return 60
+
+        ctx1 = MockHoursContext(
+            recipient_name="Twilight",
+            code=SOME_CODE,
+            action_url=HttpUrl("https://canterlot.com.br/verify"),
+        )
+        assert ctx1.expires_in_display == "1 hour"
+
+        class MockMultiHoursContext(BaseVerificationContext):
+            @property
+            def expires_in_minutes(self) -> int:
+                return 120
+
+        ctx2 = MockMultiHoursContext(
+            recipient_name="Twilight",
+            code=SOME_CODE,
+            action_url=HttpUrl("https://canterlot.com.br/verify"),
+        )
+        assert ctx2.expires_in_display == "2 hours"
+
+    def it_formats_display_for_hours_and_leftover_minutes():
+        class MockCompoundContext(BaseVerificationContext):
+            @property
+            def expires_in_minutes(self) -> int:
+                return 125
+
+        ctx = MockCompoundContext(
+            recipient_name="Twilight",
+            code=SOME_CODE,
+            action_url=HttpUrl("https://canterlot.com.br/verify"),
+        )
+        assert ctx.expires_in_display == "2 hours 5 minutes"
 
 
 def describe_oauth_provider_formatting():
@@ -50,7 +131,7 @@ def describe_oauth_provider_formatting():
         with pytest.raises(ValidationError):
             LunaProviderActionContext(
                 recipient_name="Twilight",
-                provider_name="FACEBOOK",
+                provider_name="UNSUPPORTED_PROVIDER",
                 action_url=HttpUrl("https://canterlot.com.br/security"),
             )
 
@@ -76,29 +157,152 @@ def describe_member_role_formatting():
         assert dumped["role_name"] == expected_title
 
     def it_cascades_role_formatting_across_deep_inheritance_chains():
-        context = LunaOwnershipReclaimedContext(
+        context = SpikeRoleContext(
             recipient_name="Twilight",
-            actor_name="Princess Celestia",
             club_name="Canterlot Court",
             action_url=HttpUrl("https://canterlot.com.br/club"),
+            notifications_url=HttpUrl("https://canterlot.com.br/notifications"),
             role_name=MemberRole.ADMIN,
         )
         dumped = context.model_dump(mode="json")
         assert dumped["role_name"] == "Admin"
 
 
+def describe_from_domain_constructors():
+    def it_constructs_recipient_context():
+        user = UserFactory.build()
+        ctx = RecipientContext.from_domain(user)
+        assert ctx.recipient_name == user.name
+
+    def it_constructs_club_action_context():
+        user = UserFactory.build()
+        club = ClubFactory.build()
+        frontend_url = get_settings().frontend_url
+
+        ctx = ClubActionContext.from_domain(user, club)
+        assert ctx.recipient_name == user.name
+        assert ctx.club_name == club.name
+        assert str(ctx.action_url) == f"{frontend_url}/clubs/{club.slug}"
+
+    def it_constructs_club_actor_action_context():
+        user = UserFactory.build()
+        actor = UserFactory.build()
+        club = ClubFactory.build()
+
+        ctx = ClubActorActionContext.from_domain(user, actor, club)
+        assert ctx.recipient_name == user.name
+        assert ctx.actor_name == actor.name
+        assert ctx.club_name == club.name
+
+    def it_constructs_auth_provider_context():
+        user = UserFactory.build()
+
+        ctx = AuthProviderContext.from_domain(user, AuthProviderName.GOOGLE)
+        assert ctx.recipient_name == user.name
+        assert ctx.provider_name == "Google"
+
+    def it_constructs_invite_external_context():
+        actor = UserFactory.build()
+        club = ClubFactory.build()
+        frontend_url = get_settings().frontend_url
+
+        ctx = InviteExternalContext.from_domain(actor, club, invite="token-123")
+        assert ctx.inviter_name == actor.name
+        assert ctx.club_name == club.name
+        assert str(ctx.action_url) == f"{frontend_url}/invites/token-123/preview"
+
+    def it_constructs_invite_internal_context():
+        user = UserFactory.build()
+        actor = UserFactory.build()
+        club = ClubFactory.build()
+
+        ctx = InviteInternalContext.from_domain(user, actor, club, invite="token-123")
+        assert ctx.recipient_name == user.name
+        assert ctx.inviter_name == actor.name
+        assert ctx.club_name == club.name
+
+    def it_constructs_spike_base_context():
+        user = UserFactory.build()
+        club = ClubFactory.build()
+        frontend_url = get_settings().frontend_url
+
+        ctx = SpikeBaseContext.from_domain(user, club)
+        assert ctx.recipient_name == user.name
+        assert ctx.club_name == club.name
+        assert str(ctx.notifications_url) == f"{frontend_url}/notifications"
+
+    def it_constructs_spike_action_context():
+        user = UserFactory.build()
+        club = ClubFactory.build()
+        frontend_url = get_settings().frontend_url
+
+        ctx = SpikeActionContext.from_domain(user, club, "/vote")
+        assert ctx.recipient_name == user.name
+        assert str(ctx.action_url) == f"{frontend_url}/vote"
+
+    def it_constructs_spike_book_context():
+        user = UserFactory.build()
+        club = ClubFactory.build()
+        frontend_url = get_settings().frontend_url
+
+        ctx = SpikeBookContext.from_domain(user, club, "The Art of War", "/books/1")
+        assert ctx.book_title == "The Art of War"
+        assert str(ctx.action_url) == f"{frontend_url}/books/1"
+
+    def it_constructs_spike_role_context():
+        user = UserFactory.build()
+        club = ClubFactory.build()
+
+        ctx = SpikeRoleContext.from_domain(user, club, MemberRole.ADMIN, is_promotion=True)
+        assert ctx.role_name == "Admin"
+        assert ctx.is_promotion is True
+
+    def it_constructs_password_changed_context():
+        user = UserFactory.build()
+
+        ctx_changed = PasswordChangedContext.from_domain(user, is_creation=False)
+        assert ctx_changed.action == "changed"
+
+        ctx_created = PasswordChangedContext.from_domain(user, is_creation=True)
+        assert ctx_created.action == "created"
+
+    def it_constructs_password_reset_validation_context():
+        user = UserFactory.build()
+        code = secret_code_adapter.validate_python(SOME_CODE)
+        frontend_url = get_settings().frontend_url
+
+        ctx = PasswordResetValidationContext.from_domain(user, code=code, is_creation=False)
+        assert ctx.action == "reset"
+        assert ctx.action_capitalized == "Reset"
+        assert ctx.button_label == "Reset password"
+        assert str(ctx.action_url).startswith(f"{frontend_url}/reset-password?token=")
+
+        ctx_create = PasswordResetValidationContext.from_domain(user, code=code, is_creation=True)
+        assert ctx_create.action == "create"
+
+    def it_constructs_luna_provider_action_context():
+        user = UserFactory.build()
+        frontend_url = get_settings().frontend_url
+
+        ctx = LunaProviderActionContext.from_domain(user, AuthProviderName.GOOGLE)
+        assert ctx.provider_name == "Google"
+        assert str(ctx.action_url) == f"{frontend_url}/settings/security"
+
+
 def describe_string_constraints():
     @pytest.mark.parametrize("whitespace_string", ["", "   ", "\n", "\t"])
     def it_rejects_empty_or_whitespace_only_strings_for_required_fields(whitespace_string):
         with pytest.raises(ValidationError):
-            VerificationContext(
-                recipient_name=whitespace_string, code="A1B2C3D4", action_url=HttpUrl("https://canterlot.com.br/verify")
+            BaseVerificationContext(
+                recipient_name=whitespace_string,
+                code=SOME_CODE,
+                action_url=HttpUrl("https://canterlot.com.br/verify"),
             )
 
     def it_strips_leading_and_trailing_whitespace_from_valid_strings():
-        context = VerificationContext(
+        context = BaseVerificationContext(
             recipient_name="  Twilight Sparkle  ",
-            code="A1B2C3D4",
+            code=SOME_CODE,
             action_url=HttpUrl("https://canterlot.com.br/verify"),
         )
         assert context.recipient_name == "Twilight Sparkle"
@@ -108,14 +312,14 @@ def describe_url_security_constraints():
     @pytest.mark.parametrize(
         "unsecure_url",
         [
-            "http://canterlot.com.br/unsubscribe",
             "ftp://canterlot.com.br/files",
         ],
     )
-    def it_rejects_non_https_protocols(unsecure_url):
+    def it_rejects_non_http_protocols(unsecure_url):
         with pytest.raises(ValidationError):
-            VerificationContext(
+            BaseVerificationContext(
                 recipient_name="Twilight",
-                code="A1B2C3D4",
-                action_url=unsecure_url,  # type: ignore
+                code=SOME_CODE,
+                action_url=HttpUrl("https://canterlot.com.br/verify"),
+                unsubscribe_url=unsecure_url,  # type: ignore
             )

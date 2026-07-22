@@ -1,0 +1,20 @@
+{% extends "celestia/layout.html.j2" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(recipient_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    Welcome to {{ ui.canterlot(punc="!") }} Your account was successfully created using {{ ui.t_no(provider_name) }}.
+  {% endcall %}
+
+  {% call ui.text_block() %}
+    You're all set to join book clubs, track your reading, and connect with other readers.
+  {% endcall %}
+
+  {% call ui.alert_box(type="info") %}
+    If you didn't create an account using {{ ui.t_no(provider_name) }}, please contact support immediately.
+  {% endcall %}
+
+  {{ ui.support_button() }}
+{% endblock %}

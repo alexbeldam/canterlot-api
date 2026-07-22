@@ -12,7 +12,7 @@
   {{ ui.code_box(code) }}
 
   {% call ui.alert_box(type="info") %}
-    The code expires in 30 minutes. If you didn't create this account, you can safely ignore this email.
+    The code expires in {{ expires_in_display }}. If you didn't create this account, you can safely ignore this email.
   {% endcall %}
 
   {{ ui.action_button(action_url, "Verify email") }}

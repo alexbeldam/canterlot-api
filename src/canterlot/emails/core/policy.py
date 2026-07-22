@@ -20,6 +20,24 @@ class EmailPolicyEngine:
         return bool(external_block and external_block.get("suppressed") == "1")
 
     @staticmethod
+    async def check_external_suppressions(
+        emails: list[NormalizedEmailStr],
+        cache_repo: "CacheRepository",
+    ) -> set[NormalizedEmailStr]:
+        if not emails:
+            return set()
+
+        keys = [EXTERNAL_SUPPRESSION_TEMPLATE.format(email=email) for email in emails]
+        results = await cache_repo.find_many(keys)
+
+        suppressed: set[NormalizedEmailStr] = set()
+        for email, block in zip(emails, results, strict=True):
+            if block and block.get("suppressed") == "1":
+                suppressed.add(email)
+
+        return suppressed
+
+    @staticmethod
     def is_delivery_allowed(task: EmailTaskPayload, preferences: "EmailPreferencesSchema") -> bool:
         log = logger.bind(
             email=task.to,
@@ -37,7 +55,11 @@ class EmailPolicyEngine:
             log.debug("Dropping task: User explicitly opted out of category.")
             return False
 
-        if task.club_id and task.club_id in preferences.clubs_opt_out:
+        if (
+            task.template.category == EmailCategory.ENGAGEMENT
+            and task.club_id
+            and task.club_id in preferences.clubs_opt_out
+        ):
             log.debug("Dropping task: User explicitly opted out of club ID.")
             return False
 

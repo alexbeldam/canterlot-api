@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
-from pydantic import BaseModel
 
+from canterlot.emails.core import schemas
 from canterlot.emails.core.definitions import EmailTemplate
 from canterlot.types import NormalizedEmailStr
 
@@ -18,8 +18,8 @@ _REPLY_TO = "sunset@canterlot.com.br"
 
 
 @dataclass(frozen=True)
-class RenderedEmailTemplate:
-    template: EmailTemplate
+class RenderedEmailTemplate[TContext: schemas.BaseEmailContext]:
+    template: EmailTemplate[TContext]
     subject: str
     html: str
     sender: str
@@ -48,7 +48,13 @@ _ENV = Environment(
 )
 
 
-def _format_string(template: str, context: dict[str, Any], *, field_name: str, template_enum: EmailTemplate) -> str:
+def _format_string(
+    template: str,
+    context: dict[str, Any],
+    *,
+    field_name: str,
+    template_enum: EmailTemplate[Any],
+) -> str:
     try:
         return template.format(**context)
     except KeyError as exc:
@@ -56,10 +62,7 @@ def _format_string(template: str, context: dict[str, Any], *, field_name: str, t
         raise ValueError(f"Missing '{missing}' for {field_name} in email template '{template_enum.name}'.") from exc
 
 
-def _build_headers(template_enum: EmailTemplate, context: dict[str, Any]) -> dict[str, str] | None:
-    if not template_enum.brand.includes_preferences:
-        return None
-
+def _build_headers(context: dict[str, Any]) -> dict[str, str] | None:
     unsubscribe_url = context.get("unsubscribe_url")
     if not isinstance(unsubscribe_url, str) or not unsubscribe_url:
         return None
@@ -70,10 +73,11 @@ def _build_headers(template_enum: EmailTemplate, context: dict[str, Any]) -> dic
     }
 
 
-def render_email_template(template: EmailTemplate, context: dict[str, Any] | BaseModel) -> RenderedEmailTemplate:
-    validated_context = template.context_schema(**context) if isinstance(context, dict) else context
-
-    context_dict = validated_context.model_dump(mode="json")
+def render_email_template[TContext: schemas.BaseEmailContext](
+    template: EmailTemplate[TContext],
+    context: TContext,
+) -> RenderedEmailTemplate[TContext]:
+    context_dict = context.model_dump(mode="json")
 
     subject = _format_string(template.subject_template, context_dict, field_name="subject", template_enum=template)
 
@@ -101,5 +105,5 @@ def render_email_template(template: EmailTemplate, context: dict[str, Any] | Bas
         html=html,
         sender=template.brand.sender,
         reply_to=_REPLY_TO,
-        headers=_build_headers(template, render_context),
+        headers=_build_headers(render_context),
     )

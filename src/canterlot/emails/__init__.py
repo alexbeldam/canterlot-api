@@ -1,9 +1,11 @@
 from .core import (
+    ClubPreferenceEmailTemplate,
     EmailCategory,
     EmailPolicyEngine,
     EmailPriority,
     EmailTaskPayload,
     EmailTemplate,
+    GlobalEmailTemplate,
     RenderedEmailTemplate,
     SubBrand,
     Templates,
@@ -13,6 +15,7 @@ from .factories import get_email_client
 from .interfaces import EmailClient, EmailMessage, EmailSendResult
 
 __all__ = [
+    "ClubPreferenceEmailTemplate",
     "EmailCategory",
     "EmailClient",
     "EmailMessage",
@@ -21,6 +24,7 @@ __all__ = [
     "EmailSendResult",
     "EmailTaskPayload",
     "EmailTemplate",
+    "GlobalEmailTemplate",
     "RenderedEmailTemplate",
     "SubBrand",
     "Templates",
