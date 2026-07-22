@@ -4,17 +4,9 @@ import pytest
 from pydantic import ValidationError
 
 from canterlot.dto.catalog import BookSuggestionRequest, CatalogEntryResponse, SuggestionResponse, SuggestionStatus
-from canterlot.models.book import BookModel, BookProviderIdentifier
+from canterlot.factories import BookFactory
+from canterlot.models.book import BookProviderIdentifier
 from canterlot.types import BookProviderName
-
-
-def _book_document(**overrides) -> BookModel:
-    defaults = {
-        "external_id": BookProviderIdentifier(BookProviderName.GOOGLE, "abc123"),
-        "title": "The Hobbit",
-        "created_at": datetime.now(UTC),
-    }
-    return BookModel(**{**defaults, **overrides})
 
 
 def describe_book_suggestion_request():
@@ -75,10 +67,16 @@ def describe_suggestion_response():
 
 def describe_catalog_entry_response():
     def it_builds_from_a_book_model_plus_suggestion_metadata():
-        book = _book_document()
         suggested_at = datetime.now(UTC)
-
-        entry = CatalogEntryResponse.from_model(book, suggested_by="twilight_sparkle", suggested_at=suggested_at)
+        entry = CatalogEntryResponse.from_model(
+            BookFactory.build(
+                external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "abc123"),
+                title="The Hobbit",
+                created_at=datetime.now(UTC),
+            ),
+            suggested_by="twilight_sparkle",
+            suggested_at=suggested_at,
+        )
 
         assert entry.title == "The Hobbit"
         assert str(entry.external_id) == "google-books__abc123"
@@ -87,7 +85,13 @@ def describe_catalog_entry_response():
 
     def it_does_not_expose_the_internal_book_id():
         entry = CatalogEntryResponse.from_model(
-            _book_document(), suggested_by="twilight_sparkle", suggested_at=datetime.now(UTC)
+            BookFactory.build(
+                external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "abc123"),
+                title="The Hobbit",
+                created_at=datetime.now(UTC),
+            ),
+            suggested_by="twilight_sparkle",
+            suggested_at=datetime.now(UTC),
         )
 
         assert not hasattr(entry, "id")

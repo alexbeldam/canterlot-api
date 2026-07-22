@@ -7,41 +7,41 @@ from canterlot.config import get_settings
 from canterlot.dto.user import (
     AvatarDTO,
     SetAvatarRequest,
-    UpdateProfileRequest,
     UserProfileResponse,
 )
-from canterlot.models.user import AvatarSchema, UserModel
+from canterlot.factories import UpdateProfileRequestFactory, UserFactory
+from canterlot.models.user import AvatarSchema
 from canterlot.types import AuthProviderName, BadgeReason
 
 
 def describe_update_profile_request():
     def it_rejects_a_request_with_no_fields_provided():
         with pytest.raises(ValidationError):
-            UpdateProfileRequest()
+            UpdateProfileRequestFactory.build(name=None, username=None)
 
     def it_accepts_only_a_name():
-        request = UpdateProfileRequest(name="Alice Smith")
+        request = UpdateProfileRequestFactory.build(name="Alice Smith", username=None)
         assert request.name == "Alice Smith"
         assert request.username is None
 
     def it_accepts_only_a_username():
-        request = UpdateProfileRequest(username="ALICE_1")
+        request = UpdateProfileRequestFactory.build(name=None, username="ALICE_1")
         assert request.username == "alice_1"
         assert request.name is None
 
     def it_lowercases_the_username_when_provided():
-        request = UpdateProfileRequest(username="ALICE_1")
+        request = UpdateProfileRequestFactory.build(username="ALICE_1")
         assert request.username == "alice_1"
 
     @pytest.mark.parametrize("bad_username", ["ab", "a" * 31, "has space", "has-dash"])
     def it_rejects_a_username_outside_constraints(bad_username: str):
         with pytest.raises(ValidationError):
-            UpdateProfileRequest(username=bad_username)
+            UpdateProfileRequestFactory.build(username=bad_username)
 
     @pytest.mark.parametrize("bad_name", ["A", "a" * 51, "  "])
     def it_rejects_a_name_outside_constraints(bad_name: str):
         with pytest.raises(ValidationError):
-            UpdateProfileRequest(name=bad_name)
+            UpdateProfileRequestFactory.build(name=bad_name)
 
 
 def describe_avatar_dto():
@@ -67,7 +67,7 @@ def describe_set_avatar_request():
 
 def describe_user_profile_response_from_model():
     def it_reflects_the_users_name_username_and_email():
-        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
+        user = UserFactory.build(name="Alice Smith", username="alice_1", email="a@b.com")
 
         response = UserProfileResponse.from_model(user)
 
@@ -78,7 +78,7 @@ def describe_user_profile_response_from_model():
         assert response.generated_avatar_seed == user.generated_avatar_seed
 
     def it_reflects_the_users_avatar_when_set():
-        user = UserModel(
+        user = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="a@b.com",
@@ -92,7 +92,7 @@ def describe_user_profile_response_from_model():
         assert str(response.avatar.value) == "https://example.com/pic.jpg"
 
     def it_reflects_the_users_earned_badges():
-        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
+        user = UserFactory.build(name="Alice Smith", username="alice_1", email="a@b.com")
 
         response = UserProfileResponse.from_model(user)
 
@@ -100,7 +100,14 @@ def describe_user_profile_response_from_model():
         assert response.badges[0].reason == BadgeReason.JOINED
 
     def it_needs_profile_completion_and_reacceptance_for_a_brand_new_account():
-        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
+        user = UserFactory.build(
+            name="Alice Smith",
+            username="alice_1",
+            email="a@b.com",
+            accepted_terms_version=0,
+            accepted_privacy_version=0,
+            profile_completed_at=None,
+        )
 
         response = UserProfileResponse.from_model(user)
 
@@ -110,7 +117,7 @@ def describe_user_profile_response_from_model():
 
     def it_needs_nothing_once_fully_accepted_at_the_current_version():
         settings = get_settings().auth
-        user = UserModel(
+        user = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="a@b.com",
@@ -129,7 +136,7 @@ def describe_user_profile_response_from_model():
 
     def it_needs_reacceptance_when_the_accepted_version_is_behind_current():
         settings = get_settings().auth
-        user = UserModel(
+        user = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="a@b.com",

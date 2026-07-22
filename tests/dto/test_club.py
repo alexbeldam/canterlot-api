@@ -11,8 +11,9 @@ from canterlot.dto.club import (
     ClubResponse,
     ClubSettingsUpdateRequest,
 )
-from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
-from canterlot.models.user import AvatarSchema, UserModel
+from canterlot.factories import ClubCreateRequestFactory, ClubFactory, UserFactory
+from canterlot.models.club import MemberSchema, PendingApprovalSchema
+from canterlot.models.user import AvatarSchema
 from canterlot.types import AuthProviderName, JoinPolicy, MemberRole
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -28,7 +29,7 @@ def describe_club_create_request():
         assert request.preferred_languages == []
 
     def it_normalizes_preferred_languages():
-        request = ClubCreateRequest(name="Book Club", preferred_languages=["English", "  pt-br  "])
+        request = ClubCreateRequestFactory.build(name="Book Club", preferred_languages=["English", "  pt-br  "])
         assert request.preferred_languages == ["en", "pt-BR"]
 
 
@@ -57,7 +58,7 @@ def describe_club_settings_update_request():
 
 def describe_club_response_from_model():
     def it_replaces_object_ids_with_usernames():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
@@ -74,7 +75,7 @@ def describe_club_response_from_model():
         assert not hasattr(response, "catalog")
 
     def it_sorts_members_by_role_then_by_username():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[
@@ -103,7 +104,7 @@ def describe_club_response_from_model():
 
 def describe_club_member_profile_response_from_models():
     def it_combines_the_user_and_member_fields():
-        user = UserModel(name="Carol Jones", username="carol_3", email="carol@example.com")
+        user = UserFactory.build(name="Carol Jones", username="carol_3", email="carol@example.com")
         member = MemberSchema(user_id=SOME_MEMBER_ID, role=MemberRole.ADMIN)
 
         response = ClubMemberProfileResponse.from_models(user, member)
@@ -116,12 +117,13 @@ def describe_club_member_profile_response_from_models():
         assert not hasattr(response, "email")
 
     def it_reflects_the_users_avatar_when_set():
-        user = UserModel(
+        user = UserFactory.build(
             name="Carol Jones",
             username="carol_3",
             email="carol@example.com",
             avatar=AvatarSchema(
-                source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash")
+                source=AuthProviderName.GRAVATAR,
+                value=HttpUrl("https://gravatar.com/avatar/somehash"),
             ),
         )
         member = MemberSchema(user_id=SOME_MEMBER_ID, role=MemberRole.MEMBER)
@@ -135,7 +137,7 @@ def describe_club_member_profile_response_from_models():
 
 def describe_club_detail_response_from_model_with_pending():
     def it_resolves_pending_approvals_to_usernames_and_timestamps():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
@@ -154,16 +156,17 @@ def describe_club_detail_response_from_model_with_pending():
         assert response.pending_approvals[0].requested_at == club.pending_approvals[0].requested_at
 
     def it_never_exposes_banned_users():
-        club = ClubModel(name="Book Club", slug="book-club")
+        club = ClubFactory.build(name="Book Club", slug="book-club")
+        usernames = {member.user_id: ClubFactory.__faker__.user_name().replace(".", "_") for member in club.members}
 
-        response = ClubDetailResponse.from_model_with_pending(club, {}, {}, viewer_id=SOME_OWNER_ID)
+        response = ClubDetailResponse.from_model_with_pending(club, usernames, {}, viewer_id=SOME_OWNER_ID)
 
         assert not hasattr(response, "banned_users")
         assert response.pending_approvals == []
 
     def it_sorts_pending_approvals_by_requested_at_regardless_of_storage_order():
         now = datetime.now(UTC)
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
@@ -183,7 +186,7 @@ def describe_club_detail_response_from_model_with_pending():
         assert [p.username for p in response.pending_approvals] == ["pending_2", "pending_1"]
 
     def it_has_no_protection_state_when_no_transfer_ever_happened():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[MemberSchema(user_id=SOME_OWNER_ID, role=MemberRole.OWNER)],
@@ -197,7 +200,7 @@ def describe_club_detail_response_from_model_with_pending():
         assert response.active_reclaim_deadline is None
 
     def it_exposes_protected_former_owner_to_any_viewer_within_the_30_day_cooldown():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[
@@ -218,7 +221,7 @@ def describe_club_detail_response_from_model_with_pending():
         assert response.protected_former_owner == "former_owner"
 
     def it_hides_protected_former_owner_once_the_30_day_cooldown_has_elapsed():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[
@@ -240,7 +243,7 @@ def describe_club_detail_response_from_model_with_pending():
 
     def it_exposes_active_reclaim_deadline_only_to_the_protected_former_owner_within_24_hours():
         transferred_at = datetime.now(UTC) - timedelta(hours=1)
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[
@@ -253,17 +256,23 @@ def describe_club_detail_response_from_model_with_pending():
         usernames = {SOME_OWNER_ID: "owner_1", SOME_ADMIN_ID: "former_owner"}
 
         as_former_owner = ClubDetailResponse.from_model_with_pending(
-            club, user_usernames=usernames, pending_usernames={}, viewer_id=SOME_ADMIN_ID
+            club,
+            user_usernames=usernames,
+            pending_usernames={},
+            viewer_id=SOME_ADMIN_ID,
         )
         as_current_owner = ClubDetailResponse.from_model_with_pending(
-            club, user_usernames=usernames, pending_usernames={}, viewer_id=SOME_OWNER_ID
+            club,
+            user_usernames=usernames,
+            pending_usernames={},
+            viewer_id=SOME_OWNER_ID,
         )
 
         assert as_former_owner.active_reclaim_deadline == transferred_at + timedelta(hours=24)
         assert as_current_owner.active_reclaim_deadline is None
 
     def it_hides_active_reclaim_deadline_once_the_24_hour_window_has_elapsed():
-        club = ClubModel(
+        club = ClubFactory.build(
             name="Book Club",
             slug="book-club",
             members=[

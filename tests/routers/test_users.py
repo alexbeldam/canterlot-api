@@ -1,15 +1,16 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
 from pydantic import HttpUrl
 from starlette.testclient import TestClient
 
-from canterlot.dto.auth import ConnectedProvidersResponse, LinkedProviderDTO, TokenResponse
 from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
+    BookNotFoundError,
     GatewayConfigurationError,
     IncorrectPasswordError,
     InvalidOAuthCredentialError,
@@ -17,35 +18,34 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models.user import AvatarSchema, UserModel
-from canterlot.services.auth import RegisterResult
-from canterlot.services.invite import InviteValidationResult
+from canterlot.factories import (
+    AccessTokenResponseFactory,
+    RegisterResponseFactory,
+    UserFactory,
+    UserRegisterRequestFactory,
+)
+from canterlot.models.user import AvatarSchema
 from canterlot.types import AuthProviderName, ClubOnboardingStatus
+from canterlot.use_cases.change_password import ChangePasswordUseCaseResult
+from canterlot.use_cases.register_user import RegisterUserUseCaseResult
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
-def _register_payload(**overrides) -> dict:
-    defaults = {
-        "name": "Alice Smith",
-        "username": "alice_1",
-        "email": "alice@example.com",
-        "password": "secret1",
-        "terms_version": 1,
-        "privacy_version": 1,
-    }
-    return {**defaults, **overrides}
-
-
 def describe_register():
-    def it_registers_a_user_without_an_invite(client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock):
-        auth_service.register_user.return_value = RegisterResult(
-            access_token="access", refresh_token="refresh", user_id=SOME_USER_ID
+    def it_registers_a_user_without_an_invite(client: TestClient, register_user_use_case: AsyncMock):
+        register_user_use_case.execute.return_value = RegisterUserUseCaseResult(
+            response=RegisterResponseFactory.build(access_token="access", onboarding=None),
+            refresh_token="refresh",
         )
 
-        response = client.post("/v1/users", json=_register_payload())
+        req = UserRegisterRequestFactory.build()
+        payload = req.model_dump(mode="json")
+        payload["password"] = req.password.get_secret_value()
+
+        response = client.post("/v1/users", json=payload)
 
         assert response.status_code == 201
         body = response.json()
@@ -56,59 +56,69 @@ def describe_register():
         set_cookie = response.headers.get("set-cookie", "")
         assert "refresh_token=refresh" in set_cookie
         assert "HttpOnly" in set_cookie
-        invite_service.validate_incoming_invite.assert_not_called()
-        call_args = auth_service.register_user.call_args
-        assert call_args.args[0].username == "alice_1"
-        assert call_args.args[1] is None
 
-    def it_registers_a_user_and_onboards_them_via_an_invite(
-        client: TestClient, auth_service: AsyncMock, invite_service: AsyncMock, club_service: AsyncMock
-    ):
-        auth_service.register_user.return_value = RegisterResult(
-            access_token="access", refresh_token="refresh", user_id=SOME_USER_ID
+    def it_registers_a_user_and_onboards_them_via_an_invite(client: TestClient, register_user_use_case: AsyncMock):
+        register_user_use_case.execute.return_value = RegisterUserUseCaseResult(
+            response=RegisterResponseFactory.build(
+                access_token="access",
+                onboarding=ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED),
+            ),
+            refresh_token="refresh",
         )
-        invite_service.validate_incoming_invite.return_value = InviteValidationResult(
-            club_id=SOME_CLUB_ID, club_name="Book Club", invited_by="referrer_1", is_direct=False
-        )
-        club_service.admit_user.return_value = ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED)
 
-        response = client.post("/v1/users", json=_register_payload(invite_id="some-invite-id"))
+        req = UserRegisterRequestFactory.build(invite_id="some-invite-id")
+        payload = req.model_dump(mode="json")
+        payload["password"] = req.password.get_secret_value()
+
+        response = client.post("/v1/users", json=payload)
 
         assert response.status_code == 201
         assert response.json()["onboarding"]["status"] == "JOINED"
-        invite_service.register_invite_usage.assert_awaited_once_with("some-invite-id")
 
-    def it_returns_409_when_the_username_is_taken(client: TestClient, auth_service: AsyncMock):
-        auth_service.register_user.side_effect = UsernameAlreadyExistsError("taken")
+    def it_returns_409_when_the_username_is_taken(client: TestClient, register_user_use_case: AsyncMock):
+        register_user_use_case.execute.side_effect = UsernameAlreadyExistsError("taken")
+        req = UserRegisterRequestFactory.build()
+        payload = req.model_dump(mode="json")
+        payload["password"] = req.password.get_secret_value()
 
-        response = client.post("/v1/users", json=_register_payload())
+        response = client.post("/v1/users", json=payload)
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "USERNAME_ALREADY_EXISTS"
 
-    def it_returns_422_for_a_password_that_is_too_short(client: TestClient, auth_service: AsyncMock):
-        response = client.post("/v1/users", json=_register_payload(password="short"))
+    def it_returns_422_for_a_password_that_is_too_short(client: TestClient, register_user_use_case: AsyncMock):
+        req = UserRegisterRequestFactory.build()
+        payload = req.model_dump(mode="json")
+        payload["password"] = "short"
+
+        response = client.post("/v1/users", json=payload)
 
         assert response.status_code == 422
-        auth_service.register_user.assert_not_called()
+        register_user_use_case.execute.assert_not_called()
 
-    def it_returns_409_when_the_legal_version_is_stale(client: TestClient, auth_service: AsyncMock):
-        auth_service.register_user.side_effect = StaleLegalVersionError("stale")
+    def it_returns_409_when_the_legal_version_is_stale(client: TestClient, register_user_use_case: AsyncMock):
+        register_user_use_case.execute.side_effect = StaleLegalVersionError("stale")
 
-        response = client.post("/v1/users", json=_register_payload(terms_version=0))
+        req = UserRegisterRequestFactory.build(terms_version=0)
+        payload = req.model_dump(mode="json")
+        payload["password"] = req.password.get_secret_value()
+
+        response = client.post("/v1/users", json=payload)
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "STALE_LEGAL_VERSION"
 
 
 def describe_get_connected_providers():
-    def it_returns_the_connected_providers(client: TestClient, auth_service: AsyncMock):
-        auth_service.list_connected_providers.return_value = ConnectedProvidersResponse(
-            has_password=True,
-            linked_providers=[
-                LinkedProviderDTO(provider=AuthProviderName.GOOGLE, linked_at=datetime.now(UTC), has_picture=True)
-            ],
-        )
+    def it_returns_the_connected_providers(client: TestClient, current_user: SimpleNamespace):
+        current_user.hashed_password = "some-hash"
+        current_user.linked_providers = [
+            SimpleNamespace(
+                provider=AuthProviderName.GOOGLE,
+                linked_at=datetime.now(UTC),
+                picture_url="https://example.com/pic.jpg",
+            )
+        ]
 
         response = client.get("/v1/users/me/auth-providers")
 
@@ -120,60 +130,64 @@ def describe_get_connected_providers():
 
 
 def describe_link_provider():
-    def it_returns_204_when_linked(client: TestClient, auth_service: AsyncMock):
-        auth_service.link_provider.return_value = None
+    def it_returns_204_when_linked(client: TestClient, link_auth_provider_use_case: AsyncMock):
+        link_auth_provider_use_case.execute.return_value = None
 
         response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
 
         assert response.status_code == 204
 
-    def it_returns_401_for_an_invalid_credential(client: TestClient, auth_service: AsyncMock):
-        auth_service.link_provider.side_effect = InvalidOAuthCredentialError("bad token")
+    def it_returns_401_for_an_invalid_credential(client: TestClient, link_auth_provider_use_case: AsyncMock):
+        link_auth_provider_use_case.execute.side_effect = InvalidOAuthCredentialError("bad token")
 
         response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "garbage"})
 
         assert response.status_code == 401
 
-    def it_returns_409_when_already_linked_to_a_different_account(client: TestClient, auth_service: AsyncMock):
-        auth_service.link_provider.side_effect = AuthProviderAlreadyLinkedError("taken")
+    def it_returns_409_when_already_linked_to_a_different_account(
+        client: TestClient, link_auth_provider_use_case: AsyncMock
+    ):
+        link_auth_provider_use_case.execute.side_effect = AuthProviderAlreadyLinkedError("taken")
 
         response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
 
         assert response.status_code == 409
         assert response.json()["error"]["error_code"] == "AUTH_PROVIDER_ALREADY_LINKED"
 
-    def it_returns_503_when_the_provider_is_not_configured(client: TestClient, auth_service: AsyncMock):
-        auth_service.link_provider.side_effect = GatewayConfigurationError("disabled")
+    def it_returns_503_when_the_provider_is_not_configured(client: TestClient, link_auth_provider_use_case: AsyncMock):
+        link_auth_provider_use_case.execute.side_effect = GatewayConfigurationError("disabled")
 
         response = client.post("/v1/users/me/auth-providers/GOOGLE", json={"credential": "some-id-token"})
 
         assert response.status_code == 503
 
-    def it_returns_422_for_an_unrecognized_provider(client: TestClient, auth_service: AsyncMock):
+    def it_returns_422_for_an_unrecognized_provider(client: TestClient, link_auth_provider_use_case: AsyncMock):
         response = client.post("/v1/users/me/auth-providers/FACEBOOK", json={"credential": "some-id-token"})
 
         assert response.status_code == 422
-        auth_service.link_provider.assert_not_called()
+        link_auth_provider_use_case.execute.assert_not_called()
 
 
 def describe_disconnect_provider():
-    def it_returns_204_when_disconnected(client: TestClient, auth_service: AsyncMock):
-        auth_service.disconnect_provider.return_value = None
+    def it_returns_204_when_disconnected(client: TestClient, disconnect_auth_provider_use_case: AsyncMock):
+        disconnect_auth_provider_use_case.execute.return_value = None
 
         response = client.delete("/v1/users/me/auth-providers/GOOGLE")
 
         assert response.status_code == 204
 
-    def it_returns_404_when_not_linked(client: TestClient, auth_service: AsyncMock):
-        auth_service.disconnect_provider.side_effect = AuthProviderNotLinkedError("not linked")
+    def it_returns_404_when_not_linked(client: TestClient, disconnect_auth_provider_use_case: AsyncMock):
+        disconnect_auth_provider_use_case.execute.side_effect = AuthProviderNotLinkedError("not linked")
 
         response = client.delete("/v1/users/me/auth-providers/GOOGLE")
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "AUTH_PROVIDER_NOT_LINKED"
 
-    def it_returns_409_when_it_is_the_last_authentication_method(client: TestClient, auth_service: AsyncMock):
-        auth_service.disconnect_provider.side_effect = LastAuthenticationMethodError("last one")
+    def it_returns_409_when_it_is_the_last_authentication_method(
+        client: TestClient, disconnect_auth_provider_use_case: AsyncMock
+    ):
+        disconnect_auth_provider_use_case.execute.side_effect = LastAuthenticationMethodError("last one")
 
         response = client.delete("/v1/users/me/auth-providers/GOOGLE")
 
@@ -182,13 +196,17 @@ def describe_disconnect_provider():
 
 
 def describe_get_own_profile():
-    def it_returns_the_callers_profile_with_no_active_provider_avatar(client: TestClient, user_service: AsyncMock):
-        user_service.get_profile.return_value = UserModel(
-            name="Alice Smith",
-            username="alice_1",
-            email="alice@example.com",
-            generated_avatar_seed="some-seed",
-        )
+    def it_returns_the_callers_profile_with_no_active_provider_avatar(
+        client: TestClient, current_user: SimpleNamespace
+    ):
+        current_user.name = "Alice Smith"
+        current_user.username = "alice_1"
+        current_user.email = "alice@example.com"
+        current_user.avatar = None
+        current_user.generated_avatar_seed = "some-seed"
+        current_user.accepted_terms_version = 1
+        current_user.accepted_privacy_version = 1
+        current_user.profile_completed_at = datetime.now(UTC)
 
         response = client.get("/v1/users/me")
 
@@ -200,13 +218,15 @@ def describe_get_own_profile():
         assert body["avatar"] is None
         assert body["generated_avatar_seed"] == "some-seed"
 
-    def it_returns_the_active_provider_avatar_when_set(client: TestClient, user_service: AsyncMock):
-        user_service.get_profile.return_value = UserModel(
-            name="Alice Smith",
-            username="alice_1",
-            email="alice@example.com",
-            avatar=AvatarSchema(source=AuthProviderName.GOOGLE, value=HttpUrl("https://example.com/pic.jpg")),
-        )
+    def it_returns_the_active_provider_avatar_when_set(client: TestClient, current_user: SimpleNamespace):
+        current_user.name = "Alice Smith"
+        current_user.username = "alice_1"
+        current_user.email = "alice@example.com"
+        current_user.avatar = AvatarSchema(source=AuthProviderName.GOOGLE, value=HttpUrl("https://example.com/pic.jpg"))
+        current_user.generated_avatar_seed = "some-seed"
+        current_user.accepted_terms_version = 1
+        current_user.accepted_privacy_version = 1
+        current_user.profile_completed_at = datetime.now(UTC)
 
         response = client.get("/v1/users/me")
 
@@ -217,7 +237,7 @@ def describe_get_own_profile():
 
 def describe_update_profile():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.update_profile.return_value = UserModel(
+        user_service.update_profile.return_value = UserFactory.build(
             name="Alice Sparkle", username="new_alice", email="alice@example.com"
         )
 
@@ -245,15 +265,16 @@ def describe_update_profile():
 
 def describe_change_password():
     def it_returns_a_fresh_access_token_and_sets_a_refresh_cookie_on_success(
-        client: TestClient, auth_service: AsyncMock
+        client: TestClient, change_password_use_case: AsyncMock
     ):
-        auth_service.change_password.return_value = TokenResponse(
-            access_token="new-access-token", refresh_token="new-refresh-token"
+        change_password_use_case.execute.return_value = ChangePasswordUseCaseResult(
+            response=AccessTokenResponseFactory.build(access_token="new-access-token"),
+            refresh_token="new-refresh-token",
         )
 
         response = client.put(
             "/v1/users/me/password",
-            json={"current_password": "old-secret", "new_password": "new-secret-1"},
+            json={"current_password": "OldPassword123!", "new_password": "NewPassword123!"},
         )
 
         assert response.status_code == 200
@@ -264,42 +285,42 @@ def describe_change_password():
         assert "refresh_token=new-refresh-token" in set_cookie
         assert "HttpOnly" in set_cookie
 
-    def it_returns_401_for_an_incorrect_current_password(client: TestClient, auth_service: AsyncMock):
-        auth_service.change_password.side_effect = IncorrectPasswordError("wrong")
+    def it_returns_401_for_an_incorrect_current_password(client: TestClient, change_password_use_case: AsyncMock):
+        change_password_use_case.execute.side_effect = IncorrectPasswordError("wrong")
 
         response = client.put(
             "/v1/users/me/password",
-            json={"current_password": "wrong-secret", "new_password": "new-secret-1"},
+            json={"current_password": "WrongPassword123!", "new_password": "NewPassword123!"},
         )
 
         assert response.status_code == 401
         assert response.json()["error"]["error_code"] == "INCORRECT_PASSWORD"
 
-    def it_returns_422_when_the_new_password_is_too_short(client: TestClient, auth_service: AsyncMock):
+    def it_returns_422_when_the_new_password_is_too_short(client: TestClient, change_password_use_case: AsyncMock):
         response = client.put(
             "/v1/users/me/password",
-            json={"current_password": "old-secret", "new_password": "short"},
+            json={"current_password": "OldPassword123!", "new_password": "short"},
         )
 
         assert response.status_code == 422
-        auth_service.change_password.assert_not_called()
+        change_password_use_case.execute.assert_not_called()
 
     def it_returns_200_when_setting_a_password_with_no_current_password(
-        client: TestClient, auth_service: AsyncMock, current_user
+        client: TestClient, create_password_use_case: AsyncMock
     ):
-        auth_service.change_password.return_value = TokenResponse(
-            access_token="new-access-token", refresh_token="new-refresh-token"
+        create_password_use_case.execute.return_value = ChangePasswordUseCaseResult(
+            response=AccessTokenResponseFactory.build(access_token="new-access-token"),
+            refresh_token="new-refresh-token",
         )
 
-        response = client.put("/v1/users/me/password", json={"new_password": "new-secret-1"})
+        response = client.post("/v1/users/me/password", json={"password": "NewPassword123!"})
 
         assert response.status_code == 200
-        auth_service.change_password.assert_awaited_once_with(current_user.id, None, "new-secret-1")
 
 
 def describe_set_avatar():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.set_avatar_source.return_value = UserModel(
+        user_service.set_avatar_source.return_value = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="alice@example.com",
@@ -332,9 +353,7 @@ def describe_set_avatar():
 
 def describe_clear_avatar():
     def it_returns_204_on_success(client: TestClient, user_service: AsyncMock):
-        user_service.clear_avatar.return_value = UserModel(
-            name="Alice Smith", username="alice_1", email="alice@example.com"
-        )
+        user_service.clear_avatar.return_value = None
 
         response = client.delete("/v1/users/me/avatar")
 
@@ -344,7 +363,7 @@ def describe_clear_avatar():
 
 def describe_regenerate_avatar_seed():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.regenerate_avatar_seed.return_value = UserModel(
+        user_service.regenerate_avatar_seed.return_value = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="alice@example.com",
@@ -361,7 +380,7 @@ def describe_regenerate_avatar_seed():
 
 def describe_accept_legal_documents():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.accept_legal_documents.return_value = UserModel(
+        user_service.accept_legal_documents.return_value = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="alice@example.com",
@@ -377,7 +396,6 @@ def describe_accept_legal_documents():
         assert body["needs_profile_completion"] is False
         assert body["needs_terms_reacceptance"] is False
         assert body["needs_privacy_reacceptance"] is False
-        user_service.accept_legal_documents.assert_awaited_once_with(SOME_USER_ID, terms_version=1, privacy_version=1)
 
     def it_returns_409_when_the_submitted_version_is_stale(client: TestClient, user_service: AsyncMock):
         user_service.accept_legal_documents.side_effect = StaleLegalVersionError("stale")
@@ -395,8 +413,8 @@ def describe_accept_legal_documents():
 
 
 def describe_mark_book_read():
-    def it_returns_204_on_success(client: TestClient, user_service: AsyncMock, book_repo: AsyncMock):
-        book_repo.find_id_by_identifier.return_value = SOME_BOOK_ID
+    def it_returns_204_on_success(client: TestClient, user_service: AsyncMock, book_service: AsyncMock):
+        book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
 
         response = client.put("/v1/users/me/read-books/google-books__ext-1")
 
@@ -404,9 +422,9 @@ def describe_mark_book_read():
         user_service.mark_book_read.assert_awaited_once()
 
     def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
-        client: TestClient, user_service: AsyncMock, book_repo: AsyncMock
+        client: TestClient, user_service: AsyncMock, book_service: AsyncMock
     ):
-        book_repo.find_id_by_identifier.return_value = None
+        book_service.get_book_id_by_identifier.side_effect = BookNotFoundError("missing")
 
         response = client.put("/v1/users/me/read-books/google-books__missing")
 

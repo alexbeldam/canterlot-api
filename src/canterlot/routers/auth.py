@@ -1,38 +1,70 @@
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import SecretStr
 
-from canterlot.dto.auth import AccessTokenResponse, CreateSessionRequest
-from canterlot.exceptions import (
-    ClubNotFoundError,
-    GatewayConfigurationError,
-    InvalidCredentialsError,
-    InvalidInviteTokenError,
-    InvalidOAuthCredentialError,
-    InviteLinkDeactivatedError,
-    OAuthAccountCreationConflictError,
-    OAuthLinkRequiredError,
-    RateLimitExceededError,
-    TokenExpiredError,
-    TokenMalformedError,
+from canterlot.dto.auth import (
+    AccessTokenResponse,
+    ConfirmEmailVerificationRequest,
+    CreateSessionRequest,
+    RequestPasswordResetRequest,
+    ResetPasswordRequest,
+    ResetSessionStatusResponse,
+    ValidatePasswordResetCodeRequest,
 )
-from canterlot.models import ErrorResponseModel
-from canterlot.models.user import UsernameStr
-from canterlot.routers.cookies import clear_refresh_token_cookie, set_refresh_token_cookie
-from canterlot.routers.dependencies import (
+from canterlot.models import UserModel
+from canterlot.services import AuthService
+from canterlot.use_cases import (
+    ConfirmEmailVerificationUseCase,
+    CreateSessionUseCase,
+    RequestEmailVerificationUseCase,
+    RequestPasswordResetUseCase,
+    ResetPasswordUseCase,
+    ValidatePasswordResetCodeUseCase,
+)
+from canterlot.utils import get_logger
+
+from .cookies import (
+    clear_password_reset_token_cookie,
+    clear_refresh_token_cookie,
+    set_password_reset_token_cookie,
+    set_refresh_token_cookie,
+)
+from .dependencies.providers import (
     RefreshTokenContext,
     get_auth_service,
-    get_invite_service,
+    get_confirm_email_verification_use_case,
+    get_create_session_use_case,
+    get_current_user,
+    get_optional_current_user,
     get_optional_refresh_token_context,
+    get_request_email_verification_use_case,
+    get_request_password_reset_use_case,
+    get_reset_password_use_case,
+    get_user_from_reset_cookie,
     get_user_id_from_valid_refresh_token,
+    get_validate_password_reset_code_use_case,
+)
+from .dependencies.rate_limiter import (
+    rate_limit_email_verification_confirm_attempt,
+    rate_limit_email_verification_request_attempt,
     rate_limit_login_attempt,
+    rate_limit_password_reset_request_attempt,
+    rate_limit_password_reset_validation_attempt,
     rate_limit_refresh_attempt,
 )
-from canterlot.routers.openapi import INTERNAL_SERVER_ERROR_EXAMPLE, error_example
-from canterlot.services import AuthService, InviteService
-from canterlot.types import AuthOutcome, AuthProviderName, SessionType
-from canterlot.utils import get_logger
+from .responses import (
+    CONFIRM_EMAIL_VERIFICATION_RESPONSES,
+    CREATE_SESSION_RESPONSES,
+    GET_RESET_SESSION_STATUS_RESPONSES,
+    LOGOUT_RESPONSES,
+    REQUEST_EMAIL_VERIFICATION_RESPONSES,
+    REQUEST_PASSWORD_RESET_RESPONSES,
+    RESET_PASSWORD_RESPONSES,
+    ROTATE_SESSION_RESPONSES,
+    VALIDATE_PASSWORD_RESET_CODE_RESPONSES,
+)
 
 logger = get_logger(__name__)
 
@@ -44,111 +76,23 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     operation_id="createSession",
     response_model=AccessTokenResponse,
     dependencies=[Depends(rate_limit_login_attempt)],
-    responses={
-        status.HTTP_200_OK: {
-            "description": (
-                "Session created (password login, or an OAuth credential matched an existing linked account). "
-                "Access token returned in the body; the refresh token is set as an httpOnly session cookie."
-            )
-        },
-        status.HTTP_201_CREATED: {
-            "description": (
-                "OAuth credential verified and a new user account was created from this identity. Access token "
-                "returned in the body; the refresh token is set as an httpOnly session cookie."
-            )
-        },
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "InvalidCredentialsError: Incorrect username/password combination. "
-                "InvalidOAuthCredentialError: The provided OAuth credential failed cryptographic verification."
-            ),
-            "content": error_example(InvalidCredentialsError, InvalidOAuthCredentialError),
-        },
-        status.HTTP_409_CONFLICT: {
-            "model": ErrorResponseModel,
-            "description": (
-                "OAuthAccountCreationConflictError: A concurrent sign-in for this same identity left this "
-                "request unable to resolve to an account. Extremely rare; retrying the request resolves it. "
-                "OAuthLinkRequiredError: The OAuth credential's identity resolves to an account that already "
-                "exists under a different authentication method -- the frontend should prompt the user to log "
-                "in with that method and link this provider from there (see "
-                "POST /users/me/auth-providers/{provider})."
-            ),
-            "content": error_example(OAuthAccountCreationConflictError, OAuthLinkRequiredError),
-        },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": (
-                "Validation error. Fields don't match `type` (PASSWORD requires username+password, OAUTH "
-                "requires provider+credential), or `provider` is not a recognized authentication provider."
-            )
-        },
-        status.HTTP_429_TOO_MANY_REQUESTS: {
-            "model": ErrorResponseModel,
-            "description": (
-                "RateLimitExceededError: Too many sign-in attempts, either from this IP address or "
-                "against this account (PASSWORD sessions only -- OAUTH is limited by IP alone)."
-            ),
-            "content": error_example(RateLimitExceededError),
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected global backend execution failure or persistence error.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-        status.HTTP_503_SERVICE_UNAVAILABLE: {
-            "model": ErrorResponseModel,
-            "description": "GatewayConfigurationError: This authentication provider is not currently configured.",
-            "content": error_example(GatewayConfigurationError),
-        },
-    },
+    responses=CREATE_SESSION_RESPONSES,
 )
 async def create_session(
     payload: CreateSessionRequest,
     response: Response,
-    auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    invite_service: Annotated[InviteService, Depends(get_invite_service)],
+    use_case: Annotated[CreateSessionUseCase, Depends(get_create_session_use_case)],
 ) -> AccessTokenResponse:
-    if payload.type is SessionType.PASSWORD:
-        login_result = await auth_service.login_user(
-            username=cast(UsernameStr, payload.username),
-            plain_password=cast(str, payload.password),
-        )
-        set_refresh_token_cookie(response, login_result.refresh_token)
-        return AccessTokenResponse(access_token=login_result.access_token)
+    result = await use_case.execute(payload)
 
-    oauth_result = await auth_service.sign_in_with_provider(
-        cast(AuthProviderName, payload.provider),
-        cast(str, payload.credential),
-    )
-
-    if oauth_result.outcome == AuthOutcome.CREATED:
+    if result.is_new_user:
         response.status_code = status.HTTP_201_CREATED
-        response.headers["Location"] = "/v1/users/me"
+        if result.location_header:
+            response.headers["Location"] = result.location_header
 
-        if payload.invite_id:
-            await _attribute_oauth_referral(payload.invite_id, payload.invited_by, invite_service, auth_service)
+    set_refresh_token_cookie(response, result.refresh_token)
 
-    set_refresh_token_cookie(response, oauth_result.refresh_token)
-
-    return AccessTokenResponse(access_token=oauth_result.access_token)
-
-
-async def _attribute_oauth_referral(
-    invite_id: str,
-    invited_by: UsernameStr | None,
-    invite_service: InviteService,
-    auth_service: AuthService,
-) -> None:
-    log = logger.bind(invite_id=invite_id)
-    try:
-        preview = await invite_service.get_preview_metadata(invite_id, invited_by=invited_by)
-    except (InvalidInviteTokenError, InviteLinkDeactivatedError, ClubNotFoundError):
-        log.warning("Skipping referral attribution: invite could not be resolved for this new account")
-        return
-
-    if preview.invited_by_username:
-        await auth_service.attribute_referral(preview.invited_by_username)
+    return AccessTokenResponse(access_token=result.access_token)
 
 
 @router.post(
@@ -160,56 +104,20 @@ async def login(
     response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> AccessTokenResponse:
-    # Hidden from the OpenAPI schema -- this exists only so Swagger's built-in OAuth2-password
-    # "Authorize" popup has a real, form-encoded token endpoint to POST to. Real clients use
-    # POST /auth/sessions; this is never meant to be a second public way to log in.
     result = await auth_service.login_user(
         username=form_data.username,
-        plain_password=form_data.password,
+        plain_password=SecretStr(form_data.password),
     )
     set_refresh_token_cookie(response, result.refresh_token)
     return AccessTokenResponse(access_token=result.access_token)
 
 
 @router.put(
-    "/sessions/current",
+    "/sessions/me",
     operation_id="rotateSession",
     response_model=AccessTokenResponse,
     dependencies=[Depends(rate_limit_refresh_attempt)],
-    responses={
-        status.HTTP_200_OK: {
-            "description": (
-                "Session rotated successfully. Old session invalidated; a new access token is returned in the "
-                "body and a new refresh cookie is set."
-            )
-        },
-        status.HTTP_400_BAD_REQUEST: {
-            "model": ErrorResponseModel,
-            "description": (
-                "TokenMalformedError: Token payload parsing validation failed (corrupt or modified parameters)."
-            ),
-            "content": error_example(TokenMalformedError),
-        },
-        status.HTTP_401_UNAUTHORIZED: {
-            "model": ErrorResponseModel,
-            "description": (
-                "TokenExpiredError: The validation timeframe window for the provided token signature has lapsed. "
-                "InvalidCredentialsError: The refresh cookie is missing, its payload is missing a subject, or "
-                "the token has already been revoked or invalidated."
-            ),
-            "content": error_example(TokenExpiredError, InvalidCredentialsError),
-        },
-        status.HTTP_429_TOO_MANY_REQUESTS: {
-            "model": ErrorResponseModel,
-            "description": "RateLimitExceededError: Too many session-refresh attempts from this IP address.",
-            "content": error_example(RateLimitExceededError),
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected database context mutation exception during token lifecycle rotation.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
+    responses=ROTATE_SESSION_RESPONSES,
 )
 async def rotate_session(
     token_data: Annotated[RefreshTokenContext, Depends(get_user_id_from_valid_refresh_token)],
@@ -222,22 +130,10 @@ async def rotate_session(
 
 
 @router.delete(
-    "/sessions/current",
+    "/sessions/me",
     operation_id="logout",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={
-        status.HTTP_204_NO_CONTENT: {
-            "description": (
-                "Current session logged out and its refresh cookie cleared. Also returned, as a no-op, when "
-                "there was no active session to end."
-            )
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": ErrorResponseModel,
-            "description": "Unexpected database connectivity failure.",
-            "content": INTERNAL_SERVER_ERROR_EXAMPLE,
-        },
-    },
+    responses=LOGOUT_RESPONSES,
 )
 async def logout(
     token_data: Annotated[RefreshTokenContext | None, Depends(get_optional_refresh_token_context)],
@@ -250,3 +146,104 @@ async def logout(
         return
 
     await auth_service.logout(token_data.user_id, token_data.token)
+
+
+@router.post(
+    "/resets",
+    operation_id="requestPasswordReset",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password reset email",
+    dependencies=[Depends(rate_limit_password_reset_request_attempt)],
+    responses=REQUEST_PASSWORD_RESET_RESPONSES,
+)
+async def request_password_reset(
+    payload: RequestPasswordResetRequest,
+    use_case: Annotated[RequestPasswordResetUseCase, Depends(get_request_password_reset_use_case)],
+) -> None:
+    await use_case.execute(payload.identifier)
+
+
+@router.post(
+    "/resets/sessions",
+    operation_id="validatePasswordResetCode",
+    status_code=status.HTTP_200_OK,
+    summary="Validate password reset verification code",
+    dependencies=[Depends(rate_limit_password_reset_validation_attempt)],
+    responses=VALIDATE_PASSWORD_RESET_CODE_RESPONSES,
+)
+async def validate_password_reset_code(
+    payload: ValidatePasswordResetCodeRequest,
+    response: Response,
+    use_case: Annotated[ValidatePasswordResetCodeUseCase, Depends(get_validate_password_reset_code_use_case)],
+) -> None:
+    reset_token = await use_case.execute(payload)
+    set_password_reset_token_cookie(response, reset_token)
+
+
+@router.post(
+    "/resets/sessions/me",
+    operation_id="resetPassword",
+    response_model=AccessTokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Consume reset token and update password",
+    responses=RESET_PASSWORD_RESPONSES,
+)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    user: Annotated[UserModel, Depends(get_user_from_reset_cookie)],
+    response: Response,
+    use_case: Annotated[ResetPasswordUseCase, Depends(get_reset_password_use_case)],
+) -> AccessTokenResponse:
+    tokens = await use_case.execute(user, payload.new_password)
+
+    clear_password_reset_token_cookie(response)
+    set_refresh_token_cookie(response, tokens.refresh_token)
+
+    return AccessTokenResponse(access_token=tokens.access_token)
+
+
+@router.get(
+    "/resets/sessions/me",
+    operation_id="getResetSessionStatus",
+    response_model=ResetSessionStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Check active password reset session state",
+    responses=GET_RESET_SESSION_STATUS_RESPONSES,
+)
+async def get_reset_session_status(
+    user: Annotated[UserModel, Depends(get_user_from_reset_cookie)],
+) -> ResetSessionStatusResponse:
+    is_creation = user.hashed_password is None
+
+    return ResetSessionStatusResponse(is_creation=is_creation)
+
+
+@router.post(
+    "/verifications",
+    operation_id="requestEmailVerification",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request email verification code",
+    dependencies=[Depends(rate_limit_email_verification_request_attempt)],
+    responses=REQUEST_EMAIL_VERIFICATION_RESPONSES,
+)
+async def request_email_verification(
+    current_user: Annotated[UserModel, Depends(get_current_user)],
+    use_case: Annotated[RequestEmailVerificationUseCase, Depends(get_request_email_verification_use_case)],
+) -> None:
+    await use_case.execute(user=current_user)
+
+
+@router.put(
+    "/verifications",
+    operation_id="confirmEmailVerification",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Confirm email verification",
+    dependencies=[Depends(rate_limit_email_verification_confirm_attempt)],
+    responses=CONFIRM_EMAIL_VERIFICATION_RESPONSES,
+)
+async def confirm_email_verification(
+    payload: ConfirmEmailVerificationRequest,
+    use_case: Annotated[ConfirmEmailVerificationUseCase, Depends(get_confirm_email_verification_use_case)],
+    current_user: Annotated[UserModel | None, Depends(get_optional_current_user)] = None,
+) -> None:
+    await use_case.execute(payload=payload, current_user=current_user)

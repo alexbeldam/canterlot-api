@@ -5,6 +5,7 @@ from .books import router as books
 from .catalog import router as catalog
 from .clubs import router as clubs
 from .invites import router as invites
+from .unsubscribe import router as unsubscribe
 from .users import router as users
 
 router = APIRouter(prefix="/v1")
@@ -14,4 +15,5 @@ router.include_router(books)
 router.include_router(catalog)
 router.include_router(clubs)
 router.include_router(invites)
+router.include_router(unsubscribe)
 router.include_router(users)

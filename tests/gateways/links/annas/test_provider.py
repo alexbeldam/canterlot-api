@@ -2,7 +2,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from curl_cffi.requests import AsyncSession
+from polyfactory import Use
 
+from canterlot.factories import BaseLinkCadidateFactory
 from canterlot.gateways.links.annas import provider as provider_module
 from canterlot.gateways.links.annas.parser import SearchResult
 from canterlot.gateways.links.annas.provider import AnnaLinkProvider
@@ -10,16 +12,10 @@ from canterlot.models.book import SearchParams
 from canterlot.types import ExtensionType, LinkProviderName
 
 
-def _search_result(md5: str = "abc123", **overrides) -> SearchResult:
-    defaults = {
-        "md5": md5,
-        "title": "The Hobbit",
-        "authors": ["J.R.R. Tolkien"],
-        "languages": ["en"],
-        "extension": ExtensionType.PDF,
-        "url": "https://mirror.example.com/x.pdf",
-    }
-    return SearchResult.model_validate({**defaults, **overrides})
+class SearchResultFactory(BaseLinkCadidateFactory[SearchResult]):
+    __model__ = SearchResult
+
+    md5 = Use(lambda: SearchResultFactory.__faker__.md5())
 
 
 def _response(status_code: int = 200) -> MagicMock:
@@ -95,7 +91,7 @@ def describe_result_merging():
     async def it_dedupes_candidates_sharing_the_same_md5_across_queries(
         monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
     ):
-        shared = _search_result(md5="shared")
+        shared = SearchResultFactory.build()
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [shared])
         session.get.return_value = _response()
 
@@ -103,12 +99,12 @@ def describe_result_merging():
 
         assert len(results) == 1
         assert isinstance(results[0], SearchResult)
-        assert results[0].md5 == "shared"
+        assert results[0].md5 == shared.md5
 
     async def it_tolerates_one_query_failing_while_keeping_results_from_others(
         monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
     ):
-        good_result = _search_result(md5="good")
+        good_result = SearchResultFactory.build()
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [good_result])
 
         async def fake_get(_url, params=None):
@@ -120,7 +116,7 @@ def describe_result_merging():
 
         results = await provider.find_links(SearchParams(title="The Hobbit", isbn_13="9783161484100"))
 
-        assert [r.md5 for r in results if isinstance(r, SearchResult)] == ["good"]
+        assert [r.md5 for r in results if isinstance(r, SearchResult)] == [good_result.md5]
 
     async def it_raises_for_a_non_200_response_which_is_treated_as_a_failed_query(
         monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock

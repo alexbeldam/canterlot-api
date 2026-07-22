@@ -2,13 +2,16 @@ import pytest
 from pydantic import HttpUrl, SecretStr, ValidationError
 
 from canterlot.dto.auth import (
-    AccessTokenResponse,
     ConnectedProvidersResponse,
-    CreateSessionRequest,
-    LinkProviderRequest,
-    UserRegisterRequest,
 )
-from canterlot.models.user import LinkedProviderSchema, UserModel
+from canterlot.factories import (
+    AccessTokenResponseFactory,
+    CreateSessionRequestFactory,
+    LinkProviderRequestFactory,
+    UserFactory,
+    UserRegisterRequestFactory,
+)
+from canterlot.models.user import LinkedProviderSchema
 from canterlot.types import AuthProviderName, SessionType
 
 SOME_PASSWORD = SecretStr("Aa12345!")
@@ -16,7 +19,7 @@ SOME_PASSWORD = SecretStr("Aa12345!")
 
 def describe_username_normalization_and_constraints():
     def it_lowercases_the_username_on_the_request():
-        request = UserRegisterRequest(
+        request = UserRegisterRequestFactory.build(
             name="Alice Smith",
             username="ALICE_1",
             email="a@b.com",
@@ -29,7 +32,7 @@ def describe_username_normalization_and_constraints():
     @pytest.mark.parametrize("bad_username", ["ab", "a" * 31])
     def it_rejects_usernames_outside_the_length_bounds(bad_username: str):
         with pytest.raises(ValidationError):
-            UserRegisterRequest(
+            UserRegisterRequestFactory.build(
                 name="Alice Smith",
                 username=bad_username,
                 email="a@b.com",
@@ -41,7 +44,7 @@ def describe_username_normalization_and_constraints():
     @pytest.mark.parametrize("bad_username", ["has space", "has-dash", "has.dot", ""])
     def it_rejects_usernames_with_disallowed_characters(bad_username: str):
         with pytest.raises(ValidationError):
-            UserRegisterRequest(
+            UserRegisterRequestFactory.build(
                 name="Alice Smith",
                 username=bad_username,
                 email="a@b.com",
@@ -55,7 +58,7 @@ def describe_person_name_constraints():
     @pytest.mark.parametrize("bad_name", ["A", "a" * 51, "  "])
     def it_rejects_names_outside_the_length_bounds(bad_name: str):
         with pytest.raises(ValidationError):
-            UserRegisterRequest(
+            UserRegisterRequestFactory.build(
                 name=bad_name,
                 username="alice_1",
                 email="a@b.com",
@@ -67,7 +70,7 @@ def describe_person_name_constraints():
 
 def describe_email_normalization():
     def it_normalizes_the_email_on_the_request():
-        request = UserRegisterRequest(
+        request = UserRegisterRequestFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="  Alice@Example.COM  ",
@@ -80,26 +83,32 @@ def describe_email_normalization():
 
 def describe_create_session_request():
     def it_accepts_a_valid_password_session():
-        request = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password=SOME_PASSWORD)
+        request = CreateSessionRequestFactory.build(
+            type=SessionType.PASSWORD,
+            username="alice_1",
+            password=SOME_PASSWORD,
+        )
         assert request.username == "alice_1"
 
     def it_accepts_a_valid_oauth_session():
-        request = CreateSessionRequest(
-            type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE, credential="some-id-token"
+        request = CreateSessionRequestFactory.build(
+            type=SessionType.OAUTH,
+            provider=AuthProviderName.GOOGLE,
+            credential="some-id-token",
         )
         assert request.provider == AuthProviderName.GOOGLE
 
     def it_rejects_a_password_session_missing_the_password():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1")
+            CreateSessionRequestFactory.build(type=SessionType.PASSWORD, username="alice_1", password=None)
 
     def it_rejects_a_password_session_missing_the_username():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(type=SessionType.PASSWORD, password=SOME_PASSWORD)
+            CreateSessionRequestFactory.build(type=SessionType.PASSWORD, username=None, password=SOME_PASSWORD)
 
     def it_rejects_a_password_session_with_oauth_fields_set():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(
+            CreateSessionRequestFactory.build(
                 type=SessionType.PASSWORD,
                 username="alice_1",
                 password=SOME_PASSWORD,
@@ -108,15 +117,15 @@ def describe_create_session_request():
 
     def it_rejects_an_oauth_session_missing_the_credential():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE)
+            CreateSessionRequestFactory.build(type=SessionType.OAUTH, credential=None, provider=AuthProviderName.GOOGLE)
 
     def it_rejects_an_oauth_session_missing_the_provider():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(type=SessionType.OAUTH, credential="some-id-token")
+            CreateSessionRequestFactory.build(type=SessionType.OAUTH, credential="some-id-token", provider=None)
 
     def it_rejects_an_oauth_session_with_password_fields_set():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(
+            CreateSessionRequestFactory.build(
                 type=SessionType.OAUTH,
                 provider=AuthProviderName.GOOGLE,
                 credential="some-id-token",
@@ -124,7 +133,7 @@ def describe_create_session_request():
             )
 
     def it_accepts_an_oauth_session_with_invite_context():
-        request = CreateSessionRequest(
+        request = CreateSessionRequestFactory.build(
             type=SessionType.OAUTH,
             provider=AuthProviderName.GOOGLE,
             credential="some-id-token",
@@ -136,7 +145,7 @@ def describe_create_session_request():
 
     def it_rejects_a_password_session_with_invite_id_set():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(
+            CreateSessionRequestFactory.build(
                 type=SessionType.PASSWORD,
                 username="alice_1",
                 password=SOME_PASSWORD,
@@ -145,7 +154,7 @@ def describe_create_session_request():
 
     def it_rejects_a_password_session_with_invited_by_set():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(
+            CreateSessionRequestFactory.build(
                 type=SessionType.PASSWORD,
                 username="alice_1",
                 password=SOME_PASSWORD,
@@ -155,23 +164,32 @@ def describe_create_session_request():
 
 def describe_access_token_response():
     def it_defaults_the_token_type_to_bearer():
-        response = AccessTokenResponse(access_token="access")
+        response = AccessTokenResponseFactory.build(access_token="access")
         assert response.token_type == "bearer"
 
 
 def describe_link_provider_request():
     def it_defaults_redirect_uri_to_none():
-        request = LinkProviderRequest(credential="some-credential")
+        request = LinkProviderRequestFactory.build(credential="some-credential")
         assert request.redirect_uri is None
 
     def it_accepts_a_redirect_uri():
-        request = LinkProviderRequest(credential="some-code", redirect_uri="http://localhost:5173/callback")
+        request = LinkProviderRequestFactory.build(
+            credential="some-code",
+            redirect_uri="http://localhost:5173/callback",
+        )
         assert request.redirect_uri == "http://localhost:5173/callback"
 
 
 def describe_connected_providers_response_from_model():
     def it_reports_no_password_and_an_empty_list_for_an_oauth_only_account():
-        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com")
+        user = UserFactory.build(
+            name="Alice Smith",
+            username="alice_1",
+            email="a@b.com",
+            hashed_password=None,
+            linked_providers=[],
+        )
 
         response = ConnectedProvidersResponse.from_model(user)
 
@@ -182,7 +200,7 @@ def describe_connected_providers_response_from_model():
         linked = LinkedProviderSchema(
             provider=AuthProviderName.GOOGLE, external_id="sub-1", picture_url=HttpUrl("https://example.com/pic.jpg")
         )
-        user = UserModel(
+        user = UserFactory.build(
             name="Alice Smith",
             username="alice_1",
             email="a@b.com",
@@ -199,7 +217,7 @@ def describe_connected_providers_response_from_model():
 
     def it_reports_has_picture_false_when_the_linked_provider_has_no_picture():
         linked = LinkedProviderSchema(provider=AuthProviderName.GRAVATAR, external_id="wp-1", picture_url=None)
-        user = UserModel(name="Alice Smith", username="alice_1", email="a@b.com", linked_providers=[linked])
+        user = UserFactory.build(name="Alice Smith", username="alice_1", email="a@b.com", linked_providers=[linked])
 
         response = ConnectedProvidersResponse.from_model(user)
 

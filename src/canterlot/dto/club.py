@@ -1,21 +1,25 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field, model_validator
 
+from canterlot.config import get_settings
 from canterlot.dto.user import AvatarDTO, BadgeDTO
-from canterlot.models.club import (
-    OWNERSHIP_RECLAIM_WINDOW,
-    OWNERSHIP_TRANSFER_COOLDOWN,
-    ClubModel,
+from canterlot.models.club import ClubModel
+from canterlot.models.user import UserModel
+from canterlot.types import (
     ClubNameStr,
+    ClubOnboardingStatus,
     ClubSlugStr,
+    JoinPolicy,
+    LanguageStr,
+    MemberRole,
     MemberSchema,
+    PersonNameStr,
+    UsernameStr,
 )
-from canterlot.models.user import PersonNameStr, UserModel, UsernameStr
-from canterlot.types import ClubOnboardingStatus, JoinPolicy, LanguageStr, MemberRole
 
 
 class ClubCreateRequest(BaseModel):
@@ -156,13 +160,14 @@ class ClubDetailResponse(ClubResponse):
         protected_former_owner = None
         active_reclaim_deadline = None
         if club.protected_former_owner_id is not None and club.ownership_transferred_at is not None:
-            if now - club.ownership_transferred_at < OWNERSHIP_TRANSFER_COOLDOWN:
+            settings = get_settings().ratelimit
+            cooldown = timedelta(days=settings.club_ownership_transfer_cooldown_days)
+            window = timedelta(hours=settings.club_ownership_reclaim_window_hours)
+
+            if now - club.ownership_transferred_at < cooldown:
                 protected_former_owner = user_usernames.get(club.protected_former_owner_id)
-            if (
-                viewer_id == club.protected_former_owner_id
-                and now - club.ownership_transferred_at < OWNERSHIP_RECLAIM_WINDOW
-            ):
-                active_reclaim_deadline = club.ownership_transferred_at + OWNERSHIP_RECLAIM_WINDOW
+            if viewer_id == club.protected_former_owner_id and now - club.ownership_transferred_at < window:
+                active_reclaim_deadline = club.ownership_transferred_at + window
 
         return cls(
             **base.model_dump(),

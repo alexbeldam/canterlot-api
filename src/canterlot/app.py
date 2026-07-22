@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
     app.add_middleware(LastSeenMiddleware)
 
     redis_client = Redis.from_url(
-        settings.redis_url,
+        settings.db.redis_url.get_secret_value(),
         socket_timeout=15.0,
         socket_keepalive=True,
         health_check_interval=10,
@@ -110,7 +110,7 @@ def create_app() -> FastAPI:
         AuthenticationMiddleware,
         backend=AdminAuthBackend(
             admin_user=settings.admin_username,
-            admin_pass=settings.admin_password,
+            admin_pass=settings.admin_password.get_secret_value(),
         ),
         on_error=on_auth_error,
     )
