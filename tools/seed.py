@@ -15,7 +15,7 @@ from canterlot.config.database import DatabaseManager
 from canterlot.config.enums import Environment
 from canterlot.dto.auth import UserRegisterRequest
 from canterlot.dto.club import ClubCreateRequest, ClubSettingsUpdateRequest
-from canterlot.models import BookModel, ClubModel, InviteModel, JoinPolicy, MemberRole, UserModel
+from canterlot.models import BookModel, ClubModel, InviteModel, UserModel
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.models.club import CatalogEntryModel
 from canterlot.models.user import LinkedProviderSchema
@@ -26,7 +26,7 @@ from canterlot.repositories.beanie import (
     BeanieUserRepository,
 )
 from canterlot.services import AuthService, ClubService, InviteService
-from canterlot.types import AuthProviderName, BookProviderName
+from canterlot.types import AuthProviderName, BookProviderName, JoinPolicy, MemberRole
 
 # This goes through the same ClubService/InviteService calls the real routers use, so a freshly
 # seeded club ends up in exactly the state a club created through the API would be in (e.g. it
@@ -294,7 +294,7 @@ async def _build_club_b(
     suggesters = [user_ids["rarity"], user_ids["applejack"], user_ids["rainbowdash"]]
     await _populate_catalog(club_repo, club_id, book_ids, suggesters)
 
-    direct_invite_id = await invite_service.create_direct_invite(
+    direct_invite_id = await invite_service.create_external_invite(
         club_id=club_id,
         issuer_id=user_ids["rarity"],
         target_email=DIRECT_INVITE_EMAIL,

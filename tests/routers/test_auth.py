@@ -17,9 +17,10 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     OAuthLinkRequiredError,
 )
-from canterlot.routers.dependencies import get_optional_refresh_token_context
 from canterlot.services.auth import OAuthSignInResult
 from canterlot.types import AuthOutcome, AuthProviderName, InviteType, JoinPolicy
+
+from .dependencies.providers import get_optional_refresh_token_context
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 
@@ -302,7 +303,7 @@ def describe_rotate_session():
             access_token="new-access", refresh_token="new-refresh"
         )
 
-        response = client.put("/v1/auth/sessions/current")
+        response = client.put("/v1/auth/sessions/me")
 
         assert response.status_code == 200
         body = response.json()
@@ -314,7 +315,7 @@ def describe_rotate_session():
 
 def describe_logout():
     def it_logs_out_the_current_session_and_clears_the_cookie(client: TestClient, auth_service: AsyncMock):
-        response = client.delete("/v1/auth/sessions/current")
+        response = client.delete("/v1/auth/sessions/me")
 
         assert response.status_code == 204
         auth_service.logout.assert_awaited_once_with(SOME_USER_ID, "old-refresh-token")
@@ -325,7 +326,7 @@ def describe_logout():
     def it_is_a_no_op_when_there_is_no_session_cookie(client: TestClient, auth_service: AsyncMock):
         cast(FastAPI, client.app).dependency_overrides[get_optional_refresh_token_context] = lambda: None
 
-        response = client.delete("/v1/auth/sessions/current")
+        response = client.delete("/v1/auth/sessions/me")
 
         assert response.status_code == 204
         auth_service.logout.assert_not_called()

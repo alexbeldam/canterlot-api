@@ -707,10 +707,13 @@ def describe_create_ownership_transfer():
         assert response.json()["error"]["error_code"] == "OWNERSHIP_TRANSFER_CONFLICT"
 
     def it_returns_429_once_the_rate_limit_is_exceeded(
-        client: TestClient, club_repo: AsyncMock, redis_client: AsyncMock
+        client: TestClient,
+        club_repo: AsyncMock,
+        redis_client: AsyncMock,
+        redis_pipeline: AsyncMock,
     ):
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
-        redis_client.incr.return_value = 999
+        redis_pipeline.execute.return_value = (999, None)
         redis_client.ttl.return_value = 30
 
         response = client.post(
@@ -773,10 +776,13 @@ def describe_reclaim_club_ownership():
         assert response.json()["error"]["error_code"] == "OWNERSHIP_TRANSFER_CONFLICT"
 
     def it_returns_429_once_the_rate_limit_is_exceeded(
-        client: TestClient, club_repo: AsyncMock, redis_client: AsyncMock
+        client: TestClient,
+        club_repo: AsyncMock,
+        redis_client: AsyncMock,
+        redis_pipeline: AsyncMock,
     ):
         club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
-        redis_client.incr.return_value = 999
+        redis_pipeline.execute.return_value = (999, None)
         redis_client.ttl.return_value = 15
 
         response = client.delete(f"/v1/clubs/{SOME_CLUB_SLUG}/ownership-transfers/current")

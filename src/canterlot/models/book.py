@@ -4,6 +4,7 @@ from typing import Annotated, Any, ClassVar
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import AfterValidator, BaseModel, Field, GetCoreSchemaHandler, StringConstraints, model_validator
 from pydantic_core import CoreSchema, core_schema
+from pymongo import ASCENDING, IndexModel
 
 from canterlot.types import (
     BookProviderName,
@@ -164,6 +165,20 @@ class BookModel(Document):
     class Settings:
         name = "books"
         bson_encoders: ClassVar[dict[type, Any]] = {BookProviderIdentifier: str}
+        indexes: ClassVar[list[IndexModel]] = [
+            IndexModel(
+                [("isbn_10", ASCENDING)],
+                unique=True,
+                name="unique_isbn_10_idx",
+                partialFilterExpression={"isbn_10": {"$type": "string"}},
+            ),
+            IndexModel(
+                [("isbn_13", ASCENDING)],
+                unique=True,
+                name="unique_isbn_13_idx",
+                partialFilterExpression={"isbn_13": {"$type": "string"}},
+            ),
+        ]
 
 
 class SearchParams(BaseModel):

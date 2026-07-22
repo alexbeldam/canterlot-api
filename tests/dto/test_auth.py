@@ -1,5 +1,5 @@
 import pytest
-from pydantic import HttpUrl, ValidationError
+from pydantic import HttpUrl, SecretStr, ValidationError
 
 from canterlot.dto.auth import (
     AccessTokenResponse,
@@ -11,6 +11,8 @@ from canterlot.dto.auth import (
 from canterlot.models.user import LinkedProviderSchema, UserModel
 from canterlot.types import AuthProviderName, SessionType
 
+SOME_PASSWORD = SecretStr("Aa12345!")
+
 
 def describe_username_normalization_and_constraints():
     def it_lowercases_the_username_on_the_request():
@@ -18,7 +20,7 @@ def describe_username_normalization_and_constraints():
             name="Alice Smith",
             username="ALICE_1",
             email="a@b.com",
-            password="secret1",
+            password=SOME_PASSWORD,
             terms_version=1,
             privacy_version=1,
         )
@@ -31,7 +33,7 @@ def describe_username_normalization_and_constraints():
                 name="Alice Smith",
                 username=bad_username,
                 email="a@b.com",
-                password="secret1",
+                password=SOME_PASSWORD,
                 terms_version=1,
                 privacy_version=1,
             )
@@ -43,7 +45,7 @@ def describe_username_normalization_and_constraints():
                 name="Alice Smith",
                 username=bad_username,
                 email="a@b.com",
-                password="secret1",
+                password=SOME_PASSWORD,
                 terms_version=1,
                 privacy_version=1,
             )
@@ -57,7 +59,7 @@ def describe_person_name_constraints():
                 name=bad_name,
                 username="alice_1",
                 email="a@b.com",
-                password="secret1",
+                password=SOME_PASSWORD,
                 terms_version=1,
                 privacy_version=1,
             )
@@ -69,40 +71,16 @@ def describe_email_normalization():
             name="Alice Smith",
             username="alice_1",
             email="  Alice@Example.COM  ",
-            password="secret1",
+            password=SOME_PASSWORD,
             terms_version=1,
             privacy_version=1,
         )
         assert request.email == "alice@example.com"
 
 
-def describe_password_constraints():
-    def it_rejects_passwords_shorter_than_six_characters():
-        with pytest.raises(ValidationError):
-            UserRegisterRequest(
-                name="Alice Smith",
-                username="alice_1",
-                email="a@b.com",
-                password="short",
-                terms_version=1,
-                privacy_version=1,
-            )
-
-    def it_accepts_a_password_at_the_minimum_length():
-        request = UserRegisterRequest(
-            name="Alice Smith",
-            username="alice_1",
-            email="a@b.com",
-            password="123456",
-            terms_version=1,
-            privacy_version=1,
-        )
-        assert request.password == "123456"
-
-
 def describe_create_session_request():
     def it_accepts_a_valid_password_session():
-        request = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
+        request = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password=SOME_PASSWORD)
         assert request.username == "alice_1"
 
     def it_accepts_a_valid_oauth_session():
@@ -117,14 +95,14 @@ def describe_create_session_request():
 
     def it_rejects_a_password_session_missing_the_username():
         with pytest.raises(ValidationError):
-            CreateSessionRequest(type=SessionType.PASSWORD, password="secret1")
+            CreateSessionRequest(type=SessionType.PASSWORD, password=SOME_PASSWORD)
 
     def it_rejects_a_password_session_with_oauth_fields_set():
         with pytest.raises(ValidationError):
             CreateSessionRequest(
                 type=SessionType.PASSWORD,
                 username="alice_1",
-                password="secret1",
+                password=SOME_PASSWORD,
                 provider=AuthProviderName.GOOGLE,
             )
 
@@ -161,7 +139,7 @@ def describe_create_session_request():
             CreateSessionRequest(
                 type=SessionType.PASSWORD,
                 username="alice_1",
-                password="secret1",
+                password=SOME_PASSWORD,
                 invite_id="some-invite-id",
             )
 
@@ -170,7 +148,7 @@ def describe_create_session_request():
             CreateSessionRequest(
                 type=SessionType.PASSWORD,
                 username="alice_1",
-                password="secret1",
+                password=SOME_PASSWORD,
                 invited_by="bob_2",
             )
 

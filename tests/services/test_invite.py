@@ -283,7 +283,7 @@ def describe_create_direct_invite():
         service = InviteService(invite_repo, club_repo, user_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):
-            await service.create_direct_invite(SOME_CLUB_ID, SOME_USER_ID, "alice@example.com")
+            await service.create_external_invite(SOME_CLUB_ID, SOME_USER_ID, "alice@example.com")
 
     async def it_issues_a_direct_invite_for_a_privileged_issuer(
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
@@ -292,7 +292,7 @@ def describe_create_direct_invite():
         invite_repo.save.return_value = _invite(id="direct-invite-id", type=InviteType.DIRECT)
         service = InviteService(invite_repo, club_repo, user_repo)
 
-        result = await service.create_direct_invite(SOME_CLUB_ID, SOME_USER_ID, "alice@example.com")
+        result = await service.create_external_invite(SOME_CLUB_ID, SOME_USER_ID, "alice@example.com")
 
         assert result == "direct-invite-id"
         invite_repo.deactivate_all_direct_by_club_id_and_target_email.assert_awaited_once_with(

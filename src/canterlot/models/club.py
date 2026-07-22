@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pymongo import ASCENDING, IndexModel
 
 from canterlot.types import LanguageStr, NonEmptyStr
 
@@ -62,6 +63,9 @@ class ClubModel(Document):
 
     class Settings:
         name = "clubs"
+        indexes: ClassVar[list[IndexModel]] = [
+            IndexModel([("members.user_id", ASCENDING)], name="global_member_search_idx"),
+        ]
 
     @model_validator(mode="after")
     def verify_unique_membership_states(self):

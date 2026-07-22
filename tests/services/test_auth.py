@@ -630,7 +630,7 @@ def describe_change_password():
         user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
         service = AuthService(user_repo, {})
 
-        result = await service.change_password(SOME_USER_ID, "current-secret", "new-secret-1")
+        result = await service.change_password_old(SOME_USER_ID, "current-secret", "new-secret-1")
 
         assert result.access_token
         assert result.refresh_token
@@ -646,7 +646,7 @@ def describe_change_password():
         service = AuthService(user_repo, {})
 
         with pytest.raises(IncorrectPasswordError):
-            await service.change_password(SOME_USER_ID, "wrong-secret", "new-secret-1")
+            await service.change_password_old(SOME_USER_ID, "wrong-secret", "new-secret-1")
 
         user_repo.change_password.assert_not_called()
 
@@ -656,7 +656,7 @@ def describe_change_password():
         service = AuthService(user_repo, {})
 
         with pytest.raises(IncorrectPasswordError):
-            await service.change_password(SOME_USER_ID, None, "new-secret-1")
+            await service.change_password_old(SOME_USER_ID, None, "new-secret-1")
 
         user_repo.change_password.assert_not_called()
 
@@ -664,7 +664,7 @@ def describe_change_password():
         user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None)
         service = AuthService(user_repo, {})
 
-        result = await service.change_password(SOME_USER_ID, None, "new-secret-1")
+        result = await service.change_password_old(SOME_USER_ID, None, "new-secret-1")
 
         assert result.access_token
         assert result.refresh_token
@@ -677,7 +677,7 @@ def describe_change_password():
         user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None)
         service = AuthService(user_repo, {})
 
-        result = await service.change_password(SOME_USER_ID, "anything", "new-secret-1")
+        result = await service.change_password_old(SOME_USER_ID, "anything", "new-secret-1")
 
         assert result.access_token
         user_repo.change_password.assert_awaited_once()
@@ -687,6 +687,6 @@ def describe_change_password():
         service = AuthService(user_repo, {})
 
         with pytest.raises(InvalidCredentialsError):
-            await service.change_password(SOME_USER_ID, "current-secret", "new-secret-1")
+            await service.change_password_old(SOME_USER_ID, "current-secret", "new-secret-1")
 
         user_repo.change_password.assert_not_called()

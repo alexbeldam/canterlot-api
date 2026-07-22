@@ -6,7 +6,6 @@ from pydantic import HttpUrl, ValidationError
 from canterlot.config import get_settings
 from canterlot.dto.user import (
     AvatarDTO,
-    ChangePasswordRequest,
     SetAvatarRequest,
     UpdateProfileRequest,
     UserProfileResponse,
@@ -110,7 +109,7 @@ def describe_user_profile_response_from_model():
         assert response.needs_privacy_reacceptance is True
 
     def it_needs_nothing_once_fully_accepted_at_the_current_version():
-        settings = get_settings()
+        settings = get_settings().auth
         user = UserModel(
             name="Alice Smith",
             username="alice_1",
@@ -129,7 +128,7 @@ def describe_user_profile_response_from_model():
         assert response.needs_privacy_reacceptance is False
 
     def it_needs_reacceptance_when_the_accepted_version_is_behind_current():
-        settings = get_settings()
+        settings = get_settings().auth
         user = UserModel(
             name="Alice Smith",
             username="alice_1",
@@ -145,17 +144,3 @@ def describe_user_profile_response_from_model():
 
         assert response.needs_terms_reacceptance is True
         assert response.needs_privacy_reacceptance is False
-
-
-def describe_change_password_request():
-    def it_rejects_a_new_password_shorter_than_six_characters():
-        with pytest.raises(ValidationError):
-            ChangePasswordRequest(current_password="whatever", new_password="short")
-
-    def it_accepts_a_new_password_at_the_minimum_length():
-        request = ChangePasswordRequest(current_password="whatever", new_password="123456")
-        assert request.new_password == "123456"
-
-    def it_allows_omitting_the_current_password():
-        request = ChangePasswordRequest(new_password="123456")
-        assert request.current_password is None

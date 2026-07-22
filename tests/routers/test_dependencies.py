@@ -1,7 +1,7 @@
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, call
+from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 import pytest
 from beanie import PydanticObjectId
@@ -24,6 +24,7 @@ from canterlot.repositories import (
     ClubRepository,
     DatabaseRepository,
     InviteRepository,
+    RateLimiter,
     UserRepository,
 )
 from canterlot.repositories.beanie import (
@@ -34,7 +35,11 @@ from canterlot.repositories.beanie import (
     BeanieUserRepository,
 )
 from canterlot.repositories.redis import RedisRepository
-from canterlot.routers.dependencies import (
+from canterlot.services import AuthService, BookService, CatalogService, ClubService, HealthService, InviteService
+from canterlot.types import AuthProviderName, SessionType
+from canterlot.utils.security import create_access_token, create_jwt_token, create_refresh_token
+
+from .dependencies.providers import (
     LOGIN_PATH,
     RefreshTokenContext,
     _client_ip,
@@ -67,9 +72,6 @@ from canterlot.routers.dependencies import (
     rate_limit_refresh_attempt,
     rate_limit_register_attempt,
 )
-from canterlot.services import AuthService, BookService, CatalogService, ClubService, HealthService, InviteService
-from canterlot.types import AuthProviderName, SessionType
-from canterlot.utils.security import create_access_token, create_jwt_token, create_refresh_token
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")
@@ -186,14 +188,18 @@ def describe_get_current_user():
             await get_current_user(SOME_USER_ID, user_repo)
 
 
+def _make_request(client_host: str | None = "203.0.113.5") -> Request:
+    req = MagicMock(spec=Request)
+    req.client = SimpleNamespace(host=client_host) if client_host else None
+    req.app = SimpleNamespace(state=SimpleNamespace(redis_client=AsyncMock()))
+    return cast(Request, req)
+
+
 def describe_infrastructure_factories():
     async def it_yields_a_redis_client():
-        client_gen = get_redis_client()
-        client = await anext(client_gen)
-        try:
-            assert client is not None
-        finally:
-            await client_gen.aclose()
+        req = _make_request()
+        client = get_redis_client(req)
+        assert client is not None
 
     async def it_yields_a_curl_cffi_session():
         session_gen = get_curl_cffi_session()
@@ -206,56 +212,52 @@ def describe_infrastructure_factories():
 
 def describe_enforce_rate_limit():
     async def it_allows_the_request_when_under_the_limit():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
 
-        await _enforce_rate_limit(redis_client, key="ratelimit:test:1", limit=5, window_seconds=60)
-
-        redis_client.incr.assert_awaited_once_with("ratelimit:test:1")
-        redis_client.expire.assert_awaited_once_with("ratelimit:test:1", 60, nx=True)
-        redis_client.ttl.assert_not_called()
+        await _enforce_rate_limit(rate_limiter, key="ratelimit:test:1", limit=5, window_seconds=60)
+        rate_limiter.evaluate.assert_awaited_once_with("ratelimit:test:1", 5, 60)
 
     async def it_raises_with_the_remaining_ttl_once_the_limit_is_exceeded():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 6
-        redis_client.ttl.return_value = 42
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 42
 
         with pytest.raises(RateLimitExceededError) as exc_info:
-            await _enforce_rate_limit(redis_client, key="ratelimit:test:1", limit=5, window_seconds=60)
+            await _enforce_rate_limit(rate_limiter, key="ratelimit:test:1", limit=5, window_seconds=60)
 
         assert exc_info.value.headers == {"Retry-After": "42"}
 
     async def it_falls_back_to_the_window_when_the_ttl_is_unavailable():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 6
-        redis_client.ttl.return_value = -1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 60
 
         with pytest.raises(RateLimitExceededError) as exc_info:
-            await _enforce_rate_limit(redis_client, key="ratelimit:test:1", limit=5, window_seconds=60)
+            await _enforce_rate_limit(rate_limiter, key="ratelimit:test:1", limit=5, window_seconds=60)
 
         assert exc_info.value.headers == {"Retry-After": "60"}
 
 
 def describe_rate_limit_club_owner_action():
     async def it_keys_the_counter_by_scope_club_and_caller():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
         dependency = rate_limit_club_owner_action("club-ownership-action")
 
-        await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, redis_client=redis_client)
+        await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, rate_limiter=rate_limiter)
 
         expected_key = f"ratelimit:club-ownership-action:{SOME_CLUB_ID}:{SOME_USER_ID}"
-        redis_client.incr.assert_awaited_once_with(expected_key)
+        rate_limiter.evaluate.assert_awaited_once_with(expected_key, ANY, ANY)
 
     async def it_raises_once_the_configured_limit_is_exceeded():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 999
-        redis_client.ttl.return_value = 10
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 10
         dependency = rate_limit_club_owner_action("club-ownership-action")
 
         with pytest.raises(RateLimitExceededError):
-            await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, redis_client=redis_client)
+            await dependency(club_id=SOME_CLUB_ID, current_user_id=SOME_USER_ID, rate_limiter=rate_limiter)
 
+
+def describe_service_factories():
     def it_builds_a_redis_backed_cache_repository():
         assert isinstance(get_cache_repository(AsyncMock()), RedisRepository)
 
@@ -301,11 +303,6 @@ def describe_rate_limit_club_owner_action():
         assert get_oauth_providers(AsyncMock(spec=AsyncSession)) == {}
 
 
-def _make_request(client_host: str | None = "203.0.113.5") -> Request:
-    scope: dict[str, object] = {"type": "http", "headers": [], "client": (client_host, 12345) if client_host else None}
-    return Request(scope)
-
-
 def describe_client_ip():
     def it_returns_the_client_host_when_present():
         assert _client_ip(_make_request("203.0.113.5")) == "203.0.113.5"
@@ -316,82 +313,78 @@ def describe_client_ip():
 
 def describe_rate_limit_register_attempt():
     async def it_keys_the_counter_by_client_ip():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
 
-        await rate_limit_register_attempt(_make_request(), redis_client)
+        await rate_limit_register_attempt(_make_request(), rate_limiter)
 
-        redis_client.incr.assert_awaited_once_with("ratelimit:register:203.0.113.5")
+        rate_limiter.evaluate.assert_awaited_once_with("ratelimit:register:203.0.113.5", ANY, ANY)
 
     async def it_raises_once_the_configured_limit_is_exceeded():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 999
-        redis_client.ttl.return_value = 10
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 10
 
         with pytest.raises(RateLimitExceededError):
-            await rate_limit_register_attempt(_make_request(), redis_client)
+            await rate_limit_register_attempt(_make_request(), rate_limiter)
 
 
 def describe_rate_limit_refresh_attempt():
     async def it_keys_the_counter_by_client_ip():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
 
-        await rate_limit_refresh_attempt(_make_request(), redis_client)
+        await rate_limit_refresh_attempt(_make_request(), rate_limiter)
 
-        redis_client.incr.assert_awaited_once_with("ratelimit:refresh:203.0.113.5")
+        rate_limiter.evaluate.assert_awaited_once_with("ratelimit:refresh:203.0.113.5", ANY, ANY)
 
     async def it_raises_once_the_configured_limit_is_exceeded():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 999
-        redis_client.ttl.return_value = 10
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 10
 
         with pytest.raises(RateLimitExceededError):
-            await rate_limit_refresh_attempt(_make_request(), redis_client)
+            await rate_limit_refresh_attempt(_make_request(), rate_limiter)
 
 
 def describe_rate_limit_login_attempt():
     async def it_applies_a_single_ip_keyed_limit_for_oauth_sessions():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
         payload = CreateSessionRequest(type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE, credential="token")
 
-        await rate_limit_login_attempt(_make_request(), payload, redis_client)
+        await rate_limit_login_attempt(_make_request(), payload, rate_limiter)
 
-        redis_client.incr.assert_awaited_once_with("ratelimit:oauth-sign-in:203.0.113.5")
+        rate_limiter.evaluate.assert_awaited_once_with("ratelimit:oauth-sign-in:203.0.113.5", ANY, ANY)
 
     async def it_applies_ip_and_account_keyed_limits_for_password_sessions():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 1
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
         payload = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
 
-        await rate_limit_login_attempt(_make_request(), payload, redis_client)
+        await rate_limit_login_attempt(_make_request(), payload, rate_limiter)
 
-        assert redis_client.incr.await_args_list == [
-            call("ratelimit:login-ip:203.0.113.5"),
-            call("ratelimit:login-account:alice_1"),
+        assert rate_limiter.evaluate.await_args_list == [
+            call("ratelimit:login-ip:203.0.113.5", ANY, ANY),
+            call("ratelimit:login-account:alice_1", ANY, ANY),
         ]
 
     async def it_raises_when_the_ip_limit_is_exceeded_for_a_password_session():
-        redis_client = AsyncMock()
-        redis_client.incr.return_value = 999
-        redis_client.ttl.return_value = 10
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 10
         payload = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
 
         with pytest.raises(RateLimitExceededError):
-            await rate_limit_login_attempt(_make_request(), payload, redis_client)
+            await rate_limit_login_attempt(_make_request(), payload, rate_limiter)
 
     async def it_raises_when_the_account_limit_is_exceeded_for_a_password_session():
-        redis_client = AsyncMock()
-        redis_client.incr.side_effect = [1, 999]
-        redis_client.ttl.return_value = 10
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.side_effect = [0, 10]
         payload = CreateSessionRequest(type=SessionType.PASSWORD, username="alice_1", password="secret1")
 
         with pytest.raises(RateLimitExceededError):
-            await rate_limit_login_attempt(_make_request(), payload, redis_client)
+            await rate_limit_login_attempt(_make_request(), payload, rate_limiter)
 
 
-def describe_service_factories():
+def describe_service_factories_real():
     async def it_builds_a_book_service():
         service = await get_book_service(
             cache=AsyncMock(spec=CacheRepository),

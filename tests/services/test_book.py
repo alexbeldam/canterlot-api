@@ -78,7 +78,8 @@ def describe_search_external_books_cache_behavior():
     async def it_returns_cached_results_without_contacting_providers(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
     ):
-        cache_repo.find.return_value = json.dumps({"books": [_book_payload()], "total_results": 1})
+        # The service expects a dictionary payload back from find()
+        cache_repo.find.return_value = {"total_results": 1, "books": json.dumps([_book_payload()])}
         service = _service(cache_repo, book_repo, book_provider)
 
         result = await service.search_external_books(
@@ -92,6 +93,7 @@ def describe_search_external_books_cache_behavior():
     async def it_falls_back_to_a_live_fetch_when_the_cache_entry_is_corrupt(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
     ):
+        # A string return triggers a ValueError/TypeError and drops back to live execution
         cache_repo.find.return_value = "not valid json"
         book_provider.fetch_volumes.return_value = {"books": [_book_payload()], "total_results": 1}
         service = _service(cache_repo, book_repo, book_provider)
@@ -106,7 +108,8 @@ def describe_search_external_books_cache_behavior():
     async def it_falls_back_to_a_live_fetch_when_the_cache_entry_is_missing_expected_keys(
         cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock
     ):
-        cache_repo.find.return_value = json.dumps({"books": [_book_payload()]})
+        # Missing total_results causes a fallback
+        cache_repo.find.return_value = {"books": json.dumps([_book_payload()])}
         book_provider.fetch_volumes.return_value = {"books": [_book_payload()], "total_results": 1}
         service = _service(cache_repo, book_repo, book_provider)
 
@@ -129,9 +132,12 @@ def describe_search_external_books_cache_behavior():
         )
 
         cache_repo.save.assert_awaited_once()
-        cached_json = cache_repo.save.call_args.args[1]
-        parsed = json.loads(cached_json)
-        assert parsed["books"][0]["cover_url"] == "https://example.com/c.jpg"
+        # The service saves a dictionary context structure, let's pull it directly
+        cached_map = cache_repo.save.call_args.args[1]
+        assert cached_map["total_results"] == 1
+
+        parsed_books = json.loads(cached_map["books"])
+        assert parsed_books[0]["cover_url"] == "https://example.com/c.jpg"
 
 
 def describe_search_external_books_provider_aggregation():

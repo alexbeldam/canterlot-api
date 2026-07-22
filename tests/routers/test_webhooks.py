@@ -5,8 +5,9 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from canterlot.gateways.auth.risc import GoogleRiscVerifier, RiscVerificationError
-from canterlot.routers.dependencies import get_google_risc_verifier
 from canterlot.types import AuthProviderName
+
+from .dependencies.providers import get_google_risc_verifier
 
 
 def _override_verifier(client: TestClient, verifier: AsyncMock) -> None:

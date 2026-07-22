@@ -9,6 +9,7 @@ from canterlot.repositories import (
     ClubRepository,
     InviteRepository,
     UserRepository,
+    VerificationRepository,
 )
 
 
@@ -45,3 +46,8 @@ def book_provider() -> AsyncMock:
 @pytest.fixture
 def link_provider() -> AsyncMock:
     return AsyncMock(spec=LinkProvider)
+
+
+@pytest.fixture
+def verification_repo() -> AsyncMock:
+    return AsyncMock(spec=VerificationRepository)

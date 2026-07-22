@@ -1,10 +1,10 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from canterlot.config import get_settings
 from canterlot.models.user import AvatarSchema, EarnedBadgeSchema, PersonNameStr, UserModel, UsernameStr
-from canterlot.types import AuthProviderName, BadgeReason, HttpsUrl, NormalizedEmailStr
+from canterlot.types import AuthProviderName, BadgeReason, HttpsUrl, NormalizedEmailStr, PasswordStr
 
 
 class UpdateProfileRequest(BaseModel):
@@ -59,7 +59,7 @@ class UserProfileResponse(BaseModel):
 
     @classmethod
     def from_model(cls, user: UserModel) -> "UserProfileResponse":
-        settings = get_settings()
+        settings = get_settings().auth
         return cls(
             name=user.name,
             username=user.username,
@@ -79,8 +79,19 @@ class UserProfileResponse(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str | None = Field(default=None, min_length=6, examples=["old_super_secret_password_456"])
-    new_password: str = Field(..., min_length=6, examples=["new_super_secret_password_456"])
+    current_password: SecretStr
+    new_password: PasswordStr
+
+    @model_validator(mode="after")
+    def check_passwords_differ(self) -> "ChangePasswordRequest":
+        if self.current_password == self.new_password:
+            raise ValueError("New password cannot be the same as current password")
+
+        return self
+
+
+class CreatePasswordRequest(BaseModel):
+    password: PasswordStr
 
 
 class LegalAcceptanceRequest(BaseModel):

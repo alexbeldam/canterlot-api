@@ -1,15 +1,26 @@
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from beanie import PydanticObjectId
+from saq import Queue
 from starlette.testclient import TestClient
 
 from canterlot.app import create_app
 from canterlot.repositories import BookRepository, ClubRepository, UserRepository
-from canterlot.routers.dependencies import (
+from canterlot.services import (
+    AuthService,
+    BookService,
+    CatalogService,
+    ClubService,
+    HealthService,
+    InviteService,
+    UserService,
+)
+
+from .dependencies.providers import (
     RefreshTokenContext,
     get_auth_service,
     get_book_repository,
@@ -19,6 +30,7 @@ from canterlot.routers.dependencies import (
     get_club_service,
     get_current_user,
     get_current_user_id,
+    get_email_task_queue,
     get_health_service,
     get_invite_service,
     get_optional_refresh_token_context,
@@ -26,15 +38,6 @@ from canterlot.routers.dependencies import (
     get_user_id_from_valid_refresh_token,
     get_user_repository,
     get_user_service,
-)
-from canterlot.services import (
-    AuthService,
-    BookService,
-    CatalogService,
-    ClubService,
-    HealthService,
-    InviteService,
-    UserService,
 )
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
@@ -96,11 +99,33 @@ def current_user() -> SimpleNamespace:
 
 
 @pytest.fixture
-def redis_client() -> AsyncMock:
+def redis_pipeline() -> AsyncMock:
+    pipeline_mock = AsyncMock()
+    pipeline_mock.execute.return_value = (1, None)
+
+    pipeline_mock.incr = Mock()
+    pipeline_mock.expire = Mock()
+    pipeline_mock.ttl = Mock()
+
+    return pipeline_mock
+
+
+@pytest.fixture
+def redis_client(redis_pipeline: AsyncMock) -> AsyncMock:
     mock = AsyncMock()
     mock.incr.return_value = 1
     mock.ttl.return_value = -1
+
+    pipeline_context = MagicMock()
+    pipeline_context.__aenter__.return_value = redis_pipeline
+    mock.pipeline = MagicMock(return_value=pipeline_context)
+
     return mock
+
+
+@pytest.fixture
+def email_task_queue() -> AsyncMock:
+    return AsyncMock(spec=Queue)
 
 
 @pytest.fixture
@@ -117,6 +142,7 @@ def client(
     book_repo: AsyncMock,
     current_user: SimpleNamespace,
     redis_client: AsyncMock,
+    email_task_queue: AsyncMock,
 ) -> Iterator[TestClient]:
     app = create_app()
 
@@ -139,6 +165,7 @@ def client(
     app.dependency_overrides[get_current_user_id] = lambda: current_user.id
     app.dependency_overrides[get_current_user] = lambda: current_user
     app.dependency_overrides[get_redis_client] = lambda: redis_client
+    app.dependency_overrides[get_email_task_queue] = lambda: email_task_queue
     app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: RefreshTokenContext(
         user_id=current_user.id, token="old-refresh-token"
     )
