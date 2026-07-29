@@ -60,6 +60,7 @@ dev = [
     "pytest-github-actions-annotate-failures>=0.4.2",
     "testcontainers[mongodb,redis]>=4.15.0",
     "python-semantic-release>=10.6.1",
+    "polyfactory>=3.3.0",
 ]
 
 [project.scripts]
@@ -81,6 +82,7 @@ filterwarnings = [
     "ignore::curl_cffi.utils.CurlCffiWarning",
     "ignore:The wait_for_logs function with string or callable predicates is deprecated:DeprecationWarning:testcontainers.mongodb",
     "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.redis",
+    'ignore:datetime\.datetime\.utcnow\(\) is deprecated:DeprecationWarning:mongomock\.helpers',
 ]
 
 [tool.coverage.run]
@@ -91,6 +93,7 @@ omit = [
     "*/canterlot/config/database.py",
     "*/canterlot/utils/logger.py",
     "*/canterlot/exceptions/*",
+    "*/canterlot/factories/*",
 ]
 branch = true
 

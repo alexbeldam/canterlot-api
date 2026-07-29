@@ -52,6 +52,8 @@ envVarGroups:
         value: '["https://canterlot.com.br"]'
       - key: FRONTEND_URL
         value: "https://canterlot.com.br"
+      - key: BACKEND_URL
+        value: "https://api.canterlot.com.br"
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_PASSWORD
