@@ -186,7 +186,7 @@ def describe_unsubscribe_tokens():
         import hashlib
         import hmac
 
-        secret_key = get_settings().auth.jwt_secret_key.get_secret_value().encode("utf-8")
+        secret_key = get_settings().auth.jwt_secret_key.get_secret_value()
         user_id = PydanticObjectId()
         bad_category = b"non_existent_cat"
 

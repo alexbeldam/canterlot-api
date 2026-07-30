@@ -1,7 +1,12 @@
+import base64
+import binascii
+import contextlib
 import os
 from functools import lru_cache
+from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretBytes, SecretStr, field_validator
+from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from .enums import Environment
@@ -12,7 +17,8 @@ from .enums import Environment
 
 
 class AuthSettings(BaseModel):
-    jwt_secret_key: SecretStr
+    jwt_secret_key: SecretBytes
+    hmac_secret_key: SecretBytes
     jwt_algorithm: str = "HS256"
     access_token_expiry_minutes: int = 15
     refresh_token_expiry_days: int = 60
@@ -22,6 +28,11 @@ class AuthSettings(BaseModel):
     max_verification_attempts: int = 5
     current_terms_version: int = 1
     current_privacy_version: int = 1
+
+    @field_validator("jwt_secret_key", "hmac_secret_key", mode="before")
+    @classmethod
+    def validate_secret_keys(cls, v: Any, info) -> bytes:
+        return _parse_secret_key(v, info.field_name)
 
 
 class EmailSettings(BaseModel):
@@ -146,3 +157,44 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # pyright: ignore[reportCallIssue]
+
+
+def _parse_secret_key(v: Any, field_name: str) -> bytes:
+    """Parses a Base64 or 64-char Hex string into exactly 32 raw bytes."""
+    if isinstance(v, bytes):
+        raw_bytes = v
+    elif isinstance(v, str):
+        val = v.strip()
+        raw_bytes = None
+
+        # 1. Try Hex (64 hex characters = 32 bytes)
+        if len(val) == 64:  # noqa: PLR2004
+            with contextlib.suppress(ValueError):
+                raw_bytes = bytes.fromhex(val)
+
+        # 2. Try Base64
+        if raw_bytes is None:
+            try:
+                raw_bytes = base64.b64decode(val, validate=True)
+            except binascii.Error:
+                raise PydanticCustomError(
+                    "invalid_secret_encoding",
+                    "{field_name} must be a valid Base64 string or 64-character Hex string",
+                    {"field_name": field_name},
+                ) from None
+    else:
+        raise PydanticCustomError(
+            "invalid_secret_type",
+            "{field_name} must be a string or bytes",
+            {"field_name": field_name},
+        )
+
+    # 3. Enforce 32-byte (256-bit) cryptographic strength
+    if len(raw_bytes) != 32:  # noqa: PLR2004
+        raise PydanticCustomError(
+            "invalid_secret_length",
+            "{field_name} must decode to exactly 32 bytes, got {actual_length} bytes",
+            {"field_name": field_name, "actual_length": len(raw_bytes)},
+        )
+
+    return raw_bytes

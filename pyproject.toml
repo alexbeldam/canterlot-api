@@ -93,7 +93,6 @@ omit = [
     "*/canterlot/config/database.py",
     "*/canterlot/utils/logger.py",
     "*/canterlot/exceptions/*",
-    "*/canterlot/factories/*",
 ]
 branch = true
 
@@ -120,7 +119,7 @@ ignore_missing_imports = true
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-src = ["src"]
+src = ["src", "tools"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "ARG", "B", "UP", "SIM", "RET", "RUF", "PLR"]
@@ -128,6 +127,7 @@ ignore = []
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
+known-first-party = ["canterlot", "tools"]
 
 [tool.ruff.lint.pylint]
 max-branches = 12
@@ -150,7 +150,7 @@ executionEnvironments = [
 ]
 
 [tool.deptry]
-known_first_party = ["canterlot"]
+known_first_party = ["canterlot", "tools"]
 
 [tool.deptry.per_rule_ignores]
 DEP002 = ["python-multipart", "uvicorn", "brotli"]

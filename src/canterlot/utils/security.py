@@ -112,11 +112,6 @@ def generate_secure_code() -> "SecretVerificationCode":
     return secret_code_adapter.validate_python(raw_code)
 
 
-def _get_auth_secret() -> bytes:
-    """Helper to get the configured HMAC secret key as bytes."""
-    return get_settings().auth.jwt_secret_key.get_secret_value().encode("utf-8")
-
-
 def _base64_encode(data: bytes) -> str:
     """Encodes binary bytes into an unpadded URL-safe Base64 string."""
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
@@ -132,7 +127,7 @@ def _base64_decode(token: str) -> bytes:
 
 
 def encode_club_unsubscribe_token(user_id: PydanticObjectId, club_id: PydanticObjectId) -> str:
-    secret_key = _get_auth_secret()
+    secret_key = get_settings().auth.hmac_secret_key.get_secret_value()
 
     tag = bytes([UnsubscribeScope.CLUB])
     payload = tag + user_id.binary + club_id.binary
@@ -143,7 +138,7 @@ def encode_club_unsubscribe_token(user_id: PydanticObjectId, club_id: PydanticOb
 
 
 def encode_category_unsubscribe_token(user_id: PydanticObjectId, category: "EmailCategory") -> str:
-    secret_key = _get_auth_secret()
+    secret_key = get_settings().auth.hmac_secret_key.get_secret_value()
 
     category_bytes = category.value.encode("utf-8")
     tag = bytes([UnsubscribeScope.CATEGORY])
@@ -157,7 +152,7 @@ def encode_category_unsubscribe_token(user_id: PydanticObjectId, category: "Emai
 
 
 def decode_unsubscribe_token(token: str) -> UnsubscribeTokenData:
-    secret_key = _get_auth_secret()
+    secret_key = get_settings().auth.hmac_secret_key.get_secret_value()
     token_bytes = _base64_decode(token)
 
     min_length = 1 + OBJECT_ID_BYTES + TRUNCATED_HMAC_BYTES

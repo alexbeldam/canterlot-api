@@ -62,6 +62,8 @@ envVarGroups:
       # --- AUTH SETTINGS ---
       - key: AUTH__JWT_SECRET_KEY
         generateValue: true
+      - key: AUTH__HMAC_SECRET_KEY
+        generateValue: true
       - key: AUTH__CURRENT_TERMS_VERSION
         value: "1"
       - key: AUTH__CURRENT_PRIVACY_VERSION
