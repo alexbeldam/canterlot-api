@@ -6,7 +6,7 @@ from canterlot.emails.core.definitions import (
     EmailTemplate,
     SubBrand,
 )
-from canterlot.factories import EmailTaskPayloadFactory
+from tools.factories import EmailTaskPayloadFactory
 
 CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439033")
 

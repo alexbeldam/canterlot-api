@@ -5,8 +5,8 @@ from beanie import PydanticObjectId
 
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import SpikeBaseContext
-from canterlot.factories import ClubFactory, UserFactory
 from canterlot.use_cases.remove_club_member import RemoveClubMemberUseCase
+from tools.factories import ClubFactory, UserFactory
 
 REMOVER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

@@ -7,10 +7,10 @@ from pydantic import SecretStr
 from canterlot.dto.auth import RegisterResponse
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import EmailVerificationContext
-from canterlot.factories import ClubOnboardingFactory, UserFactory, UserRegisterRequestFactory
 from canterlot.services.auth import RegisterResult
 from canterlot.types import ClubOnboardingStatus, VerificationScope
 from canterlot.use_cases.register_user import RegisterUserUseCase, RegisterUserUseCaseResult
+from tools.factories import ClubOnboardingFactory, UserFactory, UserRegisterRequestFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

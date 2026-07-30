@@ -18,16 +18,16 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.factories import (
+from canterlot.models.user import AvatarSchema
+from canterlot.types import AuthProviderName, ClubOnboardingStatus
+from canterlot.use_cases.change_password import ChangePasswordUseCaseResult
+from canterlot.use_cases.register_user import RegisterUserUseCaseResult
+from tools.factories import (
     AccessTokenResponseFactory,
     RegisterResponseFactory,
     UserFactory,
     UserRegisterRequestFactory,
 )
-from canterlot.models.user import AvatarSchema
-from canterlot.types import AuthProviderName, ClubOnboardingStatus
-from canterlot.use_cases.change_password import ChangePasswordUseCaseResult
-from canterlot.use_cases.register_user import RegisterUserUseCaseResult
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

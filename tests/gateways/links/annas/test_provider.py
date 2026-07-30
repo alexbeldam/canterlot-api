@@ -4,12 +4,12 @@ import pytest
 from curl_cffi.requests import AsyncSession
 from polyfactory import Use
 
-from canterlot.factories import BaseLinkCadidateFactory
 from canterlot.gateways.links.annas import provider as provider_module
 from canterlot.gateways.links.annas.parser import SearchResult
 from canterlot.gateways.links.annas.provider import AnnaLinkProvider
 from canterlot.models.book import SearchParams
 from canterlot.types import ExtensionType, LinkProviderName
+from tools.factories import BaseLinkCadidateFactory
 
 
 class SearchResultFactory(BaseLinkCadidateFactory[SearchResult]):

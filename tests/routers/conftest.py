@@ -9,7 +9,6 @@ from starlette.testclient import TestClient
 
 from canterlot.app import create_app
 from canterlot.emails.webhooks import ResendWebhookHandler
-from canterlot.factories import UserFactory
 from canterlot.gateways.auth.risc import GoogleRiscVerifier
 from canterlot.models.user import UserModel
 from canterlot.repositories import RateLimiter
@@ -75,6 +74,7 @@ from canterlot.use_cases import (
     RevokeAuthProviderUseCase,
     TransferClubOwnershipUseCase,
 )
+from tools.factories import UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

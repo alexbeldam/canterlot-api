@@ -1,5 +1,5 @@
-from canterlot.factories import InvitePreviewResponseFactory
 from canterlot.types import InviteType, JoinPolicy
+from tools.factories import InvitePreviewResponseFactory
 
 
 def describe_invite_preview_response():

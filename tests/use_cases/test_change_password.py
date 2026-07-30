@@ -6,11 +6,11 @@ from pydantic import SecretStr
 from canterlot.dto.auth import AccessTokenResponse
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
 from canterlot.emails.core.schemas import PasswordChangedContext
-from canterlot.factories import UserFactory
 from canterlot.use_cases.change_password import (
     ChangePasswordUseCase,
     ChangePasswordUseCaseResult,
 )
+from tools.factories import UserFactory
 
 DEFAULT_HASHED_PASSWORD = "hashed_password"
 DEFAULT_PASSWORD = "password"

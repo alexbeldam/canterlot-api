@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from canterlot.emails import EmailTaskPayload
-from canterlot.factories import BatchEmailDispatchItemFactory, EmailTaskPayloadFactory
 from canterlot.models.user import EmailPreferencesSchema
 from canterlot.services.dispatch import EmailDispatchService
+from tools.factories import BatchEmailDispatchItemFactory, EmailTaskPayloadFactory
 
 
 def _create_task(to_email: str = "user@example.com") -> EmailTaskPayload:

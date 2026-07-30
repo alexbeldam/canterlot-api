@@ -5,12 +5,12 @@ from beanie import PydanticObjectId
 
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import SpikeActionContext
-from canterlot.factories import ClubFactory, UserFactory
-from canterlot.factories.base import MemberFactory
 from canterlot.models.club import MemberSchema
 from canterlot.services.dispatch import BatchEmailDispatchItem
 from canterlot.types import MemberRole
 from canterlot.use_cases.dissolve_club import DissolveClubUseCase
+from tools.factories import ClubFactory, UserFactory
+from tools.factories.base import MemberFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

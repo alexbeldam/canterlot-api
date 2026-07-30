@@ -5,12 +5,12 @@ from beanie import PydanticObjectId
 from pymongo.errors import OperationFailure
 
 from canterlot.exceptions import ClubNotFoundError
-from canterlot.factories import BookFactory, CatalogEntryFactory, ClubFactory, MemberFactory
 from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.models.club import ClubModel, PendingApprovalSchema
 from canterlot.pagination import SortDirection
 from canterlot.repositories.beanie.club import BeanieClubRepository
 from canterlot.types import BookProviderName, JoinPolicy, MemberRole
+from tools.factories import BookFactory, CatalogEntryFactory, ClubFactory, MemberFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

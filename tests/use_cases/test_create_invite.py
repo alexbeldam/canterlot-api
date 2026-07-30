@@ -6,9 +6,9 @@ from beanie import PydanticObjectId
 from canterlot.dto.invite import InviteTokenResponse
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import InviteExternalContext, InviteInternalContext
-from canterlot.factories import ClubFactory, CreateInviteRequestFactory, UserFactory
 from canterlot.types import InviteType
 from canterlot.use_cases.create_invite import CreateInviteUseCase
+from tools.factories import ClubFactory, CreateInviteRequestFactory, UserFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")
 SOME_ISSUER_ID = PydanticObjectId("507f1f77bcf86cd799439011")

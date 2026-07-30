@@ -4,9 +4,9 @@ import pytest
 from pydantic import ValidationError
 
 from canterlot.dto.catalog import BookSuggestionRequest, CatalogEntryResponse, SuggestionResponse, SuggestionStatus
-from canterlot.factories import BookFactory
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.types import BookProviderName
+from tools.factories import BookFactory
 
 
 def describe_book_suggestion_request():

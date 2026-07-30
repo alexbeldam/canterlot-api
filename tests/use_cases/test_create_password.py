@@ -6,11 +6,11 @@ from pydantic import SecretStr
 from canterlot.dto.auth import AccessTokenResponse
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
 from canterlot.emails.core.schemas import PasswordChangedContext
-from canterlot.factories import UserFactory
 from canterlot.use_cases.create_password import (
     CreatePasswordUseCase,
     CreatePasswordUseCaseResult,
 )
+from tools.factories import UserFactory
 
 
 @pytest.fixture

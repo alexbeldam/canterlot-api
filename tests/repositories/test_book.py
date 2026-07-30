@@ -4,10 +4,10 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import TypeAdapter
 
-from canterlot.factories import BookFactory
 from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.repositories.beanie.book import BeanieBookRepository
 from canterlot.types import BookProviderName, ExtensionType, HttpsUrl
+from tools.factories import BookFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

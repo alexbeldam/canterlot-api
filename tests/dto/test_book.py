@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
-from canterlot.factories import BookFactory
+from tools.factories import BookFactory
 
 
 def describe_book_search_result():

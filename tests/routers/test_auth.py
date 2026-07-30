@@ -12,9 +12,9 @@ from canterlot.exceptions import (
     InvalidOAuthCredentialError,
     OAuthLinkRequiredError,
 )
-from canterlot.factories import TokenResponseFactory
 from canterlot.routers.dependencies.providers import get_optional_refresh_token_context
 from canterlot.use_cases.create_session import CreateSessionResult
+from tools.factories import TokenResponseFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

@@ -2,8 +2,8 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import ValidationError
 
-from canterlot.factories import ClubFactory, MemberFactory
 from canterlot.models.club import PendingApprovalSchema
+from tools.factories import ClubFactory, MemberFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

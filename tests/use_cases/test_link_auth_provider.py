@@ -5,9 +5,9 @@ from beanie import PydanticObjectId
 
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
 from canterlot.emails.core.schemas import LunaProviderActionContext
-from canterlot.factories import UserFactory
 from canterlot.types import AuthProviderName
 from canterlot.use_cases.link_auth_provider import LinkAuthProviderUseCase
+from tools.factories import UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 

@@ -18,8 +18,8 @@ from canterlot.emails.core.schemas import (
     SpikeBookContext,
     SpikeRoleContext,
 )
-from canterlot.factories import ClubFactory, UserFactory
 from canterlot.types import AuthProviderName, MemberRole, secret_code_adapter
+from tools.factories import ClubFactory, UserFactory
 
 SOME_CODE = "12345678"
 

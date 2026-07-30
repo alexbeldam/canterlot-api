@@ -6,9 +6,9 @@ from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import MemberBannedError
-from canterlot.factories import UserFactory
 from canterlot.types import ClubOnboardingStatus
 from canterlot.use_cases.accept_invite import AcceptInviteUseCase
+from tools.factories import UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

@@ -7,7 +7,6 @@ from saq import Status
 
 from canterlot.constants import QUOTA_LOCK_KEY
 from canterlot.emails import EmailClient, EmailPriority, EmailSendResult
-from canterlot.factories import EmailTaskPayloadFactory
 from canterlot.worker import (
     CanterlotContext,
     after_process_hook,
@@ -16,6 +15,7 @@ from canterlot.worker import (
     run_worker,
     send_email_task,
 )
+from tools.factories import EmailTaskPayloadFactory
 
 
 @pytest.fixture
@@ -188,7 +188,8 @@ def describe_send_email_task():
     async def it_skips_delivery_if_externally_suppressed(ctx, base_payload):
         ctx["email_payload"] = base_payload
         with patch(
-            "canterlot.emails.core.policy.EmailPolicyEngine.is_external_suppressed", new_callable=AsyncMock
+            "canterlot.emails.core.policy.EmailPolicyEngine.is_external_suppressed",
+            new_callable=AsyncMock,
         ) as mock_suppress:
             mock_suppress.return_value = True
             await send_email_task(ctx, "")

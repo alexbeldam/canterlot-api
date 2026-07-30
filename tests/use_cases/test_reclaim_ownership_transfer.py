@@ -4,10 +4,10 @@ import pytest
 from beanie import PydanticObjectId
 
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
-from canterlot.factories import ClubFactory, UserFactory
 from canterlot.models.club import MemberSchema
 from canterlot.types import MemberRole
 from canterlot.use_cases.reclaim_ownership_transfer import ReclaimClubOwnershipUseCase
+from tools.factories import ClubFactory, UserFactory
 
 
 @pytest.fixture

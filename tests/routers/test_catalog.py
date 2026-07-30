@@ -10,9 +10,9 @@ from canterlot.exceptions import (
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.factories import BookSuggestionRequestFactory, CatalogEntryResponseFactory
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.types import BookProviderName
+from tools.factories import BookSuggestionRequestFactory, CatalogEntryResponseFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"

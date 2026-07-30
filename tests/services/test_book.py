@@ -10,10 +10,10 @@ from canterlot.exceptions import (
     BookSearchCriteriaMissingError,
     GatewayConfigurationError,
 )
-from canterlot.factories import BookDetailsFactory, BookFactory, BookSearchResultFactory
 from canterlot.models.book import BookModel, BookProviderIdentifier
 from canterlot.services.book import BookService
 from canterlot.types import BookProviderName
+from tools.factories import BookDetailsFactory, BookFactory, BookSearchResultFactory
 
 
 def _service(cache_repo: AsyncMock, book_repo: AsyncMock, book_provider: AsyncMock) -> BookService:

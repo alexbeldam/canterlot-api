@@ -362,6 +362,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "deptry" },
+    { name = "faker" },
     { name = "httpx2" },
     { name = "mongomock-motor" },
     { name = "mypy" },
@@ -409,6 +410,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "deptry", specifier = ">=0.25.1" },
+    { name = "faker", specifier = ">=40.35.0" },
     { name = "httpx2", specifier = ">=2.9.1" },
     { name = "mongomock-motor", specifier = ">=0.0.36" },
     { name = "mypy", specifier = ">=2.3.0" },

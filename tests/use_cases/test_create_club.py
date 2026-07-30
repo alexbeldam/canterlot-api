@@ -4,10 +4,10 @@ import pytest
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubResponse
-from canterlot.factories import ClubCreateRequestFactory, ClubFactory
 from canterlot.models.club import MemberSchema
 from canterlot.types import JoinPolicy, MemberRole
 from canterlot.use_cases.create_club import CreateClubUseCase
+from tools.factories import ClubCreateRequestFactory, ClubFactory
 
 CREATOR_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

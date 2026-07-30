@@ -5,11 +5,11 @@ from beanie import PydanticObjectId
 from pydantic import HttpUrl
 
 from canterlot.emails import EmailCategory
-from canterlot.factories import AvatarFactory, EmailPreferencesFactory, LinkedProviderFactory, UserFactory
 from canterlot.models.book import ReadBook
 from canterlot.models.user import UserModel
 from canterlot.repositories.beanie.user import BeanieUserRepository
 from canterlot.types import AuthProviderName
+from tools.factories import AvatarFactory, EmailPreferencesFactory, LinkedProviderFactory, UserFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

@@ -4,15 +4,15 @@ from pydantic import HttpUrl, SecretStr, ValidationError
 from canterlot.dto.auth import (
     ConnectedProvidersResponse,
 )
-from canterlot.factories import (
+from canterlot.models.user import LinkedProviderSchema
+from canterlot.types import AuthProviderName, SessionType
+from tools.factories import (
     AccessTokenResponseFactory,
     CreateSessionRequestFactory,
     LinkProviderRequestFactory,
     UserFactory,
     UserRegisterRequestFactory,
 )
-from canterlot.models.user import LinkedProviderSchema
-from canterlot.types import AuthProviderName, SessionType
 
 SOME_PASSWORD = SecretStr("Aa12345!")
 

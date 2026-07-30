@@ -4,9 +4,9 @@ import pytest
 
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
 from canterlot.emails.core.schemas import AuthProviderContext
-from canterlot.factories import UserFactory
 from canterlot.types import AuthProviderName
 from canterlot.use_cases.disconnect_auth_provider import DisconnectAuthProviderUseCase
+from tools.factories import UserFactory
 
 
 @pytest.fixture

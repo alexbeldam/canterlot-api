@@ -18,12 +18,12 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.factories import UserFactory, UserRegisterRequestFactory
 from canterlot.gateways.auth import OAuthIdentity, OAuthProvider
 from canterlot.models.user import AvatarSchema, LinkedProviderSchema
 from canterlot.services.auth import AuthService
 from canterlot.types import AuthOutcome, AuthProviderName, BadgeReason
 from canterlot.utils.security import hash_password
+from tools.factories import UserFactory, UserRegisterRequestFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_OTHER_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")

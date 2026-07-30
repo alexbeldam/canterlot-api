@@ -6,8 +6,8 @@ from pydantic.networks import HttpUrl
 
 from canterlot.emails import EmailTemplate, RenderedEmailTemplate, Templates, render_email_template
 from canterlot.emails.core import schemas
-from canterlot.factories import BaseContextFactory
-from canterlot.factories.emails import SpikeRoleContextFactory
+from tools.factories import BaseContextFactory
+from tools.factories.emails import SpikeRoleContextFactory
 
 
 @pytest.fixture

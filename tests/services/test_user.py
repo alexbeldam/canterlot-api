@@ -13,11 +13,11 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.exceptions.user import UserNotFoundError
-from canterlot.factories import UserFactory
 from canterlot.models.book import ReadBook
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.services.user import UserService
 from canterlot.types import AuthProviderName
+from tools.factories import UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439012")

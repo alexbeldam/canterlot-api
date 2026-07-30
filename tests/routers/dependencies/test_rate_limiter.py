@@ -19,7 +19,6 @@ from canterlot.constants import (
     REGISTER_RATELIMIT_TEMPLATE,
 )
 from canterlot.exceptions import RateLimitExceededError
-from canterlot.factories import CreateInviteRequestFactory, CreateSessionRequestFactory
 from canterlot.repositories.interfaces import RateLimiter
 from canterlot.routers.dependencies.rate_limiter import (
     rate_limit_club_moderation,
@@ -33,6 +32,7 @@ from canterlot.routers.dependencies.rate_limiter import (
     rate_limit_register_attempt,
 )
 from canterlot.types import AuthProviderName, InviteType, SessionType
+from tools.factories import CreateInviteRequestFactory, CreateSessionRequestFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

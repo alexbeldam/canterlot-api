@@ -1,8 +1,8 @@
 from beanie import PydanticObjectId
 
-from canterlot.factories import InviteFactory
 from canterlot.models.invite import InviteModel
 from canterlot.types import InviteType
+from tools.factories import InviteFactory
 
 
 def describe_invite_model_defaults():

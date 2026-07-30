@@ -11,10 +11,10 @@ from canterlot.dto.club import (
     ClubResponse,
     ClubSettingsUpdateRequest,
 )
-from canterlot.factories import ClubCreateRequestFactory, ClubFactory, UserFactory
 from canterlot.models.club import MemberSchema, PendingApprovalSchema
 from canterlot.models.user import AvatarSchema
 from canterlot.types import AuthProviderName, JoinPolicy, MemberRole
+from tools.factories import ClubCreateRequestFactory, ClubFactory, UserFactory
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")

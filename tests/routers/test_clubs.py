@@ -23,11 +23,11 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
     UserNotFoundError,
 )
-from canterlot.factories import ClubFactory, InviteTokenResponseFactory, UserFactory
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
 from canterlot.models.user import AvatarSchema, UserModel
 from canterlot.services.club import ClubView
 from canterlot.types import AuthProviderName, MemberRole
+from tools.factories import ClubFactory, InviteTokenResponseFactory, UserFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"

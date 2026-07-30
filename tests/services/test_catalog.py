@@ -10,12 +10,12 @@ from canterlot.exceptions import (
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.factories import BookFactory
 from canterlot.models.book import LinkCandidate
 from canterlot.models.club import CatalogEntryModel
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.catalog import CatalogService
 from canterlot.types import ExtensionType, MemberRole
+from tools.factories import BookFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")

@@ -6,7 +6,7 @@ from beanie import PydanticObjectId
 from canterlot.constants import EXTERNAL_SUPPRESSION_TEMPLATE
 from canterlot.emails.core.definitions import EmailTemplate
 from canterlot.emails.core.policy import EmailPolicyEngine
-from canterlot.factories import EmailPreferencesFactory, EmailTaskPayloadFactory
+from tools.factories import EmailPreferencesFactory, EmailTaskPayloadFactory
 
 CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439033")
 NOW = datetime.now(UTC)

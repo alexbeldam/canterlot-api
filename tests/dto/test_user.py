@@ -9,9 +9,9 @@ from canterlot.dto.user import (
     SetAvatarRequest,
     UserProfileResponse,
 )
-from canterlot.factories import UpdateProfileRequestFactory, UserFactory
 from canterlot.models.user import AvatarSchema
 from canterlot.types import AuthProviderName, BadgeReason
+from tools.factories import UpdateProfileRequestFactory, UserFactory
 
 
 def describe_update_profile_request():

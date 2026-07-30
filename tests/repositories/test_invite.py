@@ -1,9 +1,9 @@
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.factories import InviteFactory
 from canterlot.repositories.beanie.invite import BeanieInviteRepository
 from canterlot.types import InviteType
+from tools.factories import InviteFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
-from canterlot.factories import UserFactory
 from canterlot.types import AuthProviderName
 from canterlot.use_cases.revoke_auth_provider import RevokeAuthProviderUseCase
+from tools.factories import UserFactory
 
 
 @pytest.fixture

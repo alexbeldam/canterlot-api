@@ -6,15 +6,15 @@ from pydantic import SecretStr
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import AuthProviderContext
 from canterlot.exceptions import ClubNotFoundError, InvalidInviteTokenError, InviteLinkDeactivatedError
-from canterlot.factories import (
+from canterlot.services.auth import OAuthSignInResult
+from canterlot.types import AuthOutcome, AuthProviderName, InviteType, JoinPolicy, SessionType
+from canterlot.use_cases.create_session import CreateSessionResult, CreateSessionUseCase
+from tools.factories import (
     CreateSessionRequestFactory,
     InvitePreviewResponseFactory,
     TokenResponseFactory,
     UserFactory,
 )
-from canterlot.services.auth import OAuthSignInResult
-from canterlot.types import AuthOutcome, AuthProviderName, InviteType, JoinPolicy, SessionType
-from canterlot.use_cases.create_session import CreateSessionResult, CreateSessionUseCase
 
 
 @pytest.fixture

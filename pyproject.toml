@@ -61,6 +61,7 @@ dev = [
     "testcontainers[mongodb,redis]>=4.15.0",
     "python-semantic-release>=10.6.1",
     "polyfactory>=3.3.0",
+    "faker>=40.35.0",
 ]
 
 [project.scripts]

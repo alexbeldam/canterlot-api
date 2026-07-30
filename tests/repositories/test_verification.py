@@ -2,11 +2,11 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import SecretStr
 
-from canterlot.factories import VerificationCodeFactory
 from canterlot.models.verification import VerificationCodeModel
 from canterlot.repositories.beanie.verification import BeanieVerificationRepository
 from canterlot.types import VerificationScope
 from canterlot.utils import generate_secure_code
+from tools.factories import VerificationCodeFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

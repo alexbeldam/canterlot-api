@@ -7,9 +7,9 @@ from beanie import PydanticObjectId
 from canterlot.dto.club import OwnershipTransferRequest, OwnershipTransferResponse
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import ClubActorActionContext
-from canterlot.factories import ClubFactory, UserFactory
 from canterlot.services.dispatch import BatchEmailDispatchItem
 from canterlot.use_cases.transfer_club_ownership import TransferClubOwnershipUseCase
+from tools.factories import ClubFactory, UserFactory
 
 
 @pytest.fixture

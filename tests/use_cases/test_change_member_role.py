@@ -5,9 +5,9 @@ from beanie import PydanticObjectId
 
 from canterlot.emails import EmailTaskPayload
 from canterlot.emails.core.schemas import SpikeRoleContext
-from canterlot.factories import ClubFactory, UserFactory
 from canterlot.types import MemberRole
 from canterlot.use_cases import ChangeMemberRoleUseCase
+from tools.factories import ClubFactory, UserFactory
 
 CALLER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439012")

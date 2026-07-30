@@ -11,8 +11,8 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     MemberBannedError,
 )
-from canterlot.factories import InvitePreviewResponseFactory
 from canterlot.types import ClubOnboardingStatus, InviteType, JoinPolicy
+from tools.factories import InvitePreviewResponseFactory
 
 SOME_INVITE_ID = "some-invite-id"
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
