@@ -18,7 +18,8 @@ class ValidatePasswordResetCodeUseCase:
         self.__verification_service = verification_service
 
     async def execute(self, payload: ValidatePasswordResetCodeRequest) -> str:
-        log = logger.info("Executing password reset code validation use case")
+        log = logger.bind(has_token=bool(payload.token))
+        log.info("Executing password reset code validation use case")
 
         # ---------------------------------------------------------
         # 1. Resolve target User ID and Code from Payload

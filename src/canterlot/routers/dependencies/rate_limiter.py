@@ -1,4 +1,3 @@
-# canterlot/dependencies/rate_limiter.py
 from typing import Annotated
 
 from beanie import PydanticObjectId
@@ -16,6 +15,7 @@ from canterlot.constants import (
     OAUTH_SIGNIN_RATELIMIT_TEMPLATE,
     PASSWORD_CHANGE_RATELIMIT_TEMPLATE,
     PASSWORD_RESET_REQUEST_RATELIMIT_TEMPLATE,
+    PASSWORD_RESET_VALIDATE_RATELIMIT_TEMPLATE,
     PROVIDER_MUTATION_RATELIMIT_TEMPLATE,
     REFRESH_RATELIMIT_TEMPLATE,
     REGISTER_RATELIMIT_TEMPLATE,
@@ -210,7 +210,7 @@ async def rate_limit_password_reset_validation_attempt(
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> None:
     settings = get_settings().ratelimit
-    key = PASSWORD_RESET_REQUEST_RATELIMIT_TEMPLATE.format(ip=_client_ip(request))
+    key = PASSWORD_RESET_VALIDATE_RATELIMIT_TEMPLATE.format(ip=_client_ip(request))
 
     await _enforce_rate_limit(
         rate_limiter,
