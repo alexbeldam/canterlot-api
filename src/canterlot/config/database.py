@@ -1,5 +1,6 @@
 from beanie import init_beanie
 from pymongo import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
 
 from canterlot.models import BEANIE_DOCUMENT_MODELS
 from canterlot.utils import get_logger
@@ -12,6 +13,7 @@ logger = get_logger(__name__)
 class DatabaseManager:
     def __init__(self) -> None:
         self.__client: AsyncMongoClient | None = None
+        self.__database: AsyncDatabase | None = None
 
     async def __aenter__(self):
         await self.open()
@@ -28,10 +30,17 @@ class DatabaseManager:
             minPoolSize=2,
             tz_aware=True,
         )
-        database = self.__client[settings.mongodb_db_name]
+        self.__database = self.__client[settings.mongodb_db_name]
 
-        await init_beanie(database=database, document_models=BEANIE_DOCUMENT_MODELS)
+        await init_beanie(database=self.__database, document_models=BEANIE_DOCUMENT_MODELS)
         logger.info("Connected to MongoDB pool.")
+
+    async def reinitialize_beanie(self) -> None:
+        if self.__database is None:
+            raise RuntimeError("DatabaseManager is not open.")
+
+        await init_beanie(database=self.__database, document_models=BEANIE_DOCUMENT_MODELS)
+        logger.info("Beanie reinitialized.")
 
     async def close(self):
         if self.__client:
