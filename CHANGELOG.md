@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.4.1 (2026-09-04)
+
+### Bug Fixes
+
+- **email**: Run the SAQ worker in-process instead of a separate Render service
+  ([`331eecc`](https://github.com/alexbeldam/canterlot-api/commit/331eecc51ae3feb55552f545c1c8312bad6f7e54))
+
+- **redis**: Disable maintenance-notifications handshake against non-Enterprise backends
+  ([`9135e03`](https://github.com/alexbeldam/canterlot-api/commit/9135e03d952950dbafa54a7ef3a0cf06c827254a))
+
+
 ## v0.4.0 (2026-09-04)
 
 ### Bug Fixes
