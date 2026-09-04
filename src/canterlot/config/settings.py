@@ -189,6 +189,13 @@ def _parse_secret_key(v: Any, field_name: str) -> bytes:
             {"field_name": field_name},
         )
 
+    if raw_bytes is None:
+        raise PydanticCustomError(
+            "invalid_secret_encoding",
+            "{field_name} must be a valid Base64 string or 64-character Hex string",
+            {"field_name": field_name},
+        )
+
     # 3. Enforce 32-byte (256-bit) cryptographic strength
     if len(raw_bytes) != 32:  # noqa: PLR2004
         raise PydanticCustomError(
