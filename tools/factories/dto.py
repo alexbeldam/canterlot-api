@@ -92,7 +92,7 @@ class BookResponseFactory(BaseModelFactory[BookResponse]):
 
 
 class CatalogEntryResponseFactory(BookResponseFactory):
-    __model__ = CatalogEntryResponse
+    __model__ = CatalogEntryResponse  # type: ignore[assignment]
 
     suggested_by = Use(lambda: CatalogEntryResponseFactory.__faker__.user_name().replace(".", "_"))
 
@@ -115,7 +115,7 @@ class CreateInviteRequestFactory(BaseModelFactory[CreateInviteRequest]):
     __model__ = CreateInviteRequest
 
     @classmethod
-    def build(cls, **kwargs: Any) -> CreateInviteRequest:
+    def build(cls, factory_use_construct: bool = False, **kwargs: Any) -> CreateInviteRequest:
         invite_type = kwargs.get(
             "type",
             cls.__faker__.random_element(list(InviteType)),
@@ -134,7 +134,7 @@ class CreateInviteRequestFactory(BaseModelFactory[CreateInviteRequest]):
             else:
                 kwargs["email"] = None
                 kwargs["username"] = cls.__faker__.user_name().replace(".", "_")
-        return super().build(**kwargs)
+        return super().build(factory_use_construct, **kwargs)
 
 
 class CreateSessionRequestFactory(BaseModelFactory[CreateSessionRequest]):
@@ -144,7 +144,7 @@ class CreateSessionRequestFactory(BaseModelFactory[CreateSessionRequest]):
     invited_by = None
 
     @classmethod
-    def build(cls, **kwargs: Any) -> CreateSessionRequest:
+    def build(cls, factory_use_construct: bool = False, **kwargs: Any) -> CreateSessionRequest:
         type = kwargs.get(
             "type",
             cls.__faker__.random_element(list(SessionType)),
@@ -159,7 +159,7 @@ class CreateSessionRequestFactory(BaseModelFactory[CreateSessionRequest]):
             kwargs.setdefault("password", None)
             kwargs.setdefault("provider", cls.__faker__.random_element(list(AuthProviderName)))
             kwargs.setdefault("credential", cls.__faker__.uuid4())
-        return super().build(**kwargs)
+        return super().build(factory_use_construct, **kwargs)
 
 
 class InvitePreviewResponseFactory(BaseModelFactory[InvitePreviewResponse]):
@@ -184,7 +184,7 @@ class LinkProviderRequestFactory(BaseModelFactory[LinkProviderRequest]):
 
 
 class RegisterResponseFactory(AccessTokenResponseFactory):
-    __model__ = RegisterResponse
+    __model__ = RegisterResponse  # type: ignore[assignment]
 
     onboarding = None
 

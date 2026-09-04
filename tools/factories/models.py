@@ -1,12 +1,15 @@
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import shortuuid
 from beanie import PydanticObjectId
 from polyfactory import Use
 from pydantic import HttpUrl
 
+from canterlot.emails.core.enums import EmailCategory
 from canterlot.models import BookModel, CatalogEntryModel, ClubModel, InviteModel, UserModel
-from canterlot.models.book import LinkCandidate
+from canterlot.models.book import LinkCandidate, ReadBook
+from canterlot.models.club import PendingApprovalSchema
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.models.verification import VerificationCodeModel
 from canterlot.types import (
@@ -30,7 +33,7 @@ class BaseLinkCadidateFactory[T: LinkCandidate](BaseModelFactory[T]):
     languages = Use(lambda: [BaseLinkCadidateFactory.__faker__.language_code() for _ in range(2)])
 
     @classmethod
-    def build(cls, **kwargs) -> T:
+    def build(cls, factory_use_construct: bool = False, **kwargs) -> T:
         ext = kwargs.get("extension", cls.__faker__.random_element(list(ExtensionType)))
 
         kwargs.setdefault(
@@ -38,7 +41,7 @@ class BaseLinkCadidateFactory[T: LinkCandidate](BaseModelFactory[T]):
             HttpUrl(f"https://example.com/{cls.__faker__.file_name(category='document', extension=ext.value)}"),
         )
 
-        return super().build(**kwargs)
+        return super().build(factory_use_construct, **kwargs)
 
 
 class LinkCadidateFactory(BaseLinkCadidateFactory[LinkCandidate]):
@@ -85,9 +88,9 @@ class ClubFactory(BaseDocumentFactory[ClubModel]):
     allow_suggestions = Use(lambda: ClubFactory.__faker__.boolean())
     preferred_languages = Use(lambda: [ClubFactory.__faker__.language_code() for _ in range(2)])
     members = Use(lambda: ClubFactory._generate_members())
-    banned_users = Use(lambda: [])
-    pending_approvals = Use(lambda: [])
-    catalog = Use(lambda: [])
+    banned_users = Use(lambda: cast(list[PydanticObjectId], []))
+    pending_approvals = Use(lambda: cast(list[PendingApprovalSchema], []))
+    catalog = Use(lambda: cast(list[CatalogEntryModel], []))
     ownership_transferred_at = None
     protected_former_owner_id = None
 
@@ -115,7 +118,7 @@ class InviteFactory(BaseDocumentFactory[InviteModel]):
     is_active = True
 
     @classmethod
-    def build(cls, **kwargs) -> InviteModel:
+    def build(cls, factory_use_construct: bool = False, **kwargs) -> InviteModel:
         invite_type = kwargs.get("type", cls.__faker__.random_element(list(InviteType)))
 
         if invite_type == InviteType.PUBLIC:
@@ -135,7 +138,7 @@ class InviteFactory(BaseDocumentFactory[InviteModel]):
                     kwargs.setdefault("target_email", None)
                     kwargs.setdefault("target_user_id", PydanticObjectId())
 
-        return super().build(**kwargs)
+        return super().build(factory_use_construct, **kwargs)
 
 
 class EmailPreferencesFactory(BaseModelFactory[EmailPreferencesSchema]):
@@ -143,9 +146,9 @@ class EmailPreferencesFactory(BaseModelFactory[EmailPreferencesSchema]):
     __set_as_default_factory_for_type__ = True
 
     delivery_failed = False
-    categories_opt_out = Use(lambda: {})
-    categories_system_suppressed = Use(lambda: {})
-    clubs_opt_out = Use(lambda: {})
+    categories_opt_out = Use(lambda: cast(dict[EmailCategory, datetime], {}))
+    categories_system_suppressed = Use(lambda: cast(dict[EmailCategory, datetime], {}))
+    clubs_opt_out = Use(lambda: cast(dict[PydanticObjectId, datetime], {}))
     verified_at = Use(
         lambda: EmailPreferencesFactory.__faker__.date_time_between(start_date="-1y", end_date="now", tzinfo=UTC)
     )
@@ -173,13 +176,13 @@ class UserFactory(BaseDocumentFactory[UserModel]):
     username = Use(lambda: UserFactory.__faker__.user_name().replace(".", "_"))
     email = Use(lambda: UserFactory.__faker__.email())
     hashed_password = Use(lambda: UserFactory.__faker__.sha256())
-    linked_providers = Use(lambda: [])
+    linked_providers = Use(lambda: cast(list[LinkedProviderSchema], []))
     avatar = None
     generated_avatar_seed = Use(lambda: shortuuid.random())
     referral_count = 0
     badges = Use(lambda: [EarnedBadgeSchema(reason=BadgeReason.JOINED)])
-    refresh_tokens = Use(lambda: [])
-    books_read = Use(lambda: [])
+    refresh_tokens = Use(lambda: cast(list[str], []))
+    books_read = Use(lambda: cast(list[ReadBook], []))
     accepted_terms_version = 1
     accepted_terms_at = Use(
         lambda: UserFactory.__faker__.date_time_between(start_date="-1y", end_date="now", tzinfo=UTC)

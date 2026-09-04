@@ -53,19 +53,19 @@ class CreateInviteUseCase:
                 target_email=target_email,
             )
 
-            context = InviteExternalContext.from_domain(
+            external_context = InviteExternalContext.from_domain(
                 inviter=issuer,
                 club=club,
                 invite=invite,
             )
 
-            task = EmailTaskPayload(
+            external_task = EmailTaskPayload(
                 template=Templates.CELESTIA_INVITE_EXTERNAL,
                 to=target_email,
-                context=context,
+                context=external_context,
             )
 
-            await self.__email_dispatch.dispatch(task=task)
+            await self.__email_dispatch.dispatch(task=external_task)
             return InviteTokenResponse(invite_token=invite)
 
         # ---------------------------------------------------------
@@ -79,19 +79,19 @@ class CreateInviteUseCase:
             target_user_id=PydanticObjectId(target_user.id),
         )
 
-        context = InviteInternalContext.from_domain(
+        internal_context = InviteInternalContext.from_domain(
             recipient=target_user,
             inviter=issuer,
             club=club,
             invite=invite,
         )
 
-        task = EmailTaskPayload(
+        internal_task = EmailTaskPayload(
             template=Templates.CELESTIA_INVITE_INTERNAL,
             to=target_user.email,
-            context=context,
+            context=internal_context,
         )
 
-        await self.__email_dispatch.dispatch(task=task, prefs=target_user.email_preferences)
+        await self.__email_dispatch.dispatch(task=internal_task, prefs=target_user.email_preferences)
 
         return InviteTokenResponse(invite_token=invite)

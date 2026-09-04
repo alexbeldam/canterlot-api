@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
 from beanie import PydanticObjectId
 from beanie.operators import In, Or, Pull, Push, Set
@@ -217,7 +217,7 @@ class BeanieUserRepository(UserRepository):
         new_refresh_token: str,
         mark_verified_at: datetime | None = None,
     ) -> None:
-        set_fields = {
+        set_fields: dict[Any, Any] = {
             UserModel.hashed_password: hashed_password,
             UserModel.refresh_tokens: [new_refresh_token],
         }

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import Response
 
 from canterlot.config import get_settings
@@ -11,7 +13,7 @@ PASSWORD_RESET_COOKIE_EXPIRY_SECONDS = settings.reset_token_expiry_minutes * 60
 AUTH_TOKEN_COOKIE_PATH = "/v1/auth"
 HTTP_ONLY = True
 SECURE = True
-SAME_SITE = "strict"
+SAME_SITE: Literal["lax", "strict", "none"] = "strict"
 
 
 def set_refresh_token_cookie(response: Response, token: str) -> None:

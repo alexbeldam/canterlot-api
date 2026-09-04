@@ -167,7 +167,7 @@ class BookService:
         total_results: int,
         log,
     ) -> None:
-        cache_map = {
+        cache_map: dict[str, str | int | float] = {
             "total_results": total_results,
             "books": json.dumps([b.model_dump(mode="json") for b in sorted_books]),
         }

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from beanie import Document
 from faker import Faker
@@ -67,7 +67,7 @@ class BaseContextFactory[T: BaseEmailContext](BaseModelFactory[T]):
     _by_model: ClassVar[dict[type[BaseEmailContext], type["BaseContextFactory[Any]"]]] = {}
     _by_template_name: ClassVar[dict[str, type["BaseContextFactory[Any]"]]] = {}
 
-    unsubscribe_url = None
+    unsubscribe_url: Any = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -98,7 +98,7 @@ class BaseContextFactory[T: BaseEmailContext](BaseModelFactory[T]):
     @classmethod
     def build_for_template(cls, template: EmailTemplate[Any] | str, **kwargs: Any) -> BaseModel:
         factory_cls = cls.get_for_template(template)
-        return factory_cls.build(**kwargs)
+        return cast(BaseModel, factory_cls.build(**kwargs))
 
 
 class MemberFactory(BaseModelFactory[MemberSchema]):

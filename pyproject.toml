@@ -72,6 +72,7 @@ packages = ["src/canterlot"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"
+pythonpath = ["."]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["it_*"]

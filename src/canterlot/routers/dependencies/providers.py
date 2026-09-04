@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 import redis.asyncio as aioredis
 from beanie import PydanticObjectId
@@ -91,11 +91,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
 
 
 def get_redis_client(request: Request) -> aioredis.Redis:
-    return request.app.state.redis_client
+    return cast(aioredis.Redis, request.app.state.redis_client)
 
 
 def get_email_task_queue(request: Request) -> Queue:
-    return request.app.state.email_task_queue
+    return cast(Queue, request.app.state.email_task_queue)
 
 
 async def get_curl_cffi_session() -> AsyncGenerator[AsyncSession]:

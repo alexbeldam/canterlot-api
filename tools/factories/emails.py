@@ -22,26 +22,26 @@ class RecipientContextFactory(BaseContextFactory[schemas.RecipientContext]):
 
 
 class BaseVerificationContextFactory(RecipientContextFactory):
-    __model__ = schemas.BaseVerificationContext
+    __model__ = schemas.BaseVerificationContext  # type: ignore[assignment]
 
     code = Use(lambda: generate_secure_code().get_secret_value())
 
 
 class ClubActionContextFactory(RecipientContextFactory):
-    __model__ = schemas.ClubActionContext
+    __model__ = schemas.ClubActionContext  # type: ignore[assignment]
 
     club_name = Use(lambda: ClubActionContextFactory.__faker__.company())
     unsubscribe_url = Use(lambda: ClubActionContextFactory.__faker__.url())
 
 
 class ClubActorActionContextFactory(ClubActionContextFactory):
-    __model__ = schemas.ClubActorActionContext
+    __model__ = schemas.ClubActorActionContext  # type: ignore[assignment]
 
     actor_name = Use(lambda: ClubActionContextFactory.__faker__.first_name())
 
 
 class AuthProviderContextFactory(RecipientContextFactory):
-    __model__ = schemas.AuthProviderContext
+    __model__ = schemas.AuthProviderContext  # type: ignore[assignment]
 
     provider_name = Use(lambda: AuthProviderContextFactory.__faker__.random_element(list(AuthProviderName)))
 
@@ -54,7 +54,7 @@ class InviteExternalContextFactory(BaseContextFactory):
 
 
 class InviteInternalContextFactory(ClubActionContextFactory):
-    __model__ = schemas.InviteInternalContext
+    __model__ = schemas.InviteInternalContext  # type: ignore[assignment]
 
     inviter_name = Use(lambda: InviteInternalContextFactory.__faker__.first_name())
 
@@ -64,23 +64,23 @@ class EmailVerificationContextFactory(BaseVerificationContextFactory):
 
 
 class SpikeBaseFactory(RecipientContextFactory):
-    __model__ = schemas.SpikeBaseContext
+    __model__ = schemas.SpikeBaseContext  # type: ignore[assignment]
 
     club_name = Use(lambda: SpikeBaseFactory.__faker__.company())
 
 
 class SpikeActionContextFactory(SpikeBaseFactory):
-    __model__ = schemas.SpikeActionContext
+    __model__ = schemas.SpikeActionContext  # type: ignore[assignment]
 
 
 class SpikeBookContextFactory(SpikeActionContextFactory):
-    __model__ = schemas.SpikeBookContext
+    __model__ = schemas.SpikeBookContext  # type: ignore[assignment]
 
     book_title = Use(lambda: SpikeBookContextFactory.__faker__.sentence(nb_words=3))
 
 
 class SpikeRoleContextFactory(SpikeActionContextFactory):
-    __model__ = schemas.SpikeRoleContext
+    __model__ = schemas.SpikeRoleContext  # type: ignore[assignment]
 
     role_name = Use(lambda: SpikeRoleContextFactory.__faker__.random_element(list(MemberRole)))
 
@@ -94,7 +94,7 @@ class PasswordResetValidationContextFactory(BaseVerificationContextFactory):
 
 
 class LunaProviderActionContextFactory(AuthProviderContextFactory):
-    __model__ = schemas.LunaProviderActionContext
+    __model__ = schemas.LunaProviderActionContext  # type: ignore[assignment]
 
 
 class EmailTaskPayloadFactory(ModelFactory[EmailTaskPayload]):
@@ -103,7 +103,7 @@ class EmailTaskPayloadFactory(ModelFactory[EmailTaskPayload]):
     created_at = Use(lambda: datetime.now(UTC))
 
     @classmethod
-    def build(cls, **overrides: Any) -> EmailTaskPayload:
+    def build(cls, factory_use_construct: bool = False, **overrides: Any) -> EmailTaskPayload[Any]:
         template: EmailTemplate[Any] = overrides.get("template") or get_random_email_template(cls.__faker__)
         overrides["template"] = template
 
@@ -115,7 +115,7 @@ class EmailTaskPayloadFactory(ModelFactory[EmailTaskPayload]):
             elif isinstance(template, ClubPreferenceEmailTemplate):
                 overrides["club_id"] = PydanticObjectId()
 
-        return super().build(**overrides)
+        return super().build(factory_use_construct, **overrides)
 
 
 class BatchEmailDispatchItemFactory(DataclassFactory[BatchEmailDispatchItem]):

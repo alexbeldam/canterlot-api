@@ -1,9 +1,10 @@
+from typing import cast
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
-from canterlot.dto.catalog import PaginatedCatalogResponse, SuggestionResponse, SuggestionStatus
+from canterlot.dto.catalog import CatalogEntryResponse, PaginatedCatalogResponse, SuggestionResponse, SuggestionStatus
 from canterlot.exceptions import (
     BookNotFoundError,
     ClubNotFoundError,
@@ -116,7 +117,7 @@ def describe_get_club_catalog():
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
-            items=[CatalogEntryResponseFactory.build(suggested_by="alice_1")],
+            items=[cast(CatalogEntryResponse, CatalogEntryResponseFactory.build(suggested_by="alice_1"))],
             total_items=1,
             current_page=1,
             page_size=20,

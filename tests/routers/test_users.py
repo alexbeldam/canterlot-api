@@ -1,11 +1,13 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
 from pydantic import HttpUrl
 from starlette.testclient import TestClient
 
+from canterlot.dto.auth import RegisterResponse
 from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
@@ -37,7 +39,7 @@ SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 def describe_register():
     def it_registers_a_user_without_an_invite(client: TestClient, register_user_use_case: AsyncMock):
         register_user_use_case.execute.return_value = RegisterUserUseCaseResult(
-            response=RegisterResponseFactory.build(access_token="access", onboarding=None),
+            response=cast(RegisterResponse, RegisterResponseFactory.build(access_token="access", onboarding=None)),
             refresh_token="refresh",
         )
 
@@ -59,9 +61,12 @@ def describe_register():
 
     def it_registers_a_user_and_onboards_them_via_an_invite(client: TestClient, register_user_use_case: AsyncMock):
         register_user_use_case.execute.return_value = RegisterUserUseCaseResult(
-            response=RegisterResponseFactory.build(
-                access_token="access",
-                onboarding=ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED),
+            response=cast(
+                RegisterResponse,
+                RegisterResponseFactory.build(
+                    access_token="access",
+                    onboarding=ClubOnboarding(club_name="Book Club", status=ClubOnboardingStatus.JOINED),
+                ),
             ),
             refresh_token="refresh",
         )
