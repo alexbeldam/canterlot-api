@@ -11,6 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
+from redis.maint_notifications import MaintNotificationsConfig
 from saq.queue import Queue
 from saq.queue.redis import RedisQueue
 from saq.web.starlette import saq_web
@@ -105,6 +106,7 @@ def create_app() -> FastAPI:
         socket_timeout=15.0,
         socket_keepalive=True,
         health_check_interval=10,
+        maint_notifications_config=MaintNotificationsConfig(enabled=False),
     )
 
     saq_queues: list[Queue] = [

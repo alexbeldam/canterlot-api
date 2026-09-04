@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Required
 
 from redis.asyncio import Redis
+from redis.maint_notifications import MaintNotificationsConfig
 from saq import Queue, Status, Worker
 from saq.queue.redis import RedisQueue
 from saq.types import Context
@@ -256,6 +257,7 @@ async def run_worker() -> None:
             socket_timeout=15.0,
             socket_keepalive=True,
             health_check_interval=10,
+            maint_notifications_config=MaintNotificationsConfig(enabled=False),
         )
 
         worker = build_worker(redis_client)
