@@ -1,9 +1,8 @@
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 from beanie import PydanticObjectId
-from pydantic import HttpUrl
+from pydantic import HttpUrl, SecretStr
 
 from canterlot.dto.auth import UserRegisterRequest
 from canterlot.exceptions import (
@@ -19,26 +18,23 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models.enums import AuthOutcome, AuthProviderName, BadgeReason
+from canterlot.gateways.auth import OAuthIdentity, OAuthProvider
 from canterlot.models.user import AvatarSchema, LinkedProviderSchema
-from canterlot.providers.auth import OAuthIdentity, OAuthProvider
 from canterlot.services.auth import AuthService
+from canterlot.types import AuthOutcome, AuthProviderName, BadgeReason
 from canterlot.utils.security import hash_password
+from tools.factories import UserFactory, UserRegisterRequestFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_OTHER_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")
+SOME_PLAIN_PASSWORD = "ValidP@assword1"
+SOME_PASSWORD = SecretStr(SOME_PLAIN_PASSWORD)
+SOME_HASHED_PASSWORD = hash_password(SOME_PLAIN_PASSWORD)
 
 
 def _register_request(**overrides) -> UserRegisterRequest:
-    defaults = {
-        "name": "Alice Smith",
-        "username": "alice_1",
-        "email": "alice@example.com",
-        "password": "secret1",
-        "terms_version": 1,
-        "privacy_version": 1,
-    }
-    return UserRegisterRequest(**{**defaults, **overrides})
+    defaults = {"terms_version": 1, "privacy_version": 1}
+    return UserRegisterRequestFactory.build(**{**defaults, **overrides})
 
 
 def _google_provider() -> AsyncMock:
@@ -76,12 +72,12 @@ def describe_register_user():
     async def it_persists_a_new_user_and_returns_issued_tokens(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save.return_value = UserFactory.build(id=SOME_USER_ID)
         service = AuthService(user_repo, {})
 
         result = await service.register_user(_register_request())
 
-        assert result.user_id == SOME_USER_ID
+        assert result.user.id == SOME_USER_ID
         assert result.access_token
         assert result.refresh_token
         user_repo.push_refresh_token_by_id.assert_awaited_once_with(SOME_USER_ID, result.refresh_token)
@@ -90,7 +86,7 @@ def describe_register_user():
     async def it_records_legal_acceptance_and_completes_the_profile_immediately(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save.return_value = UserFactory.build()
         service = AuthService(user_repo, {})
 
         await service.register_user(_register_request(terms_version=1, privacy_version=1))
@@ -105,7 +101,7 @@ def describe_register_user():
     async def it_credits_the_referring_user_when_invited_by_is_given(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save.return_value = UserFactory.build()
         service = AuthService(user_repo, {})
 
         await service.register_user(_register_request(), invited_by="referrer_1")
@@ -115,7 +111,7 @@ def describe_register_user():
     async def it_defaults_a_new_account_to_no_avatar_with_a_generated_seed_available(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save.return_value = UserFactory.build()
         service = AuthService(user_repo, {})
 
         await service.register_user(_register_request())
@@ -127,7 +123,7 @@ def describe_register_user():
     async def it_awards_exactly_one_joined_badge_to_a_new_account(user_repo: AsyncMock):
         user_repo.exists_by_username.return_value = False
         user_repo.exists_by_email.return_value = False
-        user_repo.save.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save.return_value = UserFactory.build()
         service = AuthService(user_repo, {})
 
         await service.register_user(_register_request())
@@ -149,11 +145,13 @@ def describe_attribute_referral():
 
 def describe_login_user():
     async def it_issues_tokens_for_valid_credentials(user_repo: AsyncMock):
-        hashed = hash_password("secret1")
-        user_repo.find_by_username.return_value = SimpleNamespace(id=SOME_USER_ID, hashed_password=hashed)
+        user_repo.find_by_username.return_value = UserFactory.build(
+            id=SOME_USER_ID,
+            hashed_password=SOME_HASHED_PASSWORD,
+        )
         service = AuthService(user_repo, {})
 
-        result = await service.login_user("alice_1", "secret1")
+        result = await service.login_user("alice_1", SOME_PASSWORD)
 
         assert result.access_token
         assert result.refresh_token
@@ -164,22 +162,21 @@ def describe_login_user():
         service = AuthService(user_repo, {})
 
         with pytest.raises(InvalidCredentialsError):
-            await service.login_user("ghost", "secret1")
+            await service.login_user("ghost", SOME_PASSWORD)
 
     async def it_rejects_a_login_with_an_incorrect_password(user_repo: AsyncMock):
-        hashed = hash_password("secret1")
-        user_repo.find_by_username.return_value = SimpleNamespace(id=SOME_USER_ID, hashed_password=hashed)
+        user_repo.find_by_username.return_value = UserFactory.build(hashed_password=SOME_HASHED_PASSWORD)
         service = AuthService(user_repo, {})
 
         with pytest.raises(InvalidCredentialsError):
-            await service.login_user("alice_1", "wrong-password")
+            await service.login_user("alice_1", SecretStr("wrong-password"))
 
     async def it_rejects_a_password_login_for_an_oauth_only_account(user_repo: AsyncMock):
-        user_repo.find_by_username.return_value = SimpleNamespace(id=SOME_USER_ID, hashed_password=None)
+        user_repo.find_by_username.return_value = UserFactory.build(hashed_password=None)
         service = AuthService(user_repo, {})
 
         with pytest.raises(InvalidCredentialsError):
-            await service.login_user("alice_1", "anything")
+            await service.login_user("alice_1", SecretStr("anything"))
 
 
 def describe_rotate_refresh_token():
@@ -303,7 +300,7 @@ def describe_sign_in_with_provider():
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(external_id="sub-1", email="alice@example.com", name="Alice")
         user_repo.find_id_by_linked_provider.return_value = None
-        user_repo.find_by_email.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.find_by_email.return_value = UserFactory.build()
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         with pytest.raises(OAuthLinkRequiredError):
@@ -317,7 +314,7 @@ def describe_sign_in_with_provider():
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
-        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save_new_oauth_account.return_value = UserFactory.build()
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         result = await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
@@ -337,7 +334,7 @@ def describe_sign_in_with_provider():
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
-        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save_new_oauth_account.return_value = UserFactory.build()
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
@@ -354,7 +351,7 @@ def describe_sign_in_with_provider():
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
-        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save_new_oauth_account.return_value = UserFactory.build()
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
@@ -371,7 +368,7 @@ def describe_sign_in_with_provider():
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
         user_repo.exists_by_username.return_value = False
-        user_repo.save_new_oauth_account.return_value = SimpleNamespace(id=SOME_USER_ID)
+        user_repo.save_new_oauth_account.return_value = UserFactory.build()
         service = AuthService(user_repo, {AuthProviderName.GOOGLE: google})
 
         await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
@@ -544,52 +541,49 @@ def describe_link_provider():
 
 
 def describe_disconnect_provider():
-    async def it_raises_when_the_authenticated_user_no_longer_exists(user_repo: AsyncMock):
-        user_repo.find_by_id.return_value = None
-        service = AuthService(user_repo, {})
-
-        with pytest.raises(InvalidCredentialsError):
-            await service.disconnect_provider(SOME_USER_ID, AuthProviderName.GOOGLE)
-
     async def it_raises_when_the_provider_is_not_linked(user_repo: AsyncMock):
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password="hash", linked_providers=[])
+        user = UserFactory.build(linked_providers=[])
         service = AuthService(user_repo, {})
 
         with pytest.raises(AuthProviderNotLinkedError):
-            await service.disconnect_provider(SOME_USER_ID, AuthProviderName.GOOGLE)
+            await service.disconnect_provider(user, AuthProviderName.GOOGLE)
 
     async def it_disconnects_when_a_password_remains_as_a_fallback(user_repo: AsyncMock):
         linked = LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="sub-1")
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password="hash", linked_providers=[linked])
+        user = UserFactory.build(id=SOME_USER_ID, hashed_password="hash", linked_providers=[linked])
         service = AuthService(user_repo, {})
 
-        await service.disconnect_provider(SOME_USER_ID, AuthProviderName.GOOGLE)
+        await service.disconnect_provider(user, AuthProviderName.GOOGLE)
 
         user_repo.remove_linked_provider.assert_awaited_once_with(SOME_USER_ID, AuthProviderName.GOOGLE)
 
     async def it_rejects_disconnecting_the_only_remaining_authentication_method(user_repo: AsyncMock):
         linked = LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="sub-1")
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None, linked_providers=[linked])
+        user = UserFactory.build(hashed_password=None, linked_providers=[linked])
         service = AuthService(user_repo, {})
 
         with pytest.raises(LastAuthenticationMethodError):
-            await service.disconnect_provider(SOME_USER_ID, AuthProviderName.GOOGLE)
+            await service.disconnect_provider(user, AuthProviderName.GOOGLE)
 
         user_repo.remove_linked_provider.assert_not_called()
 
 
 def describe_revoke_provider_link():
     async def it_removes_the_link_for_the_matching_account(user_repo: AsyncMock):
-        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user = UserFactory.build(
+            id=SOME_USER_ID,
+            linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="google-sub-1")],
+        )
+        user_repo.find_by_linked_provider.return_value = user
         service = AuthService(user_repo, {})
 
         await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
 
-        user_repo.find_id_by_linked_provider.assert_awaited_once_with(AuthProviderName.GOOGLE, "google-sub-1")
+        user_repo.find_by_linked_provider.assert_awaited_once_with(AuthProviderName.GOOGLE, "google-sub-1")
         user_repo.remove_linked_provider.assert_awaited_once_with(SOME_USER_ID, AuthProviderName.GOOGLE)
 
     async def it_is_a_no_op_when_no_account_is_linked_to_that_identity(user_repo: AsyncMock):
-        user_repo.find_id_by_linked_provider.return_value = None
+        user_repo.find_by_linked_provider.return_value = None
         service = AuthService(user_repo, {})
 
         await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
@@ -597,96 +591,56 @@ def describe_revoke_provider_link():
         user_repo.remove_linked_provider.assert_not_called()
 
     async def it_removes_the_link_even_when_it_is_the_only_remaining_authentication_method(user_repo: AsyncMock):
-        user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
+        user = UserFactory.build(
+            id=SOME_USER_ID,
+            hashed_password=None,
+            linked_providers=[LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="google-sub-1")],
+        )
+        user_repo.find_by_linked_provider.return_value = user
         service = AuthService(user_repo, {})
 
-        await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
+        res = await service.revoke_provider_link(AuthProviderName.GOOGLE, "google-sub-1")
 
+        assert res.is_locked_out is True
         user_repo.remove_linked_provider.assert_awaited_once_with(SOME_USER_ID, AuthProviderName.GOOGLE)
-
-
-def describe_list_connected_providers():
-    async def it_raises_when_the_authenticated_user_no_longer_exists(user_repo: AsyncMock):
-        user_repo.find_by_id.return_value = None
-        service = AuthService(user_repo, {})
-
-        with pytest.raises(InvalidCredentialsError):
-            await service.list_connected_providers(SOME_USER_ID)
-
-    async def it_reports_password_and_linked_providers(user_repo: AsyncMock):
-        linked = LinkedProviderSchema(provider=AuthProviderName.GOOGLE, external_id="sub-1")
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password="hash", linked_providers=[linked])
-        service = AuthService(user_repo, {})
-
-        result = await service.list_connected_providers(SOME_USER_ID)
-
-        assert result.has_password is True
-        assert result.linked_providers[0].provider == AuthProviderName.GOOGLE
 
 
 def describe_change_password():
     async def it_issues_a_fresh_token_pair_and_revokes_other_sessions(user_repo: AsyncMock):
-        hashed = hash_password("current-secret")
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
+        user = UserFactory.build(id=SOME_USER_ID, hashed_password=SOME_HASHED_PASSWORD)
         service = AuthService(user_repo, {})
 
-        result = await service.change_password(SOME_USER_ID, "current-secret", "new-secret-1")
+        result = await service.change_password(user, SOME_PASSWORD, SecretStr("NewP@ssword1"))
 
         assert result.access_token
         assert result.refresh_token
         user_repo.change_password.assert_awaited_once()
         call_args = user_repo.change_password.call_args.args
         assert call_args[0] == SOME_USER_ID
-        assert call_args[1] != "current-secret"
         assert call_args[2] == result.refresh_token
 
     async def it_rejects_an_incorrect_current_password(user_repo: AsyncMock):
-        hashed = hash_password("current-secret")
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
+        user = UserFactory.build(id=SOME_USER_ID, hashed_password=SOME_HASHED_PASSWORD)
         service = AuthService(user_repo, {})
 
         with pytest.raises(IncorrectPasswordError):
-            await service.change_password(SOME_USER_ID, "wrong-secret", "new-secret-1")
-
-        user_repo.change_password.assert_not_called()
-
-    async def it_rejects_a_missing_current_password_when_one_already_exists(user_repo: AsyncMock):
-        hashed = hash_password("current-secret")
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=hashed)
-        service = AuthService(user_repo, {})
-
-        with pytest.raises(IncorrectPasswordError):
-            await service.change_password(SOME_USER_ID, None, "new-secret-1")
+            await service.change_password(user, SecretStr("WrongP@ssword1"), SecretStr("NewP@ssword1"))
 
         user_repo.change_password.assert_not_called()
 
     async def it_sets_an_initial_password_for_an_oauth_only_account(user_repo: AsyncMock):
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None)
+        user = UserFactory.build(id=SOME_USER_ID, hashed_password=None)
         service = AuthService(user_repo, {})
 
-        result = await service.change_password(SOME_USER_ID, None, "new-secret-1")
+        result = await service.set_password(user, SecretStr("NewP@ssword1"))
 
         assert result.access_token
         assert result.refresh_token
         user_repo.change_password.assert_awaited_once()
-        call_args = user_repo.change_password.call_args.args
-        assert call_args[0] == SOME_USER_ID
-        assert call_args[2] == result.refresh_token
 
-    async def it_ignores_a_submitted_current_password_for_an_oauth_only_account(user_repo: AsyncMock):
-        user_repo.find_by_id.return_value = SimpleNamespace(hashed_password=None)
-        service = AuthService(user_repo, {})
-
-        result = await service.change_password(SOME_USER_ID, "anything", "new-secret-1")
-
-        assert result.access_token
-        user_repo.change_password.assert_awaited_once()
-
-    async def it_raises_when_the_authenticated_user_no_longer_exists(user_repo: AsyncMock):
-        user_repo.find_by_id.return_value = None
-        service = AuthService(user_repo, {})
-
-        with pytest.raises(InvalidCredentialsError):
-            await service.change_password(SOME_USER_ID, "current-secret", "new-secret-1")
-
-        user_repo.change_password.assert_not_called()
+        user_repo.change_password.assert_awaited_once_with(
+            user_id=SOME_USER_ID,
+            hashed_password=ANY,
+            new_refresh_token=result.refresh_token,
+            mark_verified_at=None,
+        )

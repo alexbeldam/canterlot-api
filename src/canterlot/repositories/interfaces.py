@@ -1,26 +1,44 @@
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from beanie import PydanticObjectId
 
 from canterlot.models import (
-    AuthProviderName,
-    AvatarSchema,
     BookModel,
     CatalogEntryModel,
     ClubModel,
     InviteModel,
-    JoinPolicy,
     LinkedProviderSchema,
+    UserModel,
+    VerificationCodeModel,
+)
+from canterlot.models.book import ReadBook
+from canterlot.models.user import EmailPreferencesSchema
+from canterlot.pagination import Page, SortDirection
+from canterlot.types import (
+    AuthProviderName,
+    AvatarSchema,
+    BookProviderIdentifier,
+    ClubNameStr,
+    ClubSlugStr,
+    HttpsUrl,
+    ISBN10Str,
+    ISBN13Str,
+    ISBNStr,
+    JoinPolicy,
+    LanguageStr,
     MemberRole,
     MemberSchema,
-    UserModel,
+    NormalizedEmailStr,
+    PersonNameStr,
+    UrlList,
+    UsernameStr,
+    VerificationScope,
 )
-from canterlot.models.book import BookProviderIdentifier, ReadBook, UrlList
-from canterlot.models.club import ClubNameStr, ClubSlugStr
-from canterlot.models.user import PersonNameStr, UsernameStr
-from canterlot.pagination import Page, SortDirection
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NormalizedEmailStr
+
+if TYPE_CHECKING:
+    from canterlot.emails import EmailCategory
 
 
 class BookRepository(Protocol):
@@ -28,9 +46,13 @@ class BookRepository(Protocol):
     async def find_by_isbn(self, isbn_10: ISBN10Str | None, isbn_13: ISBN13Str | None) -> BookModel | None: ...
     async def find_by_id(self, book_id: PydanticObjectId) -> BookModel | None: ...
     async def find_by_ids(self, book_ids: list[PydanticObjectId]) -> dict[PydanticObjectId, BookModel]: ...
+    async def find_by_identifier(
+        self,
+        identifier: BookProviderIdentifier | ISBNStr,
+    ) -> BookModel | None: ...
     async def find_id_by_identifier(
         self,
-        identifier: BookProviderIdentifier | ISBN10Str,
+        identifier: BookProviderIdentifier | ISBNStr,
     ) -> PydanticObjectId | None: ...
     async def add_to_urls(self, book_id: PydanticObjectId, urls: UrlList) -> None: ...
     async def fill_missing_fields(self, book_id: PydanticObjectId, fields: dict[str, object]) -> None: ...
@@ -122,8 +144,10 @@ class ClubRepository(Protocol):
 
 
 class CacheRepository(Protocol):
-    async def find(self, key: str) -> str | None: ...
-    async def save(self, key: str, value: str, expire_seconds: int) -> None: ...
+    async def find(self, key: str) -> dict[str, str] | None: ...
+    async def find_many(self, keys: list[str]) -> list[dict[str, str] | None]: ...
+    async def save(self, key: str, mapping: Mapping[str, str | int | float], expire_seconds: int) -> None: ...
+    async def invalidate(self, key: str) -> None: ...
 
 
 class DatabaseRepository(Protocol):
@@ -133,18 +157,34 @@ class DatabaseRepository(Protocol):
 class UserRepository(Protocol):
     async def find_by_id(self, user_id: PydanticObjectId) -> UserModel | None: ...
     async def find_username_by_id(self, user_id: PydanticObjectId) -> UsernameStr | None: ...
-    async def find_usernames_by_ids(
+    async def get_usernames_by_ids(
         self,
         user_ids: list[PydanticObjectId],
     ) -> dict[PydanticObjectId, UsernameStr]: ...
+    async def get_by_ids(self, ids: list[PydanticObjectId]) -> list[UserModel]: ...
     async def find_by_username(self, username: UsernameStr) -> UserModel | None: ...
     async def find_id_by_username(self, username: UsernameStr) -> PydanticObjectId | None: ...
+    async def find_by_identifier(
+        self,
+        identifier: NormalizedEmailStr | UsernameStr,
+    ) -> UserModel | None: ...
+    async def find_id_by_identifier(
+        self,
+        identifier: NormalizedEmailStr | UsernameStr,
+    ) -> PydanticObjectId | None: ...
     async def find_by_email(self, email: NormalizedEmailStr) -> UserModel | None: ...
+    async def find_email_preferences_by_email(self, email: NormalizedEmailStr) -> EmailPreferencesSchema | None: ...
     async def find_id_by_linked_provider(
         self,
         provider: AuthProviderName,
         external_id: str,
     ) -> PydanticObjectId | None: ...
+    async def find_by_linked_provider(
+        self,
+        provider: AuthProviderName,
+        external_id: str,
+    ) -> UserModel | None: ...
+    async def is_email_verified_by_id(self, user_id: PydanticObjectId) -> bool: ...
     async def exists_by_username(self, username: UsernameStr) -> bool: ...
     async def exists_by_email(self, email: NormalizedEmailStr) -> bool: ...
     async def save(self, user: UserModel) -> UserModel: ...
@@ -172,6 +212,7 @@ class UserRepository(Protocol):
         user_id: PydanticObjectId,
         hashed_password: str,
         new_refresh_token: str,
+        mark_verified_at: datetime | None = None,
     ) -> None: ...
     async def touch_last_seen(self, user_id: PydanticObjectId, now: datetime) -> None: ...
     async def find_avatar_by_id(self, user_id: PydanticObjectId) -> AvatarSchema | None: ...
@@ -187,6 +228,32 @@ class UserRepository(Protocol):
         privacy_at: datetime,
         profile_completed_at: datetime,
     ) -> bool: ...
+    async def set_delivery_failed_by_email(self, email: NormalizedEmailStr, failed: bool) -> bool: ...
+    async def mark_email_as_verified(
+        self,
+        user_id: PydanticObjectId,
+        verified_at: datetime,
+    ) -> None: ...
+    async def apply_global_suppression_by_email(self, email: NormalizedEmailStr, timestamp: datetime) -> bool:
+        """Bounces/Permanent Suppressions: Sets delivery_failed=True and blocks ALL categories."""
+        ...
+
+    async def apply_spam_suppression_by_email(self, email: NormalizedEmailStr, timestamp: datetime) -> bool:
+        """Complaints: Sets delivery_failed=True and blocks everything EXCEPT transactional."""
+        ...
+
+    async def opt_out_club_by_id(
+        self,
+        user_id: PydanticObjectId,
+        club_id: PydanticObjectId,
+        timestamp: datetime,
+    ) -> bool: ...
+    async def opt_out_category_by_id(
+        self,
+        user_id: PydanticObjectId,
+        category: "EmailCategory",
+        timestamp: datetime,
+    ) -> bool: ...
 
 
 class InviteRepository(Protocol):
@@ -201,4 +268,33 @@ class InviteRepository(Protocol):
         self,
         club_id: PydanticObjectId,
         target_email: NormalizedEmailStr,
+    ) -> None: ...
+    async def deactivate_all_direct_by_club_id_and_target_user_id(
+        self,
+        club_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+    ) -> None: ...
+
+
+class RateLimiter(Protocol):
+    async def evaluate(self, key: str, limit: int, window_seconds: int) -> int | None: ...
+
+
+class VerificationRepository(Protocol):
+    async def create_and_invalidate_previous(
+        self,
+        verification_code: VerificationCodeModel,
+    ) -> VerificationCodeModel: ...
+    async def find_active_code(
+        self,
+        user_id: PydanticObjectId,
+        code_hash: str,
+        scope: VerificationScope,
+    ) -> VerificationCodeModel | None: ...
+    async def deactivate_code_by_id(self, code_id: PydanticObjectId) -> None: ...
+    async def increment_attempts_and_burn_if_exceeded(
+        self,
+        user_id: PydanticObjectId,
+        scope: VerificationScope,
+        max_attempts: int = 5,
     ) -> None: ...

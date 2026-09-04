@@ -2,46 +2,21 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from canterlot.providers.interfaces import BookProvider, LinkProvider
-from canterlot.repositories.interfaces import (
-    BookRepository,
-    CacheRepository,
-    ClubRepository,
-    InviteRepository,
-    UserRepository,
-)
-
-
-@pytest.fixture
-def user_repo() -> AsyncMock:
-    return AsyncMock(spec=UserRepository)
-
-
-@pytest.fixture
-def club_repo() -> AsyncMock:
-    return AsyncMock(spec=ClubRepository)
-
-
-@pytest.fixture
-def invite_repo() -> AsyncMock:
-    return AsyncMock(spec=InviteRepository)
-
-
-@pytest.fixture
-def book_repo() -> AsyncMock:
-    return AsyncMock(spec=BookRepository)
-
-
-@pytest.fixture
-def cache_repo() -> AsyncMock:
-    return AsyncMock(spec=CacheRepository)
+from canterlot.gateways import BookProvider, LinkProvider
+from canterlot.types import BookProviderName, LinkProviderName
 
 
 @pytest.fixture
 def book_provider() -> AsyncMock:
-    return AsyncMock(spec=BookProvider)
+    provider = AsyncMock(spec=BookProvider)
+    provider.name = BookProviderName.GOOGLE
+
+    return provider
 
 
 @pytest.fixture
 def link_provider() -> AsyncMock:
-    return AsyncMock(spec=LinkProvider)
+    provider = AsyncMock(spec=LinkProvider)
+    provider.name = LinkProviderName.ANNAS
+
+    return provider

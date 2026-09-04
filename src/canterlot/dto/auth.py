@@ -1,18 +1,26 @@
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from canterlot.dto.club import ClubOnboarding
-from canterlot.models.enums import AuthProviderName, SessionType
-from canterlot.models.user import PersonNameStr, UserModel, UsernameStr
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.models.user import UserModel
+from canterlot.types import (
+    AuthProviderName,
+    NormalizedEmailStr,
+    PasswordStr,
+    PersonNameStr,
+    SecretVerificationCode,
+    SessionType,
+    UsernameStr,
+)
 
 
 class UserRegisterRequest(BaseModel):
     name: PersonNameStr
     username: UsernameStr
     email: NormalizedEmailStr
-    password: str = Field(..., min_length=6, examples=["super_secret_password_123"])
+    password: PasswordStr
     terms_version: int = Field(..., description="The `**Version:** N` of the Terms of Service being accepted.")
     privacy_version: int = Field(..., description="The `**Version:** N` of the Privacy Policy being accepted.")
     invite_id: str | None = None
@@ -43,7 +51,7 @@ class RegisterResponse(AccessTokenResponse):
 class CreateSessionRequest(BaseModel):
     type: SessionType
     username: UsernameStr | None = None
-    password: str | None = None
+    password: SecretStr | None = None
     provider: AuthProviderName | None = None
     credential: str | None = Field(
         default=None,
@@ -63,24 +71,25 @@ class CreateSessionRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_required_fields_present(self) -> "CreateSessionRequest":
+    def validate_session_type_fields(self) -> "CreateSessionRequest":
         if self.type is SessionType.PASSWORD:
-            if self.username is None or self.password is None:
-                raise ValueError("username and password are required for a PASSWORD session")
-        elif self.provider is None or self.credential is None:
-            raise ValueError("provider and credential are required for an OAUTH session")
+            self.__validate_password_fields()
+        elif self.type is SessionType.OAUTH:
+            self.__validate_oauth_fields()
+
         return self
 
-    @model_validator(mode="after")
-    def check_forbidden_fields_absent(self) -> "CreateSessionRequest":
-        if self.type is SessionType.PASSWORD:
-            if self.provider is not None or self.credential is not None:
-                raise ValueError("provider and credential must not be provided for a PASSWORD session")
-            if self.invite_id is not None or self.invited_by is not None:
-                raise ValueError("invite_id and invited_by must not be provided for a PASSWORD session")
-        elif self.username is not None or self.password is not None:
+    def __validate_password_fields(self) -> None:
+        if self.username is None or self.password is None:
+            raise ValueError("username and password are required for a PASSWORD session")
+        if any(x is not None for x in (self.provider, self.credential, self.invite_id, self.invited_by)):
+            raise ValueError("OAuth fields and invite tokens must not be provided for a PASSWORD session")
+
+    def __validate_oauth_fields(self) -> None:
+        if self.provider is None or self.credential is None:
+            raise ValueError("provider and credential are required for an OAUTH session")
+        if self.username is not None or self.password is not None:
             raise ValueError("username and password must not be provided for an OAUTH session")
-        return self
 
 
 class LinkProviderRequest(BaseModel):
@@ -124,3 +133,61 @@ class ConnectedProvidersResponse(BaseModel):
                 for linked in user.linked_providers
             ],
         )
+
+
+class RequestPasswordResetRequest(BaseModel):
+    identifier: NormalizedEmailStr | UsernameStr
+
+
+class ValidatePasswordResetCodeRequest(BaseModel):
+    token: str | None = None
+    identifier: NormalizedEmailStr | UsernameStr | None = None
+    code: SecretVerificationCode | None = None
+
+    @model_validator(mode="after")
+    def validate_xor_inputs(self) -> Self:
+        has_token = self.token is not None
+        has_direct_credentials = self.identifier is not None and self.code is not None
+
+        # Partial direct payload check
+        if (self.identifier is not None or self.code is not None) and not has_direct_credentials:
+            raise ValueError("Both 'identifier' and 'code' must be provided together.")
+
+        # Strict XOR: strictly token OR direct credentials, never both and never neither
+        if has_token == has_direct_credentials:
+            raise ValueError("You must provide either 'token' or both 'identifier' and 'code', but not both.")
+
+        return self
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: PasswordStr
+
+
+class ResetSessionStatusResponse(BaseModel):
+    is_creation: bool = Field(
+        description=(
+            "True if the account currently has no password set "
+            "(OAuth-only account setting a password for the first time)."
+        )
+    )
+
+
+class ConfirmEmailVerificationRequest(BaseModel):
+    token: str | None = Field(
+        default=None,
+        description="Signed action link token from the verification email.",
+    )
+    code: SecretVerificationCode | None = Field(
+        default=None,
+        description="6-digit code entered manually in the app.",
+    )
+
+    @model_validator(mode="after")
+    def validate_xor_inputs(self) -> Self:
+        has_token = bool(self.token)
+        has_code = bool(self.code)
+
+        if not (has_token ^ has_code):
+            raise ValueError("Must provide either 'token' or 'code', but not both.")
+        return self

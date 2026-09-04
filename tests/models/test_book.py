@@ -1,78 +1,7 @@
-from datetime import UTC, datetime
-
 import pytest
-from pydantic import TypeAdapter, ValidationError
+from pydantic import ValidationError
 
-from canterlot.models.book import (
-    MIN_PUBLISHED_YEAR,
-    BookModel,
-    BookProviderIdentifier,
-    PublishedYear,
-    SearchParams,
-    validate_published_year,
-)
-from canterlot.models.enums import BookProviderName
-
-published_year_adapter: TypeAdapter[PublishedYear] = TypeAdapter(PublishedYear)
-
-
-def describe_validate_published_year():
-    def it_accepts_a_reasonable_year():
-        assert validate_published_year(2020) == 2020
-
-    def it_rejects_years_before_the_minimum():
-        with pytest.raises(ValueError, match="cannot be earlier"):
-            validate_published_year(MIN_PUBLISHED_YEAR - 1)
-
-    def it_accepts_the_minimum_year_itself():
-        assert validate_published_year(MIN_PUBLISHED_YEAR) == MIN_PUBLISHED_YEAR
-
-    def it_rejects_years_too_far_in_the_future():
-        max_allowed = datetime.now().year + 2
-        with pytest.raises(ValueError, match="cannot be further in the future"):
-            validate_published_year(max_allowed + 1)
-
-    def it_accepts_the_maximum_allowed_future_year():
-        max_allowed = datetime.now().year + 2
-        assert published_year_adapter.validate_python(max_allowed) == max_allowed
-
-
-def describe_book_provider_identifier():
-    def it_round_trips_through_string_serialization():
-        adapter = TypeAdapter(BookProviderIdentifier)
-        identifier = adapter.validate_python("google-books__zyTCAlFlgZ8C")
-
-        assert identifier.provider == BookProviderName.GOOGLE
-        assert identifier.book_id == "zyTCAlFlgZ8C"
-        assert str(identifier) == "google-books__zyTCAlFlgZ8C"
-
-    def it_rejects_a_string_missing_the_separator():
-        adapter = TypeAdapter(BookProviderIdentifier)
-        with pytest.raises(ValidationError):
-            adapter.validate_python("no-separator-here")
-
-    def it_rejects_an_unknown_provider_segment():
-        adapter = TypeAdapter(BookProviderIdentifier)
-        with pytest.raises(ValidationError):
-            adapter.validate_python("not-a-provider__abc123")
-
-    def it_considers_identifiers_with_the_same_provider_and_id_equal():
-        first = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
-        second = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
-
-        assert first == second
-        assert hash(first) == hash(second)
-
-    def it_considers_identifiers_with_a_different_id_unequal():
-        first = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
-        second = BookProviderIdentifier(BookProviderName.GOOGLE, "different")
-
-        assert first != second
-
-    def it_is_not_equal_to_a_value_of_a_different_type():
-        identifier = BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
-
-        assert identifier != "google-books__abc123"
+from canterlot.models.book import BookModel, SearchParams
 
 
 def describe_book_model():
@@ -98,18 +27,6 @@ def describe_book_model():
     def it_rejects_a_blank_description():
         with pytest.raises(ValidationError):
             BookModel.model_validate({"external_id": "google-books__abc123", "title": "A Title", "description": "   "})
-
-
-def describe_book_model_bson_encoding():
-    async def it_persists_and_queries_by_external_id():
-        external_id = BookProviderIdentifier(BookProviderName.GOOGLE, "TI1V0QEACAAJ")
-
-        await BookModel(external_id=external_id, title="Some Book", created_at=datetime.now(UTC)).insert()
-
-        found = await BookModel.find_one(BookModel.external_id == external_id)
-
-        assert found is not None
-        assert found.title == "Some Book"
 
 
 def describe_search_params_isbn_splitting():

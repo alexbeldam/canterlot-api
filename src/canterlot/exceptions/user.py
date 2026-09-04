@@ -15,3 +15,8 @@ class UserNotFoundError(UserDomainError):
 class StaleLegalVersionError(UserDomainError):
     error_code = ErrorCode.STALE_LEGAL_VERSION
     status_code = status.HTTP_409_CONFLICT
+
+
+class EmailAlreadyVerifiedError(BusinessError):
+    error_code = ErrorCode.EMAIL_ALREADY_VERIFIED
+    status_code = status.HTTP_409_CONFLICT

@@ -2,8 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from canterlot.routers.dependencies import get_health_service
 from canterlot.services import HealthService
+
+from .dependencies.providers import get_health_service
 
 health_router = APIRouter(tags=["Health"])
 

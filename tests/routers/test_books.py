@@ -1,37 +1,49 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
 from starlette.testclient import TestClient
 
-from canterlot.dto.book import BookDetails, BookResponse, PaginatedBooksResponse
+from canterlot.dto.book import PaginatedBooksResponse
 from canterlot.exceptions import (
     BookDetailsNotFoundError,
     BookNotFoundError,
     BookSearchCriteriaMissingError,
+    ClubNotFoundError,
+    GatewayConfigurationError,
     UnauthorizedClubMemberError,
 )
 from canterlot.models.book import BookProviderIdentifier
-from canterlot.models.enums import BookProviderName
+from canterlot.types import BookProviderName
+from tools.factories import BookDetailsFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"
 
 
-def _book_response(**overrides) -> BookResponse:
+def _fake_book_model(**overrides) -> SimpleNamespace:
     defaults = {
+        "id": PydanticObjectId("507f1f77bcf86cd799439013"),
         "external_id": "google-books__abc123",
         "title": "The Hobbit",
+        "authors": ["J.R.R. Tolkien"],
+        "year": 1937,
         "cover_url": "https://example.com/c.jpg",
+        "languages": ["en"],
+        "isbn_10": None,
+        "isbn_13": None,
         "created_at": datetime.now(UTC),
     }
-    return BookResponse.model_validate({**defaults, **overrides})
+    return SimpleNamespace(**{**defaults, **overrides})
 
 
 def describe_get_external_book_details():
     def it_returns_book_details_on_success(client: TestClient, book_service: AsyncMock):
-        book_service.get_external_book_details.return_value = BookDetails(
-            page_count=42, description="A book", categories=[]
+        book_service.get_external_book_details.return_value = BookDetailsFactory.build(
+            page_count=42,
+            description="A book",
+            categories=[],
         )
 
         response = client.get("/v1/books/external/google-books__some-id")
@@ -60,10 +72,18 @@ def describe_get_external_book_details():
         assert response.status_code == 422
         book_service.get_external_book_details.assert_not_called()
 
+    def it_returns_503_when_external_provider_is_not_configured(client: TestClient, book_service: AsyncMock):
+        book_service.get_external_book_details.side_effect = GatewayConfigurationError("not configured")
+
+        response = client.get("/v1/books/external/google-books__some-id")
+
+        assert response.status_code == 503
+        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"
+
 
 def describe_get_book():
     def it_returns_a_book_by_external_id(client: TestClient, book_service: AsyncMock):
-        book_service.get_by_identifier.return_value = _book_response()
+        book_service.get_book_by_identifier.return_value = _fake_book_model()
 
         response = client.get("/v1/books/google-books__abc123")
 
@@ -71,22 +91,21 @@ def describe_get_book():
         body = response.json()
         assert body["title"] == "The Hobbit"
         assert body["external_id"] == "google-books__abc123"
-        assert "id" not in body
-        book_service.get_by_identifier.assert_awaited_once_with(
+        book_service.get_book_by_identifier.assert_awaited_once_with(
             BookProviderIdentifier(BookProviderName.GOOGLE, "abc123")
         )
 
     def it_returns_a_book_by_isbn(client: TestClient, book_service: AsyncMock):
-        book_service.get_by_identifier.return_value = _book_response(isbn_10="0261102214")
+        book_service.get_book_by_identifier.return_value = _fake_book_model(isbn_10="0261102214")
 
         response = client.get("/v1/books/0261102214")
 
         assert response.status_code == 200
         assert response.json()["isbn_10"] == "0261102214"
-        book_service.get_by_identifier.assert_awaited_once_with("0261102214")
+        book_service.get_book_by_identifier.assert_awaited_once_with("0261102214")
 
     def it_returns_404_when_the_book_does_not_exist(client: TestClient, book_service: AsyncMock):
-        book_service.get_by_identifier.side_effect = BookNotFoundError("not found")
+        book_service.get_book_by_identifier.side_effect = BookNotFoundError("not found")
 
         response = client.get("/v1/books/google-books__missing")
 
@@ -99,14 +118,14 @@ def describe_get_book():
         response = client.get("/v1/books/not-a-valid-identifier")
 
         assert response.status_code == 422
-        book_service.get_by_identifier.assert_not_called()
+        book_service.get_book_by_identifier.assert_not_called()
 
 
 def describe_search_external_books():
     def it_returns_paginated_results_from_the_book_service(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
     ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.return_value = PaginatedBooksResponse(
             items=[], total_items=0, current_page=1, page_size=5
@@ -118,20 +137,18 @@ def describe_search_external_books():
         assert response.json()["total_items"] == 0
         book_service.search_external_books.assert_awaited_once()
 
-    def it_returns_422_when_no_club_slug_is_given(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
-    ):
+    def it_returns_422_when_no_club_slug_is_given(client: TestClient, club_service: AsyncMock, book_service: AsyncMock):
         response = client.get("/v1/books/external", params={"title": "The Hobbit"})
 
         assert response.status_code == 422
-        club_repo.find_id_by_slug.assert_not_called()
+        club_service.get_club_id_by_slug.assert_not_called()
         club_service.get_preferred_languages.assert_not_called()
         book_service.search_external_books.assert_not_called()
 
     def it_allows_a_search_with_isbn_alone_and_no_title(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
     ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.return_value = PaginatedBooksResponse(
             items=[], total_items=0, current_page=1, page_size=5
@@ -145,9 +162,9 @@ def describe_search_external_books():
         assert call_kwargs["isbn"] == "9780345339683"
 
     def it_resolves_preferred_languages_from_the_club_instead_of_the_query(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
     ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.return_value = ["en", "pt-BR"]
         book_service.search_external_books.return_value = PaginatedBooksResponse(
             items=[], total_items=0, current_page=1, page_size=5
@@ -160,9 +177,9 @@ def describe_search_external_books():
         assert call_kwargs["preferred_languages"] == ["en", "pt-BR"]
 
     def it_propagates_search_limit_and_page_query_params(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
     ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.return_value = PaginatedBooksResponse(
             items=[], total_items=0, current_page=2, page_size=5
@@ -177,10 +194,8 @@ def describe_search_external_books():
         assert call_kwargs["page"] == 2
         assert call_kwargs["limit"] == 20
 
-    def it_returns_403_when_the_user_is_not_a_club_member(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+    def it_returns_403_when_the_user_is_not_a_club_member(client: TestClient, club_service: AsyncMock):
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.side_effect = UnauthorizedClubMemberError("not a member")
 
         response = client.get("/v1/books/external", params={"club_slug": SOME_CLUB_SLUG, "title": "The Hobbit"})
@@ -189,9 +204,9 @@ def describe_search_external_books():
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
 
     def it_returns_400_when_no_search_criteria_are_given(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
     ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.return_value = []
         book_service.search_external_books.side_effect = BookSearchCriteriaMissingError("missing criteria")
 
@@ -201,9 +216,9 @@ def describe_search_external_books():
         assert response.json()["error"]["error_code"] == "BOOK_SEARCH_CRITERIA_MISSING"
 
     def it_returns_404_when_the_club_slug_does_not_exist(
-        client: TestClient, club_service: AsyncMock, book_service: AsyncMock, club_repo: AsyncMock
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
     ):
-        club_repo.find_id_by_slug.return_value = None
+        club_service.get_club_id_by_slug.side_effect = ClubNotFoundError("not found")
 
         response = client.get("/v1/books/external", params={"club_slug": SOME_CLUB_SLUG, "title": "The Hobbit"})
 
@@ -211,13 +226,23 @@ def describe_search_external_books():
         club_service.get_preferred_languages.assert_not_called()
         book_service.search_external_books.assert_not_called()
 
-    def it_returns_500_with_the_error_envelope_on_an_unexpected_failure(
-        client: TestClient, club_service: AsyncMock, club_repo: AsyncMock
-    ):
-        club_repo.find_id_by_slug.return_value = SOME_CLUB_ID
+    def it_returns_500_with_the_error_envelope_on_an_unexpected_failure(client: TestClient, club_service: AsyncMock):
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         club_service.get_preferred_languages.side_effect = RuntimeError("cache is on fire")
 
         response = client.get("/v1/books/external", params={"club_slug": SOME_CLUB_SLUG, "title": "The Hobbit"})
 
         assert response.status_code == 500
         assert response.json()["error"]["error_code"] == "INTERNAL_SERVER_ERROR"
+
+    def it_returns_503_when_external_provider_is_not_configured(
+        client: TestClient, club_service: AsyncMock, book_service: AsyncMock
+    ):
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
+        club_service.get_preferred_languages.return_value = []
+        book_service.search_external_books.side_effect = GatewayConfigurationError("not configured")
+
+        response = client.get("/v1/books/external", params={"club_slug": SOME_CLUB_SLUG, "title": "The Hobbit"})
+
+        assert response.status_code == 503
+        assert response.json()["error"]["error_code"] == "GATEWAY_CONFIGURATION_ERROR"

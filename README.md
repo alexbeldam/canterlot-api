@@ -22,14 +22,15 @@
  <a href="#roadmap">Roadmap</a> •
  <a href="#contributing">Contributing</a> •
  <a href="#releases">Releases</a> •
- <a href="#deployment">Deployment</a>
+ <a href="#deployment">Deployment</a> •
+ <a href="#license">License</a>
 </p>
 
 <br/>
 
 <h2 id="about-the-project">📖 About the Project</h2>
 
-**CanterlotAPI** is the backend engine for a modern book club management app. Today it covers club creation and administration, member invitations and management with a role hierarchy, a collaborative catalog of book suggestions, and each user's account/profile (password or Google authentication, password changes, and a personal reading history).
+**CanterlotAPI** is the backend engine for a modern book club management app. Today it covers club creation and administration, member invitations and management with a role hierarchy, a collaborative catalog of book suggestions, and each user's account/profile (password, Google, or Gravatar authentication, email verification, password changes and resets, and a personal reading history).
 
 Orchestrating reading rounds themselves (ranked voting or random draw) is **planned, but not yet implemented** -- see the [Roadmap](#roadmap) below for what's already designed but not yet built.
 
@@ -65,11 +66,15 @@ cd canterlot-api
 
 # 2. Run the automated setup
 # This checks your tooling, brings up the containers (Mongo/Redis),
-# creates the .env file, and installs all dependencies in milliseconds.
+# creates the .env file, and installs dependencies (`uv run` syncs
+# the environment from the lockfile automatically).
 just setup
 
-# 3. Fill in your credentials
-# Open the freshly created `.env` file and fill in your keys (Google Books, JWT_SECRET, etc).
+# 3. (Optional) Add provider credentials
+# The freshly created `.env` already works as-is for local dev. Google Books search,
+# Google/Gravatar OAuth, and live email sending are all optional integrations that
+# return 503 gracefully when unset -- fill in their keys only if you want to exercise
+# those specific features locally.
 ```
 
 ### Running and Testing
@@ -78,10 +83,10 @@ All project management is centralized through `just`. You don't need to manually
 
 | Command       | Description                                                                            |
 | ------------- | ---------------------------------------------------------------------------------------- |
-| `just dev`    | Starts the Uvicorn server with live-reload (`localhost:8000`)                          |
+| `just dev`    | Starts the Uvicorn server with live-reload (`localhost:8080`)                          |
 | `just verify` | Runs the full pipeline (lints, type checking, imports, complexity, and coverage tests) |
 | `just test`   | Runs the isolated test suite via Pytest                                                |
-| `just format` | Applies automatic formatting fixes (Ruff)                                              |
+| `just fmt`    | Applies automatic formatting fixes (Ruff)                                              |
 
 ---
 
@@ -90,7 +95,7 @@ All project management is centralized through `just`. You don't need to manually
 Features with business rules already designed, but **not yet implemented**:
 
 - **Reading Sessions & Voting:** the full reading-round cycle -- starting a round (automatic draw or curated pool), member-weighted voting, individual progress tracking, and round completion/cancellation.
-- **Email verification and change:** email confirmation on signup, and a flow to change an existing account's email.
+- **Changing an account's email:** signup email confirmation and password reset already exist -- changing to a different email address on an existing account doesn't yet.
 - **Browsable reading history:** querying (paginated) and removing entries from the personal reading history -- today you can only add to it.
 - **Log out of all devices:** ending every active session at once, as a deliberate action independent of a password change.
 - **Automatic reading-deadline reminders:** an email notification a day before and on the day of a round's deadline, triggered by an external cron.

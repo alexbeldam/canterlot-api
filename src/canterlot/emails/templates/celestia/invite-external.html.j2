@@ -1,0 +1,23 @@
+{% extends "celestia/layout.html.j2" %}
+{% set badge_category = "Invitation" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.space_top(8) }}
+
+  {% call ui.text_block() %}
+    {{ ui.strong_no(inviter_name) }} invited you to join the {{ ui.strong_no(club_name) }} on {{ ui.canterlot(punc=".") }}
+  {% endcall %}
+
+  {% call ui.text_block() %}
+    Clubs are where reading becomes conversation — choose books together, track reading progress, and vote on the next title.
+  {% endcall %}
+
+  {% call ui.alert_box(type="info") %}
+    This invite expires in 7 days. Create an account to accept the invitation.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Create account and join") }}
+{% endblock %}
+
+{% block footer_reason %}You received this email because someone invited you to a club on {{ ui.canterlot(punc=".") }}{% endblock %}

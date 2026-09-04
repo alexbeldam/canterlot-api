@@ -11,14 +11,21 @@ from canterlot.dto.catalog import (
     SuggestionStatus,
 )
 from canterlot.exceptions import BookNotFoundError, ClubSuggestionsClosedError, UnauthorizedClubMemberError
+from canterlot.gateways import LinkProvider
 from canterlot.models import BookModel, LinkCandidate
-from canterlot.models.book import AuthorList, SearchParams, TitleStr, UrlList
+from canterlot.models.book import SearchParams
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.enums import ExtensionType, MemberRole
-from canterlot.models.user import UsernameStr
 from canterlot.pagination import SortDirection
-from canterlot.providers import LinkProvider
 from canterlot.repositories import BookRepository, ClubRepository, UserRepository
+from canterlot.types import (
+    AuthorList,
+    ExtensionType,
+    LanguageStr,
+    MemberRole,
+    TitleStr,
+    UrlList,
+    UsernameStr,
+)
 from canterlot.utils import (
     LANGUAGE_MATCH_SUBSCORES,
     LanguageMatchLevel,
@@ -27,7 +34,6 @@ from canterlot.utils import (
     redistribute_weights,
     similarity_ratio,
 )
-from canterlot.utils.format import LanguageStr
 
 logger = get_logger(__name__)
 
@@ -111,7 +117,7 @@ class CatalogService:
 
         entry = await self.__club_repo.find_catalog_entry_by_club_id_and_book_id(club_id, book_id)
         if entry is None:
-            log.warn("Removal rejected: book is not in this club's catalog")
+            log.warning("Removal rejected: book is not in this club's catalog")
             raise BookNotFoundError("This book is not in this club's catalog.")
 
         role = await self.__club_repo.find_member_role_by_club_id_and_user_id(club_id, current_user_id)
@@ -119,7 +125,7 @@ class CatalogService:
         is_original_suggester = entry.suggested_by == current_user_id
 
         if not is_privileged and not is_original_suggester:
-            log.warn("Removal rejected: caller is neither privileged nor the original suggester")
+            log.warning("Removal rejected: caller is neither privileged nor the original suggester")
             raise UnauthorizedClubMemberError(
                 "Only an OWNER, ADMIN, or the original suggester can remove a book from the catalog."
             )
@@ -142,7 +148,7 @@ class CatalogService:
         log.info("Fetching club catalog page")
 
         if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, current_user_id):
-            log.warn("Catalog page rejected: caller is not a club member")
+            log.warning("Catalog page rejected: caller is not a club member")
             raise UnauthorizedClubMemberError("Only members of this club can view its catalog.")
 
         suggested_by_id = None
@@ -162,7 +168,7 @@ class CatalogService:
         )
 
         books = await self.__book_repo.find_by_ids([entry.book_id for entry in catalog_page.items])
-        usernames = await self.__user_repo.find_usernames_by_ids([entry.suggested_by for entry in catalog_page.items])
+        usernames = await self.__user_repo.get_usernames_by_ids([entry.suggested_by for entry in catalog_page.items])
 
         return catalog_page.map(
             lambda entry: CatalogEntryResponse.from_model(
@@ -172,11 +178,11 @@ class CatalogService:
 
     async def __ensure_suggestion_allowed(self, club_id: PydanticObjectId, user_id: PydanticObjectId, log) -> None:
         if not await self.__club_repo.exists_by_club_id_and_member_user_id(club_id, user_id):
-            log.warn("Suggestion rejected: user is not a member of the club")
+            log.warning("Suggestion rejected: user is not a member of the club")
             raise UnauthorizedClubMemberError("Only members of this club can suggest books.")
 
         if not await self.__club_repo.is_suggestions_allowed(club_id):
-            log.warn("Suggestion rejected: club suggestions queue is closed")
+            log.warning("Suggestion rejected: club suggestions queue is closed")
             raise ClubSuggestionsClosedError("Suggestions are currently closed for this club.")
 
     async def __find_existing_book(self, suggestion: BookSuggestionRequest) -> BookModel | None:

@@ -6,10 +6,21 @@ from fastapi import Query
 from pydantic import BaseModel, Field
 
 from canterlot.dto.book import BookResponse
-from canterlot.models.book import AuthorList, BookExternalId, BookModel, PageCount, PublishedYear, TitleStr
-from canterlot.models.user import UsernameStr
+from canterlot.models.book import BookModel
 from canterlot.pagination import Page, PageRequest
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
+from canterlot.types import (
+    AuthorList,
+    BookExternalId,
+    HttpsUrl,
+    ISBN10Str,
+    ISBN13Str,
+    LanguageStr,
+    NonEmptyStr,
+    PageCount,
+    PublishedYear,
+    TitleStr,
+    UsernameStr,
+)
 
 
 class BookSuggestionRequest(BaseModel):

@@ -1,9 +1,13 @@
 from pydantic import BaseModel, model_validator
 
-from canterlot.models.club import ClubNameStr, ClubSlugStr
-from canterlot.models.enums import InviteType, JoinPolicy
-from canterlot.models.user import UsernameStr
-from canterlot.utils.format import NormalizedEmailStr
+from canterlot.types import (
+    ClubNameStr,
+    ClubSlugStr,
+    InviteType,
+    JoinPolicy,
+    NormalizedEmailStr,
+    UsernameStr,
+)
 
 
 class InvitePreviewResponse(BaseModel):
@@ -21,11 +25,14 @@ class InviteTokenResponse(BaseModel):
 class CreateInviteRequest(BaseModel):
     type: InviteType
     email: NormalizedEmailStr | None = None
+    username: UsernameStr | None = None
 
     @model_validator(mode="after")
     def check_email_matches_type(self) -> "CreateInviteRequest":
-        if self.type is InviteType.DIRECT and self.email is None:
-            raise ValueError("email is required for a direct invite")
-        if self.type is InviteType.PUBLIC and self.email is not None:
-            raise ValueError("email must not be provided for a public invite")
+        if self.type is InviteType.PUBLIC and (self.email or self.username):
+            raise ValueError("email and username must not be provided for a public invite")
+
+        if self.type is InviteType.DIRECT and bool(self.email) == bool(self.username):
+            raise ValueError("a direct invite requires either an email or a username, but not both")
+
         return self

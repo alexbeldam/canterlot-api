@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, SecretStr
 
 from canterlot.config import get_settings
-from canterlot.dto.auth import ConnectedProvidersResponse, TokenResponse, UserRegisterRequest
+from canterlot.dto.auth import TokenResponse, UserRegisterRequest
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
     AuthProviderNotLinkedError,
@@ -19,11 +19,12 @@ from canterlot.exceptions import (
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
-from canterlot.models import AuthOutcome, AuthProviderName, AvatarSchema, LinkedProviderSchema, UserModel
-from canterlot.models.user import UsernameStr
-from canterlot.providers.auth import OAuthProvider
-from canterlot.providers.auth.interfaces import OAuthIdentity
+from canterlot.exceptions.auth import PasswordAlreadySetError, PasswordNotSetError, SamePasswordError
+from canterlot.gateways.auth import OAuthProvider
+from canterlot.gateways.auth.interfaces import OAuthIdentity
+from canterlot.models import LinkedProviderSchema, UserModel
 from canterlot.repositories import UserRepository
+from canterlot.types import AuthOutcome, AuthProviderName, AvatarSchema, PasswordStr, UsernameStr
 from canterlot.utils import (
     create_access_token,
     create_refresh_token,
@@ -37,7 +38,7 @@ logger = get_logger(__name__)
 
 
 class RegisterResult(TokenResponse):
-    user_id: PydanticObjectId
+    user: UserModel
 
 
 class OAuthSignInResult(BaseModel):
@@ -45,12 +46,19 @@ class OAuthSignInResult(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    user: UserModel | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class TokenPair:
     access_token: str
     refresh_token: str
+
+
+@dataclass(frozen=True, slots=True)
+class RevokeProviderLinkResult:
+    user: UserModel | None
+    is_locked_out: bool = False
 
 
 class AuthService:
@@ -67,19 +75,19 @@ class AuthService:
         log.info("Attempting user registration account creation")
 
         if await self.__user_repo.exists_by_username(request.username):
-            log.warn("Registration rejected: username conflict", reason="username_taken")
+            log.warning("Registration rejected: username conflict", reason="username_taken")
             raise UsernameAlreadyExistsError(f"Username '{request.username}' is already taken.")
 
         if await self.__user_repo.exists_by_email(request.email):
-            log.warn("Registration rejected: email conflict", reason="email_registered")
+            log.warning("Registration rejected: email conflict", reason="email_registered")
             raise EmailAlreadyExistsError(f"Email '{request.email}' is already registered.")
 
-        settings = get_settings()
+        settings = get_settings().auth
         if (
             request.terms_version != settings.current_terms_version
             or request.privacy_version != settings.current_privacy_version
         ):
-            log.warn("Registration rejected: submitted legal document version is stale")
+            log.warning("Registration rejected: submitted legal document version is stale")
             raise StaleLegalVersionError("The submitted terms/privacy version is out of date; reload and try again.")
 
         now = datetime.now(UTC)
@@ -110,7 +118,7 @@ class AuthService:
         return RegisterResult(
             access_token=tokens.access_token,
             refresh_token=tokens.refresh_token,
-            user_id=user_id,
+            user=saved_user,
         )
 
     async def attribute_referral(self, username: UsernameStr) -> None:
@@ -118,13 +126,13 @@ class AuthService:
         log.info("Processing referral growth attribution")
         await self.__user_repo.increment_referral_count_by_username(username)
 
-    async def login_user(self, username: UsernameStr, plain_password: str) -> TokenResponse:
+    async def login_user(self, username: UsernameStr, plain_password: SecretStr) -> TokenResponse:
         log = logger.bind(username=username)
         log.info("Attempting user authentication")
 
         user = await self.__user_repo.find_by_username(username)
         if not (user and user.id and user.hashed_password and verify_password(plain_password, user.hashed_password)):
-            log.warn("Authentication failed: invalid security credentials", error_type="credentials_mismatch")
+            log.warning("Authentication failed: invalid security credentials", error_type="credentials_mismatch")
             raise InvalidCredentialsError("Incorrect username or password")
 
         user_id = user.id
@@ -145,7 +153,7 @@ class AuthService:
 
         removed = await self.__user_repo.pull_refresh_token_by_id(user_id, old_token)
         if not removed:
-            log.warn("Refresh rotation rejected: token already rotated, revoked, or unknown")
+            log.warning("Refresh rotation rejected: token already rotated, revoked, or unknown")
             raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
 
         tokens = self.__create_tokens(user_id)
@@ -163,7 +171,7 @@ class AuthService:
 
         removed = await self.__user_repo.pull_refresh_token_by_id(user_id, token)
         if not removed:
-            log.warn("Logout no-op: refresh token already invalidated")
+            log.warning("Logout no-op: refresh token already invalidated")
             return
 
         log.info("Session logged out successfully")
@@ -178,14 +186,38 @@ class AuthService:
         try:
             return self.__oauth_providers[provider]
         except KeyError:
-            logger.bind(provider=provider).warn("Requested authentication provider is not configured")
+            logger.bind(provider=provider).warning("Requested authentication provider is not configured")
             raise GatewayConfigurationError(f"The '{provider}' authentication provider is not available.") from None
 
-    async def __issue_login_tokens(self, user_id: PydanticObjectId, outcome: AuthOutcome) -> OAuthSignInResult:
+    async def __issue_login_tokens(
+        self,
+        user_id: PydanticObjectId,
+        outcome: AuthOutcome,
+    ) -> OAuthSignInResult:
         tokens = self.__create_tokens(user_id)
         await self.__user_repo.push_refresh_token_by_id(user_id, tokens.refresh_token)
 
-        return OAuthSignInResult(outcome=outcome, access_token=tokens.access_token, refresh_token=tokens.refresh_token)
+        return OAuthSignInResult(
+            outcome=outcome,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+        )
+
+    async def __issue_new_user_login_tokens(
+        self,
+        outcome: AuthOutcome,
+        user: UserModel,
+    ) -> OAuthSignInResult:
+        uid = PydanticObjectId(user.id)
+        tokens = self.__create_tokens(uid)
+        await self.__user_repo.push_refresh_token_by_id(uid, tokens.refresh_token)
+
+        return OAuthSignInResult(
+            outcome=outcome,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+            user=user,
+        )
 
     async def __sync_oauth_picture_metadata(
         self,
@@ -224,7 +256,7 @@ class AuthService:
             return await self.__issue_login_tokens(existing_id, AuthOutcome.LOGGED_IN)
 
         if await self.__user_repo.find_by_email(identity.email):
-            log.warn("OAuth sign-in rejected: identity's email matches an account under a different auth method")
+            log.warning("OAuth sign-in rejected: identity's email matches an account under a different auth method")
             raise OAuthLinkRequiredError("An account with this email already exists using a different sign-in method.")
 
         username_seed = identity.name or identity.email.split("@")[0]
@@ -254,7 +286,10 @@ class AuthService:
             return await self.__issue_login_tokens(winner_id, AuthOutcome.LOGGED_IN)
 
         log.info("New account created from OAuth identity", user_id=str(saved_user.id))
-        return await self.__issue_login_tokens(PydanticObjectId(saved_user.id), AuthOutcome.CREATED)
+        return await self.__issue_new_user_login_tokens(
+            AuthOutcome.CREATED,
+            user=saved_user,
+        )
 
     async def link_provider(
         self,
@@ -270,7 +305,7 @@ class AuthService:
 
         existing_id = await self.__user_repo.find_id_by_linked_provider(provider, identity.external_id)
         if existing_id and existing_id != user_id:
-            log.warn("Link rejected: credential already linked to a different account")
+            log.warning("Link rejected: credential already linked to a different account")
             raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
 
         if existing_id:
@@ -287,78 +322,109 @@ class AuthService:
             ),
         )
         if not linked:
-            log.warn("Link rejected: a concurrent request linked this credential to a different account first")
+            log.warning("Link rejected: a concurrent request linked this credential to a different account first")
             raise AuthProviderAlreadyLinkedError(f"This {provider} account is already linked to a different user.")
 
         log.info("Authentication provider linked successfully")
 
-    async def revoke_provider_link(self, provider: AuthProviderName, external_id: str) -> None:
+    async def revoke_provider_link(
+        self,
+        provider: AuthProviderName,
+        external_id: str,
+    ) -> RevokeProviderLinkResult:
         log = logger.bind(provider=provider)
         log.info("Processing a provider-side revocation event")
 
-        user_id = await self.__user_repo.find_id_by_linked_provider(provider, external_id)
-        if not user_id:
+        user = await self.__user_repo.find_by_linked_provider(provider, external_id)
+        if not user or not user.id:
             log.info("Revocation event matched no linked account, nothing to do")
-            return
+            return RevokeProviderLinkResult(user=None, is_locked_out=False)
 
-        # The revocation already happened on the provider's side regardless of our own rules, so this
-        # unconditionally removes the link -- unlike disconnect_provider, it does not guard against being
-        # the account's last remaining authentication method.
+        user_id = PydanticObjectId(user.id)
+
+        # Remove the provider link unconditionally (provider-side forced revocation)
         await self.__user_repo.remove_linked_provider(user_id, provider)
         log.info("Authentication provider unlinked following a provider-side revocation", user_id=str(user_id))
 
-    async def disconnect_provider(self, user_id: PydanticObjectId, provider: AuthProviderName) -> None:
-        log = logger.bind(user_id=str(user_id), provider=provider)
+        # Check if the account has any remaining ways to sign in
+        remaining_providers = [linked for linked in user.linked_providers if linked.provider != provider]
+        is_locked_out = not user.hashed_password and not remaining_providers
+
+        return RevokeProviderLinkResult(
+            user=user,
+            is_locked_out=is_locked_out,
+        )
+
+    async def disconnect_provider(self, user: UserModel, provider: AuthProviderName) -> None:
+        log = logger.bind(user_id=str(user.id), provider=provider)
         log.info("Attempting to disconnect an authentication provider")
 
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warn("Disconnect aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
-
         if not any(linked.provider == provider for linked in user.linked_providers):
-            log.warn("Disconnect rejected: provider is not linked to this account")
+            log.warning("Disconnect rejected: provider is not linked to this account")
             raise AuthProviderNotLinkedError(f"No linked '{provider}' account to disconnect.")
 
         remaining_providers = [linked for linked in user.linked_providers if linked.provider != provider]
         if not user.hashed_password and not remaining_providers:
-            log.warn("Disconnect rejected: this is the account's last remaining authentication method")
+            log.warning("Disconnect rejected: this is the account's last remaining authentication method")
             raise LastAuthenticationMethodError("Cannot disconnect your only remaining way to sign in.")
 
-        await self.__user_repo.remove_linked_provider(user_id, provider)
+        await self.__user_repo.remove_linked_provider(PydanticObjectId(user.id), provider)
         log.info("Authentication provider disconnected successfully")
 
     async def change_password(
-        self, user_id: PydanticObjectId, current_password: str | None, new_password: str
+        self,
+        user: UserModel,
+        current_password: SecretStr,
+        new_password: PasswordStr,
     ) -> TokenResponse:
-        log = logger.bind(user_id=str(user_id))
+        log = logger.bind(user_id=str(user.id))
         log.info("Attempting password change")
 
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warn("Password change aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
+        if not user.hashed_password:
+            log.warning("Password change failed: account has no password set", reason="password_not_set")
+            raise PasswordNotSetError("No password is set for this account.")
 
-        if user.hashed_password is not None:
-            if not current_password or not verify_password(current_password, user.hashed_password):
-                log.warn("Password change rejected: current password verification failed")
-                raise IncorrectPasswordError("The current password provided is incorrect.")
-        else:
-            log.info("Setting an initial password for an OAuth-only account")
+        if not verify_password(current_password, user.hashed_password):
+            log.warning("Password change failed: invalid current password", reason="invalid_current_password")
+            raise IncorrectPasswordError("Incorrect current password.")
 
-        tokens = self.__create_tokens(user_id)
-        await self.__user_repo.change_password(user_id, hash_password(new_password), tokens.refresh_token)
+        if verify_password(new_password, user.hashed_password):
+            log.warning("Password change failed: new password matches current", reason="password_unchanged")
+            raise SamePasswordError("New password must be different from your current password.")
 
-        log.info("Password changed successfully, all other sessions revoked, new session token issued")
+        uid = PydanticObjectId(user.id)
+        tokens = self.__create_tokens(uid)
+        await self.__user_repo.change_password(uid, hash_password(new_password), tokens.refresh_token)
+
+        log.info("Password changed successfully")
         return TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
-    async def list_connected_providers(self, user_id: PydanticObjectId) -> ConnectedProvidersResponse:
-        log = logger.bind(user_id=str(user_id))
-        log.info("Fetching connected authentication providers")
+    async def set_password(
+        self,
+        user: UserModel,
+        password: PasswordStr,
+        is_reset: bool = False,
+    ) -> TokenResponse:
+        log = logger.bind(user_id=str(user.id))
+        log.info("Attempting password upsert")
 
-        user = await self.__user_repo.find_by_id(user_id)
-        if not user:
-            log.warn("Lookup aborted: authenticated user profile record no longer exists")
-            raise InvalidCredentialsError("Authenticated user profile record no longer exists.")
+        if not is_reset and user.hashed_password:
+            log.warning("Password change failed: account already has a password set", reason="password_already_set")
+            raise PasswordAlreadySetError("Password already set for this account")
 
-        return ConnectedProvidersResponse.from_model(user)
+        uid = PydanticObjectId(user.id)
+        tokens = self.__create_tokens(uid)
+
+        # Mark email verified ONLY if completing a password reset AND user is not verified yet
+        should_mark_verified = is_reset and (user.email_preferences.verified_at is None)
+        verified_at = datetime.now(UTC) if should_mark_verified else None
+
+        await self.__user_repo.change_password(
+            user_id=uid,
+            hashed_password=hash_password(password),
+            new_refresh_token=tokens.refresh_token,
+            mark_verified_at=verified_at,
+        )
+
+        log.info("Password set successfully")
+        return TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token)

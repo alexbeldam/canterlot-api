@@ -4,6 +4,17 @@ Thank you for your interest in contributing to Canterlot ("the Project"), mainta
 
 By signing this Agreement -- including by posting the comment requested by the CLA Assistant bot on a pull request -- You accept and agree to the following terms for Your present and future Contributions submitted to the Project.
 
+## In Plain English
+
+This isn't a substitute for the actual terms below, just a friendly heads-up on what they mean:
+
+- **You keep your copyright.** Signing this doesn't hand ownership of your contribution to anyone -- it stays yours (see Section 4).
+- **You're granting a license to use it, not giving it away.** You're letting the Project use, distribute, and relicense your contribution, which includes the ability to offer a commercial license alongside the open one.
+- **No new obligations land on you.** No warranty, no liability, no promise your contribution will even get merged -- this just clears the legal path so it can be.
+- **Signing is one comment, not a contract negotiation.** The CLA Assistant bot handles it on your first pull request.
+
+If anything below reads unclear, ask in your PR -- happy to explain.
+
 ## 1. Definitions
 
 "You" (or "Your") means the individual submitting a Contribution.

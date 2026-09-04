@@ -10,11 +10,12 @@ from canterlot.exceptions import (
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.book import BookModel, LinkCandidate
+from canterlot.models.book import LinkCandidate
 from canterlot.models.club import CatalogEntryModel
-from canterlot.models.enums import ExtensionType, LinkProviderName, MemberRole
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.catalog import CatalogService
+from canterlot.types import ExtensionType, MemberRole
+from tools.factories import BookFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439012")
@@ -68,7 +69,6 @@ def _service(
     link_provider: AsyncMock,
     user_repo: AsyncMock | None = None,
 ) -> CatalogService:
-    link_provider.name = LinkProviderName.ANNAS
     return CatalogService(book_repo, club_repo, user_repo or AsyncMock(), [link_provider])
 
 
@@ -299,9 +299,6 @@ def describe_removing_a_book_from_the_catalog():
 
 
 def describe_get_catalog_page():
-    def _book(**overrides) -> BookModel:
-        defaults = {"external_id": "google-books__abc123", "title": "The Hobbit"}
-        return BookModel(**{**defaults, **overrides})
 
     def _page(entries: list[CatalogEntryModel]) -> Page[CatalogEntryModel]:
         return Page(items=entries, total_items=len(entries), current_page=1, page_size=20)
@@ -321,10 +318,14 @@ def describe_get_catalog_page():
         book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
-        entry = CatalogEntryModel(book_id=SOME_BOOK_ID, suggested_by=SOME_USER_ID, suggested_at=datetime.now(UTC))
+        entry = CatalogEntryModel(
+            book_id=SOME_BOOK_ID,
+            suggested_by=SOME_USER_ID,
+            suggested_at=datetime.now(UTC),
+        )
         club_repo.find_catalog_page_by_club_id.return_value = _page([entry])
-        book_repo.find_by_ids.return_value = {SOME_BOOK_ID: _book()}
-        user_repo.find_usernames_by_ids.return_value = {SOME_USER_ID: "alice_1"}
+        book_repo.find_by_ids.return_value = {SOME_BOOK_ID: BookFactory.build(external_id="google-books__abc123")}
+        user_repo.get_usernames_by_ids.return_value = {SOME_USER_ID: "alice_1"}
         service = _service(book_repo, club_repo, link_provider, user_repo)
 
         page = await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC)
@@ -332,7 +333,7 @@ def describe_get_catalog_page():
         assert str(page.items[0].external_id) == "google-books__abc123"
         assert page.items[0].suggested_by == "alice_1"
         book_repo.find_by_ids.assert_awaited_once_with([SOME_BOOK_ID])
-        user_repo.find_usernames_by_ids.assert_awaited_once_with([SOME_USER_ID])
+        user_repo.get_usernames_by_ids.assert_awaited_once_with([SOME_USER_ID])
 
     async def it_resolves_a_suggested_by_username_filter_before_querying_the_catalog(
         book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock

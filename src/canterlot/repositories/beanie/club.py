@@ -8,11 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
-from canterlot.models import BookModel, ClubModel, JoinPolicy, MemberRole, MemberSchema, PendingApprovalSchema
-from canterlot.models.club import CatalogEntryModel, ClubNameStr, ClubSlugStr
+from canterlot.models import BookModel, ClubModel, PendingApprovalSchema
+from canterlot.models.club import CatalogEntryModel
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import ClubRepository
-from canterlot.utils.format import LanguageStr
+from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr, MemberRole, MemberSchema
 
 _CATALOG_SORT_FIELD_PATHS = {
     "suggested_at": "catalog.suggested_at",
@@ -97,36 +97,28 @@ class BeanieClubRepository(ClubRepository):
         return projection.id
 
     async def exists_by_club_slug(self, slug: ClubSlugStr) -> bool:
-        count = await ClubModel.find(ClubModel.slug == slug).count()
-
-        return count > 0
+        return await ClubModel.find(ClubModel.slug == slug).exists()
 
     async def exists_by_club_id_and_member_user_id(
         self,
         club_id: PydanticObjectId,
         user_id: PydanticObjectId,
     ) -> bool:
-        count = await ClubModel.find(ClubModel.id == club_id, ClubModel.members.user_id == user_id).count()
-
-        return count > 0
+        return await ClubModel.find(ClubModel.id == club_id, ClubModel.members.user_id == user_id).exists()
 
     async def exists_by_club_id_and_pending_user_id(
         self,
         club_id: PydanticObjectId,
         user_id: PydanticObjectId,
     ) -> bool:
-        count = await ClubModel.find(ClubModel.id == club_id, ClubModel.pending_approvals.user_id == user_id).count()
-
-        return count > 0
+        return await ClubModel.find(ClubModel.id == club_id, ClubModel.pending_approvals.user_id == user_id).exists()
 
     async def exists_by_club_id_and_catalog_book_id(
         self,
         club_id: PydanticObjectId,
         book_id: PydanticObjectId,
     ) -> bool:
-        count = await ClubModel.find(ClubModel.id == club_id, ClubModel.catalog.book_id == book_id).count()
-
-        return count > 0
+        return await ClubModel.find(ClubModel.id == club_id, ClubModel.catalog.book_id == book_id).exists()
 
     async def find_catalog_entry_by_club_id_and_book_id(
         self,

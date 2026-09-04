@@ -1,0 +1,19 @@
+{% extends "base.html.j2" %}
+{% import "macros.html.j2" as ui with context %}
+
+{% set link_color = '#00786f' %}
+{% set brand_color = '#00786f' %}
+{% set badge_bg = '#00786f' %}
+{% set badge_category = badge_category | default("News") %}
+
+{% block link_color %}{{ link_color }}{% endblock %}
+{% block brand_color %}{{ brand_color }}{% endblock %}
+{% block badge_bg %}{{ badge_bg }}{% endblock %}
+
+{% block header_badge %}
+  {{ ui.persona_badge("Spike", badge_category, bg_color=badge_bg) }}
+{% endblock %}
+
+{% block footer_preferences %}
+  <p style="margin:10px 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:160%;color:#5a5069;">Don't want to receive this type of notice anymore? <a href="{{ notifications_url }}" style="color:#5a5069;text-decoration:underline;">Manage your notifications</a>.</p>
+{% endblock %}

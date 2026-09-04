@@ -1,0 +1,17 @@
+{% extends "celestia/layout.html.j2" %}
+{% set badge_category = "Access" %}
+{% import "macros.html.j2" as ui %}
+
+{% block content %}
+  {{ ui.salutation(actor_name, punc="!") }}
+
+  {% call ui.text_block() %}
+    {{ ui.strong_no(recipient_name) }} transferred ownership of the {{ ui.strong_no(club_name) }} to you. You now have full control: club settings, member roles, and the direction of upcoming reading rounds.
+  {% endcall %}
+
+  {% call ui.alert_box(type="info") %}
+    {{ ui.t_no(recipient_name) }} has 24 hours to reclaim ownership if this was a mistake — after that, the transfer is final.
+  {% endcall %}
+
+  {{ ui.action_button(action_url, "Manage club") }}
+{% endblock %}

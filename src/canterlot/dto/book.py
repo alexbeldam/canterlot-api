@@ -2,16 +2,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from canterlot.models.book import (
+from canterlot.pagination import Page
+from canterlot.types import (
     AuthorList,
     BookExternalId,
+    HttpsUrl,
+    ISBN10Str,
+    ISBN13Str,
+    LanguageStr,
+    NonEmptyStr,
     PageCount,
     PublishedYear,
     TitleStr,
     UrlList,
 )
-from canterlot.pagination import Page
-from canterlot.utils.format import HttpsUrl, ISBN10Str, ISBN13Str, LanguageStr, NonEmptyStr
 
 
 class BookSearchResult(BaseModel):

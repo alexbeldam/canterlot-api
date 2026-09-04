@@ -6,8 +6,8 @@ import pytest_asyncio
 import redis.asyncio as aioredis
 from beanie import init_beanie
 from pymongo import AsyncMongoClient
-from testcontainers.mongodb import MongoDbContainer
-from testcontainers.redis import AsyncRedisContainer
+from testcontainers.community.mongodb import MongoDbContainer
+from testcontainers.community.redis import AsyncRedisContainer
 
 from canterlot.models import BEANIE_DOCUMENT_MODELS
 
@@ -29,7 +29,7 @@ def mongodb_container() -> Iterator[MongoDbContainer]:
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _beanie_client(mongodb_container: MongoDbContainer) -> AsyncIterator[AsyncMongoClient]:
-    client: AsyncMongoClient = AsyncMongoClient(mongodb_container.get_connection_url())
+    client: AsyncMongoClient = AsyncMongoClient(mongodb_container.get_connection_url(), tz_aware=True)
     try:
         await init_beanie(database=client[_DB_NAME], document_models=BEANIE_DOCUMENT_MODELS)
         yield client

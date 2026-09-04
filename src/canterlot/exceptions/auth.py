@@ -26,6 +26,11 @@ class InvalidCredentialsError(AuthenticationError):
         self.headers = {"WWW-Authenticate": "Bearer"}
 
 
+class EmailNotVerifiedError(AuthenticationError):
+    error_code = ErrorCode.EMAIL_NOT_VERIFIED
+    status_code = status.HTTP_403_FORBIDDEN
+
+
 class TokenError(BusinessError):
     pass
 
@@ -38,6 +43,25 @@ class TokenExpiredError(TokenError):
 class TokenMalformedError(TokenError):
     error_code = ErrorCode.TOKEN_MALFORMED
     status_code = status.HTTP_400_BAD_REQUEST
+
+
+class CodeError(BusinessError):
+    pass
+
+
+class InvalidCodeError(CodeError):
+    error_code = ErrorCode.INVALID_CODE
+    status_code = status.HTTP_400_BAD_REQUEST
+
+
+class CodeExpiredError(CodeError):
+    error_code = ErrorCode.CODE_EXPIRED
+    status_code = status.HTTP_410_GONE
+
+
+class UnauthenticatedCodeVerificationError(CodeError):
+    error_code = ErrorCode.UNAUTHENTICATED_CODE_VERIFICATION
+    status_code = status.HTTP_403_FORBIDDEN
 
 
 class InvalidOAuthCredentialError(AuthenticationError):
@@ -73,3 +97,23 @@ class LastAuthenticationMethodError(AuthenticationError):
 class IncorrectPasswordError(AuthenticationError):
     error_code = ErrorCode.INCORRECT_PASSWORD
     status_code = status.HTTP_401_UNAUTHORIZED
+
+
+class SamePasswordError(AuthenticationError):
+    error_code = ErrorCode.SAME_PASSWORD
+    status_code = status.HTTP_409_CONFLICT
+
+
+class PasswordNotSetError(AuthenticationError):
+    error_code = ErrorCode.PASSWORD_NOT_SET
+    status_code = status.HTTP_409_CONFLICT
+
+
+class PasswordAlreadySetError(AuthenticationError):
+    error_code = ErrorCode.PASSWORD_ALREADY_SET
+    status_code = status.HTTP_409_CONFLICT
+
+
+class InvalidUnsubscribePayloadError(BusinessError):
+    error_code = ErrorCode.INVALID_UNSUBSCRIBE_PAYLOAD
+    status_code = status.HTTP_400_BAD_REQUEST

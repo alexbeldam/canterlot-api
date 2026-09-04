@@ -2,12 +2,27 @@ import asyncio
 import json
 import math
 
-from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
-from canterlot.exceptions import BookDetailsNotFoundError, BookNotFoundError, BookSearchCriteriaMissingError
-from canterlot.models.book import BookExternalId, BookProviderIdentifier, SearchParams, TitleStr, split_isbn
-from canterlot.models.enums import BookProviderName
-from canterlot.providers import BookProvider, ProviderSearchResponse
+from beanie import PydanticObjectId
+
+from canterlot.constants import BOOK_SEARCH_KEY_TEMPLATE
+from canterlot.dto.book import BookDetails, BookSearchResult, PaginatedBooksResponse
+from canterlot.exceptions import (
+    BookDetailsNotFoundError,
+    BookSearchCriteriaMissingError,
+    GatewayConfigurationError,
+)
+from canterlot.exceptions.book import BookNotFoundError
+from canterlot.gateways.books import BookProvider, ProviderSearchResponse
+from canterlot.models.book import BookModel, SearchParams
 from canterlot.repositories import BookRepository, CacheRepository
+from canterlot.types import (
+    BookExternalId,
+    BookProviderIdentifier,
+    BookProviderName,
+    ISBNStr,
+    LanguageStr,
+    TitleStr,
+)
 from canterlot.utils import (
     LANGUAGE_MATCH_SUBSCORES,
     best_language_match,
@@ -15,7 +30,6 @@ from canterlot.utils import (
     redistribute_weights,
     similarity_ratio,
 )
-from canterlot.utils.format import ISBNStr, LanguageStr
 
 logger = get_logger(__name__)
 
@@ -66,8 +80,12 @@ class BookService:
         log = logger.bind(search_title=title, search_author=author, search_isbn=isbn, page=page, limit=limit)
 
         if not title and not author and not isbn:
-            log.warn("Search rejected: no search criteria provided")
+            log.warning("Search rejected: no search criteria provided")
             raise BookSearchCriteriaMissingError("At least one of title, author, or isbn must be provided.")
+
+        if not self.__providers:
+            log.warning("Search rejected: no external book providers are configured")
+            raise GatewayConfigurationError("External book search is not configured.")
 
         provider_chunk_page = math.ceil((page * limit) / self.MAX_PROVIDER_CHUNK)
         start_index = (provider_chunk_page - 1) * self.MAX_PROVIDER_CHUNK
@@ -116,22 +134,27 @@ class BookService:
         provider_chunk_page: int,
     ) -> str:
         langs_key = "-".join(sorted(preferred_languages))
-        return (
-            f"cache:search:{(title or '').lower()}:auth:{author or ''}:"
-            f"isbn:{isbn or ''}:langs:{langs_key}:chunk_p:{provider_chunk_page}"
+
+        return BOOK_SEARCH_KEY_TEMPLATE.format(
+            title=(title or "").lower(),
+            author=author or "",
+            isbn=isbn or "",
+            langs=langs_key,
+            chunk_page=provider_chunk_page,
         )
 
     async def __try_cache_hit(self, cache_key: str, page: int, limit: int, log) -> PaginatedBooksResponse | None:
-        cached = await self.__cache.find(cache_key)
-        if not cached:
+        cached_map = await self.__cache.find(cache_key)
+        if not cached_map:
             return None
 
         try:
-            payload = json.loads(cached)
-            cached_books = [BookSearchResult.model_validate(b) for b in payload["books"]]
-            total_results = payload["total_results"]
-        except (json.JSONDecodeError, ValueError, KeyError):
-            log.warn("Discarding corrupt or outdated cache entry, falling back to a live fetch")
+            total_results = int(cached_map["total_results"])
+
+            payload_books = json.loads(cached_map["books"])
+            cached_books = [BookSearchResult.model_validate(b) for b in payload_books]
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError):
+            log.warning("Discarding corrupt or outdated cache entry, falling back to a live fetch")
             return None
 
         log.info("External search satisfied via cache hit")
@@ -144,8 +167,11 @@ class BookService:
         total_results: int,
         log,
     ) -> None:
-        cache_payload = {"books": [b.model_dump(mode="json") for b in sorted_books], "total_results": total_results}
-        await self.__cache.save(cache_key, json.dumps(cache_payload), expire_seconds=300)
+        cache_map: dict[str, str | int | float] = {
+            "total_results": total_results,
+            "books": json.dumps([b.model_dump(mode="json") for b in sorted_books]),
+        }
+        await self.__cache.save(cache_key, cache_map, expire_seconds=300)
         log.info("Staged search results dataset in transient cache layers", total_results=total_results)
 
     def __aggregate_provider_results(
@@ -186,14 +212,17 @@ class BookService:
 
             for book in books_list:
                 if isinstance(book, BookSearchResult):
-                    book.id.provider = current_provider_name
+                    book.id = BookProviderIdentifier(
+                        provider=current_provider_name,
+                        book_id=book.id.book_id,
+                    )
                     raw_books.append(book)
-                elif isinstance(book, dict):
-                    book["provider"] = current_provider_name
-                    try:
-                        raw_books.append(BookSearchResult.model_validate(book))
-                    except ValueError:
-                        log.debug("Skipping malformed book payload from provider", provider_name=current_provider_name)
+                else:
+                    log.warning(
+                        "Discarding malformed book record from provider response",
+                        provider_name=current_provider_name,
+                        book_record=book,
+                    )
 
         return raw_books, total_results
 
@@ -205,10 +234,21 @@ class BookService:
         isbn: ISBNStr | None,
         preferred_languages: list[LanguageStr],
     ) -> list[BookSearchResult]:
-        scored_books = [(self.__score_book(book, title, author, isbn, preferred_languages), book) for book in raw_books]
+        def sort_key(item):
+            isbn_match, score, _ = item
+            return (isbn_match, score)
 
-        scored_books.sort(key=lambda x: x[0], reverse=True)
-        return [item[1] for item in scored_books]
+        scored_books = [
+            (
+                isbn is not None and isbn in (book.isbn_10, book.isbn_13),
+                self.__score_book(book, title, author, isbn, preferred_languages),
+                book,
+            )
+            for book in raw_books
+        ]
+
+        scored_books.sort(key=sort_key, reverse=True)
+        return [book for _, _, book in scored_books]
 
     def __score_book(
         self,
@@ -272,32 +312,31 @@ class BookService:
         log = logger.bind(external_book_id=provider_book_id, provider_name=provider)
         log.info("Fetching volume details card from external provider engine")
 
+        if not self.__providers:
+            log.warning("Details query rejected: no external book providers are configured")
+            raise GatewayConfigurationError("External book search is not configured.")
+
         provider_engine = self.__providers.get(provider)
         if not provider_engine:
-            log.warn("Query aborted: provider engine key does not exist")
-            raise BookDetailsNotFoundError(f"No active provider engine found matching '{provider}'")
+            log.warning("Query aborted: provider engine key does not exist")
+            raise GatewayConfigurationError(f"The '{provider}' book provider is not available.")
 
         details = await provider_engine.fetch_volume_details(provider_book_id)
         if not details:
-            log.warn("Upstream fetch mismatch: item record missing on external registry")
+            log.warning("Upstream fetch mismatch: item record missing on external registry")
             raise BookDetailsNotFoundError(f"Book with ID '{provider_book_id}' could not be found via {provider}.")
 
         log.info("Successfully recovered third-party detailed book context")
         return details
 
-    async def get_by_identifier(self, identifier: BookExternalId | ISBNStr) -> BookResponse:
-        log = logger.bind(identifier=str(identifier))
-        log.info("Fetching persistent book record by public identifier")
-
-        if isinstance(identifier, BookProviderIdentifier):
-            book = await self.__repo.find_by_external_id(identifier)
-        else:
-            isbn_10, isbn_13 = split_isbn(identifier)
-            book = await self.__repo.find_by_isbn(isbn_10, isbn_13)
-
+    async def get_book_by_identifier(self, identifier: BookExternalId | ISBNStr) -> BookModel:
+        book = await self.__repo.find_by_identifier(identifier)
         if book is None:
-            log.warn("Query mismatch: requested book identifier not found")
             raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
+        return book
 
-        log.info("Global book reference successfully mapped and returned")
-        return BookResponse.model_validate(book, from_attributes=True)
+    async def get_book_id_by_identifier(self, identifier: BookExternalId | ISBNStr) -> PydanticObjectId:
+        book_id = await self.__repo.find_id_by_identifier(identifier)
+        if book_id is None:
+            raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
+        return book_id

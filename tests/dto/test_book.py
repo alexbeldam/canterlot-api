@@ -1,11 +1,8 @@
-from datetime import UTC, datetime
-
 import pytest
 from pydantic import ValidationError
 
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
-from canterlot.models.book import BookModel, BookProviderIdentifier
-from canterlot.models.enums import BookProviderName
+from tools.factories import BookFactory
 
 
 def describe_book_search_result():
@@ -56,14 +53,10 @@ def describe_paginated_books_response():
 
 def describe_book_response():
     def it_builds_from_a_book_model_without_exposing_the_internal_id():
-        book = BookModel(
-            external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "abc123"),
-            title="The Hobbit",
-            created_at=datetime.now(UTC),
-        )
+        book = BookFactory.build()
 
         response = BookResponse.model_validate(book, from_attributes=True)
 
-        assert response.title == "The Hobbit"
-        assert str(response.external_id) == "google-books__abc123"
+        assert response.title == book.title
+        assert response.external_id == book.external_id
         assert not hasattr(response, "id")
