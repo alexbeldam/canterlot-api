@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 from importlib.metadata import version as get_distribution_version
 from pathlib import Path
@@ -9,6 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
+from redis.maint_notifications import MaintNotificationsConfig
 from saq.queue import Queue
 from saq.queue.redis import RedisQueue
 from saq.web.starlette import saq_web
@@ -23,6 +26,7 @@ from canterlot.routers.errors import register_error_handlers
 from canterlot.routers.health import health_router
 from canterlot.routers.webhooks import webhooks_router
 from canterlot.utils import setup_logging
+from canterlot.worker import build_worker
 
 STATIC_DIR = Path(__file__).parent / "static"
 FAVICON_URL = "/static/favicon.svg"
@@ -34,7 +38,15 @@ async def lifespan(app: FastAPI):  # pragma: no cover
     setup_logging(settings.environment)
 
     async with DatabaseManager():
+        worker = build_worker(app.state.redis_client)
+        worker_task = asyncio.create_task(worker.start())
+
         yield
+
+        await worker.stop()
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
 
     if hasattr(app.state, "redis_client"):
         await app.state.redis_client.aclose()
@@ -94,6 +106,7 @@ def create_app() -> FastAPI:
         socket_timeout=15.0,
         socket_keepalive=True,
         health_check_interval=10,
+        maint_notifications_config=MaintNotificationsConfig(enabled=False),
     )
 
     saq_queues: list[Queue] = [

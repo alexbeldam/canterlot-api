@@ -18,11 +18,6 @@
 - **tests**: Import Mongo/Redis test containers from testcontainers.community
   ([`aa99e48`](https://github.com/alexbeldam/canterlot-api/commit/aa99e48a922cb39f2864be40efcce4efe01367de))
 
-### Documentation
-
-- Refresh CLA, CONTRIBUTING, and README for current policy and architecture
-  ([`f8292af`](https://github.com/alexbeldam/canterlot-api/commit/f8292af2e53302808780256bfb47b05a355c2311))
-
 ### Features
 
 - Add email client and optionalize google books provider

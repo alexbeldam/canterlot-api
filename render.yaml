@@ -19,25 +19,6 @@ services:
           name: canterlot-redis
           property: connectionString
 
-  - type: worker
-    name: canterlot-worker
-    runtime: python
-    plan: free
-    branch: main
-    autoDeploy: false
-    buildCommand: |
-      curl -LsSf https://astral.sh/uv/install.sh | sh
-      export PATH="$HOME/.local/bin:$PATH"
-      uv sync --frozen --no-dev
-    startCommand: uv run start-worker
-    envVars:
-      - fromGroup: canterlot-shared-env
-      - key: DB__REDIS_URL
-        fromService:
-          type: redis
-          name: canterlot-redis
-          property: connectionString
-
   - type: redis
     name: canterlot-redis
     plan: free
