@@ -6,8 +6,8 @@ import pytest_asyncio
 import redis.asyncio as aioredis
 from beanie import init_beanie
 from pymongo import AsyncMongoClient
-from testcontainers.mongodb import MongoDbContainer
-from testcontainers.redis import AsyncRedisContainer
+from testcontainers.community.mongodb import MongoDbContainer
+from testcontainers.community.redis import AsyncRedisContainer
 
 from canterlot.models import BEANIE_DOCUMENT_MODELS
 
