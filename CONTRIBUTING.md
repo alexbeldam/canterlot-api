@@ -4,7 +4,11 @@ Thanks for considering a contribution! A few things to know before you dive in.
 
 ## Contributor License Agreement
 
-Before any pull request can be merged, you'll need to sign our [Contributor License Agreement](CLA.md). A bot will comment on your first pull request with instructions -- it's a single comment reply, no paperwork.
+Before any pull request can be merged, you'll need to sign our [Contributor License Agreement](CLA.md) -- a bot will comment on your first pull request with instructions, and signing is just a single comment reply, no paperwork. It reads more formally than it needs to, so the CLA opens with a plain-English summary of what it actually means before the legal terms -- worth a skim if legal documents aren't your thing.
+
+### Why We Require It
+
+Canterlot is licensed under the Business Source License. The CLA gives us the ability to also offer a commercial license alongside it, on contributions old and new, without having to circle back to every contributor individually.
 
 ## Getting Started
 
@@ -30,7 +34,9 @@ The codebase follows a strict layered convention: `routers/` -> `services/` -> `
 
 - **Routers depend on services only:** Please don't import or call a repository from a router. The only approved exception is `routers/dependencies.py` for FastAPI dependency-injection wiring.
 
-- **Services stay independent:** Services shouldn't call sibling services. Cross-service orchestration (like creating an entity and rotating its token) belongs in the router layer, which can safely depend on multiple services. A service should only know about its own repositories.
+- **Services stay independent:** Services shouldn't call sibling services. A service should only know about its own repositories.
+
+- **Cross-service orchestration lives in `use_cases/`:** When an endpoint needs to coordinate more than one service (like creating a club and rotating its invite token), that orchestration belongs in a `use_cases/` class, not in the router or in either service. A use case's constructor takes the services it needs and exposes a single `async execute(...)`; the router depends on the use case via DI (see `routers/dependencies/providers.py`'s `get_*_use_case` factories) instead of wiring the services together itself. Endpoints that only ever need a single service can keep calling it directly from the router, a use case is for orchestration, not a mandatory wrapper around every service call.
 
 - **Repositories own the queries:** This is the only layer that should talk to Beanie or Mongo query machinery. Services and routers shouldn't construct database queries. If you find yourself adding a repository as a router dependency, it's a great indicator that the data-shaping or orchestration belongs one layer down.
 
@@ -100,21 +106,21 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 - **Zero Warnings:** All test runs should pass with completely zero warnings in their output. If an alert is triggered by third-party library internals we don't control, intercept it cleanly by adding a highly scoped message filter inside `pyproject.toml`'s `filterwarnings` section.
 
-## Local Dev Seed Data (`tools/seed.py`)
+## Local Dev Seed Data (`tools/seed/`)
 
 Running `just seed` populates your local environment with enough clubs, users, and data to test endpoints manually without making dozens of upfront requests.
 
-- **Simulate Real Client Steps:** Always build seed data by calling our `services/` layer methods (like `AuthService.register_user`) rather than executing raw database `Document` model inserts. Raw inserts skip vital application side effects (like generating public profiles or timestamp hooks) and place the database into an invalid state a normal user could never reach.
+- **Full Wipe, Not Selective Cleanup:** The seeder drops every `BEANIE_DOCUMENT_MODELS` collection (via `DatabaseManager.reinitialize_beanie()` to rebuild indexes afterward) before reseeding, rather than matching and deleting previously seeded rows. This keeps `just seed` idempotent without needing to track durable identifiers across runs.
 
-- **Bypass Allowances:** If a service method doesn't exist yet for a specific state, fall back to the repository layer rather than a raw document insertion. If a service endpoint executes mandatory live external API calls or forces current-instant timestamps that break historical pagination tests, you are free to call repository save operations directly.
+- **Builds Documents Directly:** `tools/seed/` saves models directly in whatever state they need through `tools/factories/` (`create_async`/`create_batch_async`), setting fields like `profile_completed_at` or legal-acceptance versions explicitly rather than calling into `services/` or `use_cases/`. Reaching the same state through services would take many separate calls per entity, and could trigger side effects we don't want during seeding, like sending real emails. If you add a new seeded state, set the fields it needs directly rather than reaching for a service call.
 
-- **Keep Seed Safe:** Keep the script idempotent so `just seed` can be safely rerun repeatedly. Clean up previously seeded items by matching against durable identifiers (like a unique email domain suffix) rather than mutable string constants.
+- **No Random Ghost References:** Always pass explicit `members=[...]`, `banned_users=[...]`, `pending_approvals=[...]`, `catalog=[...]`, and similar relational fields into factory calls when a document must reference another seeded entity's real id. Polyfactory will otherwise happily generate a random, unrelated `PydanticObjectId` for any field you don't override.
 
 ## Commit Messages & Git
 
 - **Conventional Logs:** This project uses Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`). Please stick to the format, as automatic release tools evaluate your messages to bump versions and build changelogs. Only `feat` and `fix` tokens (plus `BREAKING CHANGE:` footers) drive actual release version updates.
 
-- **No AI Attribution:** Please do not append any AI co-author or `Co-Authored-By` metadata lines pointing to Claude or automated coding tools inside your commit logs. Pull requests with AI agent contributors will not be approved.
+- **No AI Attribution:** Using AI tools to help write a contribution is fine, just leave AI co-author or `Co-Authored-By` trailers (Claude or otherwise) out of the commit message, so authorship in the log stays with you.
 
 - **History Safety:** Never rewrite, rebase, or amend a commit block that has already been pushed to the remote repository without coordinating first. Please avoid force-pushing branches without explicit per-instance verification. Always keep local configuration utilities untracked and outside version staging.
 
