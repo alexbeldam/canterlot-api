@@ -331,18 +331,42 @@ class ClubService:
         )
         log.info("Initiating club member role change")
 
-        # 1. Gate: Cannot assign OWNER role via role change
+        target = self.__ensure_role_change_is_allowed(club, caller_id, target_user_id, new_role, log)
+        if target is None:
+            log.info("Role change short-circuited: target user already holds this role")
+            return None
+
+        changed = await self.__club_repo.change_member_role(PydanticObjectId(club.id), target_user_id, new_role)
+        if not changed:
+            log.warning("Role change rejected: club membership changed before the update could complete")
+            raise MemberRoleChangeConflictError(
+                "This club's membership changed before the role update could complete; please retry."
+            )
+
+        is_promotion = _outranks(new_role, target.role)
+
+        log.info("Member role changed successfully", is_promotion=is_promotion)
+        return is_promotion
+
+    def __ensure_role_change_is_allowed(
+        self,
+        club: ClubModel,
+        caller_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+        new_role: MemberRole,
+        log,
+    ) -> MemberSchema | None:
+        """Returns the target member, or None if the role change is a no-op. Raises on any other rejection."""
+
         if new_role == MemberRole.OWNER:
             log.warning("Role change rejected: attempted to assign OWNER role")
             raise CannotChangeOwnerRoleError("Ownership can only be changed via the transfer-ownership action.")
 
-        # 2. Check Caller Membership
         caller = _find_member(club.members, caller_id)
         if caller is None:
             log.warning("Role change rejected: caller is not a member of this club")
             raise UnauthorizedClubMemberError("Only members with sufficient rank can change roles.")
 
-        # 3. Check Target Membership
         target = _find_member(club.members, target_user_id)
         if target is None:
             log.warning("Role change rejected: target user is not a member of this club")
@@ -352,12 +376,9 @@ class ClubService:
             log.warning("Role change rejected: target is the club OWNER")
             raise CannotChangeOwnerRoleError("Ownership can only be changed via the transfer-ownership action.")
 
-        # 4. Gate: No-op return if target already has the new role
         if target.role == new_role:
-            log.info("Role change short-circuited: target user already holds this role")
             return None
 
-        # 5. Gate: Caller must outrank the target
         if not _outranks(caller.role, target.role):
             log.warning(
                 "Role change rejected: caller does not outrank the target",
@@ -366,7 +387,6 @@ class ClubService:
             )
             raise UnauthorizedClubMemberError("You do not have sufficient rank to change this member's role.")
 
-        # 6. Gate: Caller can only assign roles below their own rank
         if not _outranks(caller.role, new_role):
             log.warning(
                 "Role change rejected: caller cannot assign a role equal to or higher than their own",
@@ -375,31 +395,27 @@ class ClubService:
             )
             raise UnauthorizedClubMemberError("You cannot assign a role equal to or higher than your own.")
 
-        # 7. Check Protected Former Owner Window
+        self.__ensure_target_not_protected_former_owner(club, target_user_id, log)
+        return target
+
+    def __ensure_target_not_protected_former_owner(
+        self,
+        club: ClubModel,
+        target_user_id: PydanticObjectId,
+        log,
+    ) -> None:
         now = datetime.now(UTC)
         if (
-            target_user_id == club.protected_former_owner_id
-            and club.ownership_transferred_at is not None
-            and now - club.ownership_transferred_at < self.__transfer_cooldown
+            target_user_id != club.protected_former_owner_id
+            or club.ownership_transferred_at is None
+            or now - club.ownership_transferred_at >= self.__transfer_cooldown
         ):
-            log.warning("Role change rejected: target is a protected former owner")
-            raise FormerOwnerProtectedError(
-                "This user transferred ownership away within the last 30 days and cannot be demoted further yet."
-            )
+            return
 
-        # 8. Execute Database Mutation
-        changed = await self.__club_repo.change_member_role(PydanticObjectId(club.id), target_user_id, new_role)
-        if not changed:
-            log.warning("Role change rejected: club membership changed before the update could complete")
-            raise MemberRoleChangeConflictError(
-                "This club's membership changed before the role update could complete; please retry."
-            )
-
-        # 9. Compute is_promotion dynamically
-        is_promotion = _outranks(new_role, target.role)
-
-        log.info("Member role changed successfully", is_promotion=is_promotion)
-        return is_promotion
+        log.warning("Role change rejected: target is a protected former owner")
+        raise FormerOwnerProtectedError(
+            "This user transferred ownership away within the last 30 days and cannot be demoted further yet."
+        )
 
     async def leave_club(self, club: ClubModel, caller_id: PydanticObjectId) -> None:
         log = logger.bind(club_id=str(club.id), caller_id=str(caller_id))

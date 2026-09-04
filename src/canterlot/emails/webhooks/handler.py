@@ -1,5 +1,7 @@
 import json
 from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any, TypeGuard
 
 import resend
 
@@ -14,6 +16,27 @@ from canterlot.types import NormalizedEmailStr
 from canterlot.utils import get_logger
 
 logger = get_logger(__name__)
+
+
+class EventType(StrEnum):
+    BOUNCED = "email.bounced"
+    SUPPRESSED = "email.suppressed"
+    COMPLAINED = "email.complained"
+    FAILED = "email.failed"
+    DELIVERED = "email.delivered"
+
+
+SupportedEmailEvent = (
+    resend.EmailBouncedEvent
+    | resend.EmailSuppressedEvent
+    | resend.EmailComplainedEvent
+    | resend.EmailFailedEvent
+    | resend.EmailDeliveredEvent
+)
+
+
+def is_supported_email_event(event: Any) -> TypeGuard[SupportedEmailEvent]:
+    return isinstance(event, dict) and event.get("type") in list(EventType)
 
 
 class ResendWebhookHandler:
@@ -51,12 +74,19 @@ class ResendWebhookHandler:
             logger.error("Webhook rejection: Invalid cryptographic signature.", extra={"svix_id": svix_id})
             raise InvalidWebhookSignatureError("Invalid cryptographic webhook signature") from None
 
-        event_type = event.get("type")
-        event_data = event.get("data", {})
+        if not is_supported_email_event(event):
+            event_type = event.get("type", "unknown")
+            logger.debug(
+                "Webhook rejection: Unsupported event type.",
+                extra={"svix_id": svix_id, "event_type": event_type},
+            )
+            return
 
-        recipients = event_data.get("to", [])
+        type = EventType(event["type"])
+        recipients = event["data"]["to"]
+
         for recipient in recipients:
-            await self._evaluate_reputation_event(event_type, recipient)
+            await self._evaluate_reputation_event(type, recipient)
 
         await self.__cache_repo.save(
             key=cache_key,
@@ -64,7 +94,7 @@ class ResendWebhookHandler:
             expire_seconds=3600,
         )
 
-    async def _evaluate_reputation_event(self, event_type: str, email: NormalizedEmailStr) -> None:
+    async def _evaluate_reputation_event(self, event_type: EventType, email: NormalizedEmailStr) -> None:
         log = logger.bind(email=email, event_type=event_type)
         now = datetime.now(UTC)
 
@@ -72,7 +102,7 @@ class ResendWebhookHandler:
 
         if not user_exists:
             # --- EXTERNAL RECIPIENT PIPELINE ---
-            if event_type in ("email.bounced", "email.suppressed", "email.complained"):
+            if event_type in (EventType.BOUNCED, EventType.SUPPRESSED, EventType.COMPLAINED):
                 log.warning("External target triggered permanent failure. Setting infrastructure blacklist.")
                 await self.__cache_repo.save(
                     key=EXTERNAL_SUPPRESSION_TEMPLATE.format(email=email),
@@ -83,31 +113,27 @@ class ResendWebhookHandler:
 
         # --- REGISTERED USER PIPELINE ---
         match event_type:
-            case "email.bounced" | "email.suppressed":
+            case EventType.BOUNCED | EventType.SUPPRESSED:
                 log.error("Fatal delivery failure. Registering total account suppression.")
                 await self.__user_repo.apply_global_suppression_by_email(email, timestamp=now)
                 await self._evict_user_preferences_cache(email)
 
-            case "email.complained":
+            case EventType.COMPLAINED:
                 log.warning("Spam complaint registered. Suppressing non-transactional categories.")
                 await self.__user_repo.apply_spam_suppression_by_email(email, timestamp=now)
                 await self._evict_user_preferences_cache(email)
 
-            case "email.failed":
+            case EventType.FAILED:
                 log.warning("Operational failure detected. Flagging delivery failure.")
                 await self.__user_repo.set_delivery_failed_by_email(email, failed=True)
                 await self._evict_user_preferences_cache(email)
 
-            case "email.delivered":  # -> Downgraded to DEBUG
+            case _:
                 log.debug("Successful delivery confirmed. Executing self-healing loop check.")
-                # Automatically reset transient operational blocks since mail is passing through cleanly again
                 modified = await self.__user_repo.set_delivery_failed_by_email(email, failed=False)
                 if modified:
                     log.debug("Self-healing complete: cleared operational delivery_failed lock.")
                     await self._evict_user_preferences_cache(email)
-
-            case _:
-                log.debug("Ignoring default tracking code.")
 
     async def _evict_user_preferences_cache(self, email: NormalizedEmailStr) -> None:
         await self.__cache_repo.invalidate(EMAIL_PREFERENCES_KEY_TEMPLATE.format(email=email))
