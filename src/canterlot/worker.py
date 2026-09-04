@@ -222,11 +222,33 @@ async def send_email_task(ctx: CanterlotContext, payload_str: str) -> None:
         raise run_exc
 
 
+def build_worker(redis_client: Redis) -> Worker:
+    email_client = get_email_client()
+    cache_repo = RedisRepository(redis_client)
+    user_repo = BeanieUserRepository()
+    user_service = UserService(user_repo=user_repo, cache_repo=cache_repo)
+    saq_queue = RedisQueue(redis_client, name=EMAIL_TASKS_QUEUE_NAME)
+    dlq_queue = RedisQueue(redis_client, name=DEAD_LETTER_QUEUE_NAME)
+
+    async def startup_hook(ctx: CanterlotContext) -> None:
+        ctx["cache_repo"] = cache_repo
+        ctx["user_service"] = user_service
+        ctx["email_client"] = email_client
+        ctx["dlq_queue"] = dlq_queue
+
+    return Worker(
+        queue=saq_queue,
+        functions=[send_email_task],
+        startup=startup_hook,
+        before_process=before_process_hook,
+        after_process=after_process_hook,
+        concurrency=4,
+    )
+
+
 async def run_worker() -> None:
     settings = get_settings()
     setup_logging(settings.environment)
-
-    email_client = get_email_client()
 
     async with DatabaseManager():
         redis_client = Redis.from_url(
@@ -236,26 +258,7 @@ async def run_worker() -> None:
             health_check_interval=10,
         )
 
-        cache_repo = RedisRepository(redis_client)
-        user_repo = BeanieUserRepository()
-        user_service = UserService(user_repo=user_repo, cache_repo=cache_repo)
-        saq_queue = RedisQueue(redis_client, name=EMAIL_TASKS_QUEUE_NAME)
-        dlq_queue = RedisQueue(redis_client, name=DEAD_LETTER_QUEUE_NAME)
-
-        async def startup_hook(ctx: CanterlotContext) -> None:
-            ctx["cache_repo"] = cache_repo
-            ctx["user_service"] = user_service
-            ctx["email_client"] = email_client
-            ctx["dlq_queue"] = dlq_queue
-
-        worker = Worker(
-            queue=saq_queue,
-            functions=[send_email_task],
-            startup=startup_hook,
-            before_process=before_process_hook,
-            after_process=after_process_hook,
-            concurrency=4,
-        )
+        worker = build_worker(redis_client)
 
         try:
             logger.info("Canterlot SAQ worker engine live with DLQ routing listening.")

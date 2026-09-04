@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 from importlib.metadata import version as get_distribution_version
 from pathlib import Path
@@ -23,6 +25,7 @@ from canterlot.routers.errors import register_error_handlers
 from canterlot.routers.health import health_router
 from canterlot.routers.webhooks import webhooks_router
 from canterlot.utils import setup_logging
+from canterlot.worker import build_worker
 
 STATIC_DIR = Path(__file__).parent / "static"
 FAVICON_URL = "/static/favicon.svg"
@@ -34,7 +37,15 @@ async def lifespan(app: FastAPI):  # pragma: no cover
     setup_logging(settings.environment)
 
     async with DatabaseManager():
+        worker = build_worker(app.state.redis_client)
+        worker_task = asyncio.create_task(worker.start())
+
         yield
+
+        await worker.stop()
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
 
     if hasattr(app.state, "redis_client"):
         await app.state.redis_client.aclose()
