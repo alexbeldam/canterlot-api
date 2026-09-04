@@ -2,10 +2,12 @@ import pytest
 from pydantic import HttpUrl, SecretStr, ValidationError
 
 from canterlot.dto.auth import (
+    ConfirmEmailVerificationRequest,
     ConnectedProvidersResponse,
+    ValidatePasswordResetCodeRequest,
 )
 from canterlot.models.user import LinkedProviderSchema
-from canterlot.types import AuthProviderName, SessionType
+from canterlot.types import AuthProviderName, SessionType, secret_code_adapter
 from tools.factories import (
     AccessTokenResponseFactory,
     CreateSessionRequestFactory,
@@ -15,6 +17,7 @@ from tools.factories import (
 )
 
 SOME_PASSWORD = SecretStr("Aa12345!")
+SOME_CODE = secret_code_adapter.validate_python("123456")
 
 
 def describe_username_normalization_and_constraints():
@@ -160,6 +163,50 @@ def describe_create_session_request():
                 password=SOME_PASSWORD,
                 invited_by="bob_2",
             )
+
+
+def describe_validate_password_reset_code_request():
+    def it_accepts_a_token_only_payload():
+        request = ValidatePasswordResetCodeRequest(token="some-token")
+        assert request.token == "some-token"
+
+    def it_accepts_an_identifier_and_code_payload():
+        request = ValidatePasswordResetCodeRequest(identifier="alice@example.com", code=SOME_CODE)
+        assert request.identifier == "alice@example.com"
+
+    def it_rejects_an_identifier_with_no_code():
+        with pytest.raises(ValidationError):
+            ValidatePasswordResetCodeRequest(identifier="alice@example.com")
+
+    def it_rejects_a_code_with_no_identifier():
+        with pytest.raises(ValidationError):
+            ValidatePasswordResetCodeRequest(code=SOME_CODE)
+
+    def it_rejects_a_token_together_with_identifier_and_code():
+        with pytest.raises(ValidationError):
+            ValidatePasswordResetCodeRequest(token="some-token", identifier="alice@example.com", code=SOME_CODE)
+
+    def it_rejects_neither_token_nor_identifier_and_code():
+        with pytest.raises(ValidationError):
+            ValidatePasswordResetCodeRequest()
+
+
+def describe_confirm_email_verification_request():
+    def it_accepts_a_token_only_payload():
+        request = ConfirmEmailVerificationRequest(token="some-token")
+        assert request.token == "some-token"
+
+    def it_accepts_a_code_only_payload():
+        request = ConfirmEmailVerificationRequest(code=SOME_CODE)
+        assert request.code == SOME_CODE
+
+    def it_rejects_neither_token_nor_code():
+        with pytest.raises(ValidationError):
+            ConfirmEmailVerificationRequest()
+
+    def it_rejects_both_token_and_code():
+        with pytest.raises(ValidationError):
+            ConfirmEmailVerificationRequest(token="some-token", code=SOME_CODE)
 
 
 def describe_access_token_response():

@@ -42,7 +42,7 @@ class RequestPasswordResetUseCase:
         # 3. Dispatch Validation Email
         # ---------------------------------------------------------
         context = PasswordResetValidationContext.from_domain(
-            user=user,
+            recipient=user,
             code=code,
             is_creation=user.hashed_password is None,
         )

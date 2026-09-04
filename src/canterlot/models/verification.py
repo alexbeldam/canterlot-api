@@ -46,7 +46,7 @@ class VerificationCodeModel(Document):
         return hashlib.sha256(salted.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def create(
+    def build(
         code: SecretVerificationCode,
         user_id: PydanticObjectId,
         scope: VerificationScope,

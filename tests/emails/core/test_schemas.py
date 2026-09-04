@@ -1,12 +1,15 @@
 import pytest
+from beanie import PydanticObjectId
 from pydantic import HttpUrl, ValidationError
 
 from canterlot.config import get_settings
+from canterlot.emails.core.enums import EmailCategory
 from canterlot.emails.core.schemas import (
     AuthProviderContext,
     BaseVerificationContext,
     ClubActionContext,
     ClubActorActionContext,
+    EmailVerificationContext,
     InviteExternalContext,
     InviteInternalContext,
     LunaProviderActionContext,
@@ -21,18 +24,18 @@ from canterlot.emails.core.schemas import (
 from canterlot.types import AuthProviderName, MemberRole, secret_code_adapter
 from tools.factories import ClubFactory, UserFactory
 
-SOME_CODE = "12345678"
+SOME_CODE = "123456"
 
 
 def describe_verification_context_constraints():
     @pytest.mark.parametrize(
         "invalid_code",
         [
-            "1234567",  # Too short
-            "123456789",  # Too long
-            "1234-567",  # Contains special characters
-            "ABCD1234",  # Contains letters
-            "        ",  # Only spaces
+            "12345",  # Too short
+            "1234567",  # Too long
+            "1234-5",  # Contains special characters
+            "ABCDEF",  # Contains letters
+            "      ",  # Only spaces
         ],
     )
     def it_rejects_malformed_verification_codes(invalid_code):
@@ -43,7 +46,7 @@ def describe_verification_context_constraints():
                 action_url=HttpUrl("https://canterlot.com.br/verify"),
             )
 
-    def it_accepts_eight_digit_codes():
+    def it_accepts_six_digit_codes():
         context = BaseVerificationContext(
             recipient_name="Twilight",
             code=SOME_CODE,
@@ -171,7 +174,7 @@ def describe_member_role_formatting():
 def describe_from_domain_constructors():
     def it_constructs_recipient_context():
         user = UserFactory.build()
-        ctx = RecipientContext.from_domain(user)
+        ctx = RecipientContext.from_domain(recipient=user)
         assert ctx.recipient_name == user.name
 
     def it_constructs_club_action_context():
@@ -179,7 +182,7 @@ def describe_from_domain_constructors():
         club = ClubFactory.build()
         frontend_url = get_settings().frontend_url
 
-        ctx = ClubActionContext.from_domain(user, club)
+        ctx = ClubActionContext.from_domain(recipient=user, club=club)
         assert ctx.recipient_name == user.name
         assert ctx.club_name == club.name
         assert str(ctx.action_url) == f"{frontend_url}/clubs/{club.slug}"
@@ -189,7 +192,7 @@ def describe_from_domain_constructors():
         actor = UserFactory.build()
         club = ClubFactory.build()
 
-        ctx = ClubActorActionContext.from_domain(user, actor, club)
+        ctx = ClubActorActionContext.from_domain(recipient=user, actor=actor, club=club)
         assert ctx.recipient_name == user.name
         assert ctx.actor_name == actor.name
         assert ctx.club_name == club.name
@@ -197,7 +200,7 @@ def describe_from_domain_constructors():
     def it_constructs_auth_provider_context():
         user = UserFactory.build()
 
-        ctx = AuthProviderContext.from_domain(user, AuthProviderName.GOOGLE)
+        ctx = AuthProviderContext.from_domain(recipient=user, provider_name=AuthProviderName.GOOGLE)
         assert ctx.recipient_name == user.name
         assert ctx.provider_name == "Google"
 
@@ -206,7 +209,7 @@ def describe_from_domain_constructors():
         club = ClubFactory.build()
         frontend_url = get_settings().frontend_url
 
-        ctx = InviteExternalContext.from_domain(actor, club, invite="token-123")
+        ctx = InviteExternalContext.from_domain(inviter=actor, club=club, invite="token-123")
         assert ctx.inviter_name == actor.name
         assert ctx.club_name == club.name
         assert str(ctx.action_url) == f"{frontend_url}/invites/token-123/preview"
@@ -216,7 +219,7 @@ def describe_from_domain_constructors():
         actor = UserFactory.build()
         club = ClubFactory.build()
 
-        ctx = InviteInternalContext.from_domain(user, actor, club, invite="token-123")
+        ctx = InviteInternalContext.from_domain(recipient=user, inviter=actor, club=club, invite="token-123")
         assert ctx.recipient_name == user.name
         assert ctx.inviter_name == actor.name
         assert ctx.club_name == club.name
@@ -226,7 +229,7 @@ def describe_from_domain_constructors():
         club = ClubFactory.build()
         frontend_url = get_settings().frontend_url
 
-        ctx = SpikeBaseContext.from_domain(user, club)
+        ctx = SpikeBaseContext.from_domain(recipient=user, club=club)
         assert ctx.recipient_name == user.name
         assert ctx.club_name == club.name
         assert str(ctx.notifications_url) == f"{frontend_url}/notifications"
@@ -236,7 +239,7 @@ def describe_from_domain_constructors():
         club = ClubFactory.build()
         frontend_url = get_settings().frontend_url
 
-        ctx = SpikeActionContext.from_domain(user, club, "/vote")
+        ctx = SpikeActionContext.from_domain(recipient=user, club=club, action_path="/vote")
         assert ctx.recipient_name == user.name
         assert str(ctx.action_url) == f"{frontend_url}/vote"
 
@@ -245,7 +248,9 @@ def describe_from_domain_constructors():
         club = ClubFactory.build()
         frontend_url = get_settings().frontend_url
 
-        ctx = SpikeBookContext.from_domain(user, club, "The Art of War", "/books/1")
+        ctx = SpikeBookContext.from_domain(
+            recipient=user, club=club, book_title="The Art of War", action_path="/books/1"
+        )
         assert ctx.book_title == "The Art of War"
         assert str(ctx.action_url) == f"{frontend_url}/books/1"
 
@@ -253,17 +258,17 @@ def describe_from_domain_constructors():
         user = UserFactory.build()
         club = ClubFactory.build()
 
-        ctx = SpikeRoleContext.from_domain(user, club, MemberRole.ADMIN, is_promotion=True)
+        ctx = SpikeRoleContext.from_domain(recipient=user, club=club, role_name=MemberRole.ADMIN, is_promotion=True)
         assert ctx.role_name == "Admin"
         assert ctx.is_promotion is True
 
     def it_constructs_password_changed_context():
         user = UserFactory.build()
 
-        ctx_changed = PasswordChangedContext.from_domain(user, is_creation=False)
+        ctx_changed = PasswordChangedContext.from_domain(recipient=user, is_creation=False)
         assert ctx_changed.action == "changed"
 
-        ctx_created = PasswordChangedContext.from_domain(user, is_creation=True)
+        ctx_created = PasswordChangedContext.from_domain(recipient=user, is_creation=True)
         assert ctx_created.action == "created"
 
     def it_constructs_password_reset_validation_context():
@@ -271,22 +276,89 @@ def describe_from_domain_constructors():
         code = secret_code_adapter.validate_python(SOME_CODE)
         frontend_url = get_settings().frontend_url
 
-        ctx = PasswordResetValidationContext.from_domain(user, code=code, is_creation=False)
+        ctx = PasswordResetValidationContext.from_domain(recipient=user, code=code, is_creation=False)
         assert ctx.action == "reset"
         assert ctx.action_capitalized == "Reset"
         assert ctx.button_label == "Reset password"
         assert str(ctx.action_url).startswith(f"{frontend_url}/reset-password?token=")
 
-        ctx_create = PasswordResetValidationContext.from_domain(user, code=code, is_creation=True)
+        ctx_create = PasswordResetValidationContext.from_domain(recipient=user, code=code, is_creation=True)
         assert ctx_create.action == "create"
 
     def it_constructs_luna_provider_action_context():
         user = UserFactory.build()
         frontend_url = get_settings().frontend_url
 
-        ctx = LunaProviderActionContext.from_domain(user, AuthProviderName.GOOGLE)
+        ctx = LunaProviderActionContext.from_domain(recipient=user, provider_name=AuthProviderName.GOOGLE)
         assert ctx.provider_name == "Google"
         assert str(ctx.action_url) == f"{frontend_url}/settings/security"
+
+
+def describe_category_unsubscribe_url():
+    def it_builds_a_category_unsubscribe_url():
+        user = UserFactory.build(id=PydanticObjectId("507f1f77bcf86cd799439011"))
+        frontend_url = get_settings().backend_url
+
+        url = RecipientContext.with_category_unsubscribe(PydanticObjectId(user.id), EmailCategory.ENGAGEMENT)
+
+        assert str(url).startswith(f"{frontend_url}/v1/unsubscribe?token=")
+
+
+def describe_from_domain_required_field_guards():
+    def it_requires_a_club_for_club_action_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="club is required"):
+            ClubActionContext.from_domain(recipient=user)
+
+    def it_requires_an_actor_and_club_for_club_actor_action_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="actor and club are required"):
+            ClubActorActionContext.from_domain(recipient=user)
+
+    def it_requires_a_provider_name_for_auth_provider_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="provider_name is required"):
+            AuthProviderContext.from_domain(recipient=user)
+
+    def it_requires_inviter_club_and_invite_for_invite_internal_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="inviter, club, and invite are required"):
+            InviteInternalContext.from_domain(recipient=user)
+
+    def it_requires_a_code_for_email_verification_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="code is required"):
+            EmailVerificationContext.from_domain(recipient=user)
+
+    def it_requires_a_club_for_spike_base_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="club is required"):
+            SpikeBaseContext.from_domain(recipient=user)
+
+    def it_requires_a_club_and_action_path_for_spike_action_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="club and action_path are required"):
+            SpikeActionContext.from_domain(recipient=user)
+
+    def it_requires_a_club_book_title_and_action_path_for_spike_book_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="club, book_title, and action_path are required"):
+            SpikeBookContext.from_domain(recipient=user)
+
+    def it_requires_a_club_and_role_name_for_spike_role_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="club and role_name are required"):
+            SpikeRoleContext.from_domain(recipient=user)
+
+    def it_requires_a_code_for_password_reset_validation_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="code is required"):
+            PasswordResetValidationContext.from_domain(recipient=user)
+
+    def it_requires_a_provider_name_for_luna_provider_action_context():
+        user = UserFactory.build()
+        with pytest.raises(ValueError, match="provider_name is required"):
+            LunaProviderActionContext.from_domain(recipient=user)
 
 
 def describe_string_constraints():

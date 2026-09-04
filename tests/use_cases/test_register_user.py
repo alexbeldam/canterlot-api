@@ -58,7 +58,7 @@ def describe_register_user_use_case():
             token_type="bearer",
         )
         auth_service.register_user.return_value = auth_result
-        verification_service.create_code.return_value = SecretStr("87654321")
+        verification_service.create_code.return_value = SecretStr("654321")
 
         result = await use_case.execute(payload)
 
@@ -122,7 +122,7 @@ def describe_register_user_use_case():
         onboarding = ClubOnboardingFactory.build(club_name="Canterlot Book Club", status=ClubOnboardingStatus.JOINED)
         club_service.admit_user.return_value = onboarding
 
-        verification_service.create_code.return_value = SecretStr("87654321")
+        verification_service.create_code.return_value = SecretStr("654321")
 
         result = await use_case.execute(payload)
 
@@ -175,7 +175,7 @@ def describe_register_user_use_case():
         onboarding = ClubOnboardingFactory.build(club_name="Canterlot Book Club", status=ClubOnboardingStatus.BANNED)
         club_service.admit_user.return_value = onboarding
 
-        verification_service.create_code.return_value = SecretStr("87654321")
+        verification_service.create_code.return_value = SecretStr("654321")
 
         await use_case.execute(payload)
 

@@ -1,8 +1,11 @@
+from typing import Any
+
 import pytest
 from beanie import PydanticObjectId
 from pydantic import BaseModel, ValidationError
 
 from canterlot.emails.core.definitions import (
+    EmailTaskPayload,
     EmailTemplate,
     SubBrand,
 )
@@ -69,3 +72,25 @@ def describe_email_task_payload():
     def it_raises_error_when_club_preference_template_is_missing_club_id(club_template: EmailTemplate):
         with pytest.raises(ValueError, match="requires a club_id"):
             EmailTaskPayloadFactory.build(template=club_template, club_id=None)
+
+    def it_recoerces_context_into_its_concrete_schema_after_a_json_round_trip(global_template: EmailTemplate):
+        original = EmailTaskPayloadFactory.build(template=global_template)
+
+        roundtripped = EmailTaskPayload[Any].model_validate_json(original.model_dump_json())
+
+        assert isinstance(roundtripped.context, global_template.context_schema)
+        assert roundtripped.context == original.context
+
+    def it_leaves_an_already_hydrated_context_untouched():
+        payload = EmailTaskPayloadFactory.build()
+        assert not isinstance(payload.context, dict)
+
+    def it_skips_coercion_when_the_template_itself_fails_to_resolve():
+        with pytest.raises(ValidationError, match="Unknown email template"):
+            EmailTaskPayload.model_validate(
+                {
+                    "template": "NON_EXISTENT_TEMPLATE",
+                    "to": "twilight@canterlot.dev",
+                    "context": {"some": "dict"},
+                }
+            )

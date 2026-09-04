@@ -47,7 +47,7 @@ def describe_create_and_invalidate_previous():
         different_scope, _ = await _create_code_model(user_id, VerificationScope.PASSWORD_RESET, is_active=True)
 
         new_code = generate_secure_code()
-        new_model = VerificationCodeModel.create(new_code, user_id, VerificationScope.EMAIL)
+        new_model = VerificationCodeModel.build(new_code, user_id, VerificationScope.EMAIL)
 
         saved = await repo.create_and_invalidate_previous(new_model)
 

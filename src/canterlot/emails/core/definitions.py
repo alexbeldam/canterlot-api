@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar, Never, Self, TypeVar, overload
 
 from beanie import PydanticObjectId
-from pydantic import BaseModel, Field, GetCoreSchemaHandler, model_validator
+from pydantic import BaseModel, Field, GetCoreSchemaHandler, ValidationInfo, field_validator, model_validator
 from pydantic_core import core_schema
 
 from canterlot.emails.core import schemas
@@ -27,6 +27,7 @@ class EmailTemplate[TContext: schemas.BaseEmailContext]:
         context_schema: type[TContext],
         priority: EmailPriority = EmailPriority.DEFAULT,
         category: EmailCategory = EmailCategory.TRANSACTIONAL,
+        heading_template: str | None = None,
     ):
         self.name = name
         self.brand = brand
@@ -35,6 +36,7 @@ class EmailTemplate[TContext: schemas.BaseEmailContext]:
         self.context_schema = context_schema
         self.priority = priority
         self.category = category
+        self.heading_template = heading_template
 
         EmailTemplate._registry[name] = self
 
@@ -85,6 +87,7 @@ class ClubPreferenceEmailTemplate[TContext: schemas.BaseEmailContext](EmailTempl
         context_schema: type[TContext],
         priority: EmailPriority = EmailPriority.DEFAULT,
         category: EmailCategory = EmailCategory.ENGAGEMENT,
+        heading_template: str | None = None,
     ):
         super().__init__(
             name=name,
@@ -94,6 +97,7 @@ class ClubPreferenceEmailTemplate[TContext: schemas.BaseEmailContext](EmailTempl
             context_schema=context_schema,
             priority=priority,
             category=category,
+            heading_template=heading_template,
         )
 
 
@@ -109,6 +113,7 @@ class GlobalEmailTemplate[TContext: schemas.BaseEmailContext](ClubPreferenceEmai
         context_schema: type[TContext],
         priority: EmailPriority = EmailPriority.DEFAULT,
         category: EmailCategory = EmailCategory.TRANSACTIONAL,
+        heading_template: str | None = None,
     ):
         super().__init__(
             name=name,
@@ -118,6 +123,7 @@ class GlobalEmailTemplate[TContext: schemas.BaseEmailContext](ClubPreferenceEmai
             context_schema=context_schema,
             priority=priority,
             category=category,
+            heading_template=heading_template,
         )
 
 
@@ -136,7 +142,8 @@ class Templates:
         name="CELESTIA_VERIFY_EMAIL",
         brand=SubBrand.CELESTIA,
         slug="verify-email",
-        subject_template="Confirm your email on Canterlot",
+        subject_template="{code} is your Canterlot verification code",
+        heading_template="Confirm your email on Canterlot",
         context_schema=schemas.EmailVerificationContext,
         priority=EmailPriority.HIGH,
         category=EmailCategory.TRANSACTIONAL,
@@ -145,7 +152,8 @@ class Templates:
         name="CELESTIA_VERIFY_EMAIL_CHANGED",
         brand=SubBrand.CELESTIA,
         slug="verify-email-changed",
-        subject_template="Confirm your new email on Canterlot",
+        subject_template="{code} is your code to confirm your new email",
+        heading_template="Confirm your new email on Canterlot",
         context_schema=schemas.EmailVerificationContext,
         priority=EmailPriority.HIGH,
         category=EmailCategory.TRANSACTIONAL,
@@ -341,6 +349,14 @@ class EmailTaskPayload[TContext: schemas.BaseEmailContext](BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     context: TContext
     club_id: PydanticObjectId | None = None
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def hydrate_dict_context_using_templates_context_schema(cls, value: Any, info: ValidationInfo) -> Any:
+        template = info.data.get("template")
+        if template is not None and isinstance(value, dict):
+            return template.context_schema.model_validate(value)
+        return value
 
     @overload
     def __init__(

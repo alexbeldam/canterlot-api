@@ -19,7 +19,7 @@ from pydantic import (
 from pydantic.main import BaseModel
 from pydantic_core import CoreSchema, PydanticCustomError, core_schema
 
-from canterlot.utils.format import ISBN10_LEN, ISBN13_LEN, make_uppercase, normalize_email, normalize_isbn
+from canterlot.utils.format import ISBN10_LEN, ISBN13_LEN, normalize_email, normalize_isbn
 from canterlot.utils.language import normalize_language
 
 MIN_PASSWORD_LENGTH = 8
@@ -277,8 +277,7 @@ type NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_l
 type NormalizedEmailStr = Annotated[EmailStr, BeforeValidator(normalize_email)]
 type VerificationCodeStr = Annotated[
     str,
-    BeforeValidator(make_uppercase),
-    StringConstraints(min_length=8, max_length=8, pattern=r"^[0-9]+$"),
+    StringConstraints(min_length=6, max_length=6, pattern=r"^[0-9]+$"),
 ]
 type LanguageStr = Annotated[str, AfterValidator(normalize_language), Field(examples=["en", "pt-BR"])]
 type TitleStr = Annotated[

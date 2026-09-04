@@ -16,10 +16,6 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def make_uppercase(text: str) -> str:
-    return text.upper().strip()
-
-
 def similarity_ratio(a: str, b: str) -> float:
     if not a or not b:
         return 0.0

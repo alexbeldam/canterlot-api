@@ -84,7 +84,7 @@ class RegisterUserUseCase:
         )
 
         context = EmailVerificationContext.from_domain(
-            user=user,
+            recipient=user,
             code=code,
         )
 

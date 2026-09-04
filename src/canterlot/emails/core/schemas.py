@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field, HttpUrl, computed_field
@@ -51,12 +51,13 @@ class RecipientContext(BaseEmailContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        unsubscribe_url: HttpUrl | None = None,
+        **kwargs: Any,
     ) -> Self:
         return cls(
             recipient_name=recipient.name,
-            unsubscribe_url=unsubscribe_url,
+            unsubscribe_url=kwargs.get("unsubscribe_url"),
         )
 
 
@@ -75,7 +76,7 @@ class BaseVerificationContext(RecipientContext):
     def expires_in_minutes(self) -> int:
         raise NotImplementedError("Subclasses must define expires_in_minutes.")
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def expires_in_display(self) -> str:
         if self.expires_in_minutes < 60:  # noqa: PLR2004
@@ -101,18 +102,24 @@ class ClubActionContext(RecipientContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        club: "ClubModel",
-        include_unsubscribe: bool = True,
+        club: "ClubModel | None" = None,
+        **kwargs: Any,
     ) -> Self:
+        if club is None:
+            raise ValueError("club is required for ClubActionContext")
+
         root_url = get_settings().frontend_url
+        include_unsubscribe = kwargs.get("include_unsubscribe", True)
+
         unsub_url = (
             cls.with_club_unsubscribe(
                 PydanticObjectId(recipient.id),
                 PydanticObjectId(club.id),
             )
             if include_unsubscribe
-            else None
+            else kwargs.get("unsubscribe_url")
         )
 
         return cls(
@@ -131,19 +138,25 @@ class ClubActorActionContext(ClubActionContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        actor: "UserModel",
-        club: "ClubModel",
-        include_unsubscribe: bool = False,
+        actor: "UserModel | None" = None,
+        club: "ClubModel | None" = None,
+        **kwargs: Any,
     ) -> Self:
+        if actor is None or club is None:
+            raise ValueError("actor and club are required for ClubActorActionContext")
+
         root_url = get_settings().frontend_url
+        include_unsubscribe = kwargs.get("include_unsubscribe", False)
+
         unsub_url = (
             cls.with_club_unsubscribe(
                 PydanticObjectId(recipient.id),
                 PydanticObjectId(club.id),
             )
             if include_unsubscribe
-            else None
+            else kwargs.get("unsubscribe_url")
         )
 
         return cls(
@@ -163,14 +176,18 @@ class AuthProviderContext(RecipientContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        provider_name: TitleCaseAuthProviderName,
-        unsubscribe_url: HttpUrl | None = None,
+        provider_name: TitleCaseAuthProviderName | None = None,
+        **kwargs: Any,
     ) -> Self:
+        if provider_name is None:
+            raise ValueError("provider_name is required for AuthProviderContext")
+
         return cls(
             recipient_name=recipient.name,
             provider_name=provider_name,
-            unsubscribe_url=unsubscribe_url,
+            unsubscribe_url=kwargs.get("unsubscribe_url"),
         )
 
 
@@ -189,6 +206,7 @@ class InviteExternalContext(BaseEmailContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         inviter: "UserModel",
         club: "ClubModel",
         invite: str,
@@ -210,11 +228,16 @@ class InviteInternalContext(ClubActionContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        inviter: "UserModel",
-        club: "ClubModel",
-        invite: str,
+        inviter: "UserModel | None" = None,
+        club: "ClubModel | None" = None,
+        invite: str | None = None,
+        **_kwargs: Any,
     ) -> Self:
+        if inviter is None or club is None or invite is None:
+            raise ValueError("inviter, club, and invite are required for InviteInternalContext")
+
         root_url = get_settings().frontend_url
 
         return cls(
@@ -236,14 +259,19 @@ class EmailVerificationContext(BaseVerificationContext):
     @classmethod
     def from_domain(
         cls,
-        user: "UserModel",
-        code: SecretVerificationCode,
+        *,
+        recipient: "UserModel",
+        code: SecretVerificationCode | None = None,
+        **_kwargs: Any,
     ) -> Self:
+        if code is None:
+            raise ValueError("code is required for EmailVerificationContext")
+
         root_url = get_settings().frontend_url
-        token = encode_action_link_token(PydanticObjectId(user.id), code)
+        token = encode_action_link_token(PydanticObjectId(recipient.id), code)
 
         return cls(
-            recipient_name=user.name,
+            recipient_name=recipient.name,
             code=code.get_secret_value(),
             action_url=HttpUrl(f"{root_url}/verify-email?token={token}"),
             unsubscribe_url=None,
@@ -264,18 +292,24 @@ class SpikeBaseContext(RecipientContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        club: "ClubModel",
-        include_unsubscribe: bool = True,
+        club: "ClubModel | None" = None,
+        **kwargs: Any,
     ) -> Self:
+        if club is None:
+            raise ValueError("club is required for SpikeBaseContext")
+
         root_url = get_settings().frontend_url
+        include_unsubscribe = kwargs.get("include_unsubscribe", True)
+
         unsub_url = (
             cls.with_club_unsubscribe(
                 PydanticObjectId(recipient.id),
                 PydanticObjectId(club.id),
             )
             if include_unsubscribe
-            else None
+            else kwargs.get("unsubscribe_url")
         )
 
         return cls(
@@ -294,19 +328,25 @@ class SpikeActionContext(SpikeBaseContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        club: "ClubModel",
-        action_path: str,
-        include_unsubscribe: bool = True,
+        club: "ClubModel | None" = None,
+        action_path: str | None = None,
+        **kwargs: Any,
     ) -> Self:
+        if club is None or action_path is None:
+            raise ValueError("club and action_path are required for SpikeActionContext")
+
         root_url = get_settings().frontend_url
+        include_unsubscribe = kwargs.get("include_unsubscribe", True)
+
         unsub_url = (
             cls.with_club_unsubscribe(
                 PydanticObjectId(recipient.id),
                 PydanticObjectId(club.id),
             )
             if include_unsubscribe
-            else None
+            else kwargs.get("unsubscribe_url")
         )
 
         return cls(
@@ -326,20 +366,26 @@ class SpikeBookContext(SpikeActionContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        club: "ClubModel",
-        book_title: NonEmptyStr,
-        action_path: str,
-        include_unsubscribe: bool = True,
+        club: "ClubModel | None" = None,
+        book_title: NonEmptyStr | None = None,
+        action_path: str | None = None,
+        **kwargs: Any,
     ) -> Self:
+        if club is None or book_title is None or action_path is None:
+            raise ValueError("club, book_title, and action_path are required for SpikeBookContext")
+
         root_url = get_settings().frontend_url
+        include_unsubscribe = kwargs.get("include_unsubscribe", True)
+
         unsub_url = (
             cls.with_club_unsubscribe(
                 PydanticObjectId(recipient.id),
                 PydanticObjectId(club.id),
             )
             if include_unsubscribe
-            else None
+            else kwargs.get("unsubscribe_url")
         )
 
         return cls(
@@ -361,20 +407,26 @@ class SpikeRoleContext(SpikeActionContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        club: "ClubModel",
-        role_name: TitleCaseMemberRole,
+        club: "ClubModel | None" = None,
+        role_name: TitleCaseMemberRole | None = None,
         is_promotion: bool = True,
-        include_unsubscribe: bool = True,
+        **kwargs: Any,
     ) -> Self:
+        if club is None or role_name is None:
+            raise ValueError("club and role_name are required for SpikeRoleContext")
+
         root_url = get_settings().frontend_url
+        include_unsubscribe = kwargs.get("include_unsubscribe", True)
+
         unsub_url = (
             cls.with_club_unsubscribe(
                 PydanticObjectId(recipient.id),
                 PydanticObjectId(club.id),
             )
             if include_unsubscribe
-            else None
+            else kwargs.get("unsubscribe_url")
         )
 
         return cls(
@@ -401,7 +453,7 @@ class PasswordChangedContext(RecipientContext):
         description="True if the user set a password for the first time; False if updated or reset.",
     )
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def action(self) -> str:
         """Returns the verb describing the operation."""
@@ -410,13 +462,15 @@ class PasswordChangedContext(RecipientContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
         is_creation: bool = False,
+        **kwargs: Any,
     ) -> Self:
         return cls(
             recipient_name=recipient.name,
             is_creation=is_creation,
-            unsubscribe_url=None,
+            unsubscribe_url=kwargs.get("unsubscribe_url"),
         )
 
 
@@ -432,19 +486,19 @@ class PasswordResetValidationContext(BaseVerificationContext):
     def expires_in_minutes(self) -> int:
         return VerificationScope.PASSWORD_RESET.ttl_minutes
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def action(self) -> str:
         """Returns the verb describing the operation."""
         return "create" if self.is_creation else "reset"
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def action_capitalized(self) -> str:
         """Capitalized verb for subject line formatting."""
         return self.action.capitalize()
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def button_label(self) -> str:
         """Full button label for the template call-to-action."""
@@ -453,15 +507,20 @@ class PasswordResetValidationContext(BaseVerificationContext):
     @classmethod
     def from_domain(
         cls,
-        user: "UserModel",
-        code: SecretVerificationCode,
+        *,
+        recipient: "UserModel",
+        code: SecretVerificationCode | None = None,
         is_creation: bool = False,
+        **_kwargs: Any,
     ) -> Self:
+        if code is None:
+            raise ValueError("code is required for PasswordResetValidationContext")
+
         root_url = get_settings().frontend_url
-        token = encode_action_link_token(PydanticObjectId(user.id), code)
+        token = encode_action_link_token(PydanticObjectId(recipient.id), code)
 
         return cls(
-            recipient_name=user.name,
+            recipient_name=recipient.name,
             code=code.get_secret_value(),
             is_creation=is_creation,
             action_url=HttpUrl(f"{root_url}/reset-password?token={token}"),
@@ -477,14 +536,19 @@ class LunaProviderActionContext(AuthProviderContext):
     @classmethod
     def from_domain(
         cls,
+        *,
         recipient: "UserModel",
-        provider_name: TitleCaseAuthProviderName,
+        provider_name: TitleCaseAuthProviderName | None = None,
+        **kwargs: Any,
     ) -> Self:
+        if provider_name is None:
+            raise ValueError("provider_name is required for LunaProviderActionContext")
+
         root_url = get_settings().frontend_url
 
         return cls(
             recipient_name=recipient.name,
             provider_name=provider_name,
             action_url=HttpUrl(f"{root_url}/settings/security"),
-            unsubscribe_url=None,
+            unsubscribe_url=kwargs.get("unsubscribe_url"),
         )

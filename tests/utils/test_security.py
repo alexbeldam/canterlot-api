@@ -102,14 +102,14 @@ def describe_jwt_tokens():
 
 
 def describe_generate_secure_alphanumeric_code():
-    def it_generates_an_8_digit_code():
+    def it_generates_a_6_digit_code():
         secret_code = generate_secure_code()
 
         assert isinstance(secret_code, SecretStr)
 
         code = secret_code.get_secret_value()
         assert isinstance(code, str)
-        assert len(code) == 8
+        assert len(code) == 6
 
         assert code.isnumeric()
 
@@ -203,13 +203,13 @@ def describe_unsubscribe_tokens():
 def describe_action_link_tokens():
     def it_encodes_and_decodes_action_link_tokens():
         user_id = PydanticObjectId("507f1f77bcf86cd799439011")
-        code = secret_code_adapter.validate_python("12345678")
+        code = secret_code_adapter.validate_python("123456")
 
         token = encode_action_link_token(user_id, code)
         data = decode_action_link_token(token)
 
         assert data.user_id == user_id
-        assert data.code.get_secret_value() == "12345678"
+        assert data.code.get_secret_value() == "123456"
 
     def it_raises_token_malformed_error_for_invalid_action_token_length():
         with pytest.raises(TokenMalformedError):

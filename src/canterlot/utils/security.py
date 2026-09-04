@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from canterlot.emails import EmailCategory
     from canterlot.types import SecretVerificationCode
 
-ACTION_LINK_TOKEN_BYTE_LENGTH: int = 20  # 12 (user) + 8 (code)
+ACTION_LINK_TOKEN_BYTE_LENGTH: int = 18  # 12 (user) + 6 (code)
 TRUNCATED_HMAC_BYTES: int = 10
 OBJECT_ID_BYTES: int = 12
 
@@ -104,7 +104,7 @@ def generate_secure_code() -> "SecretVerificationCode":
     """
     Generates a cryptographically secure numeric verification code.
     """
-    length = 8
+    length = 6
     raw_code = f"{secrets.randbelow(10**length):0{length}d}"
 
     from canterlot.types import secret_code_adapter

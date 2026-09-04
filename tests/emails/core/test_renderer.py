@@ -43,7 +43,7 @@ def describe_render_email_template():
 
         called_context = mock_jinja_template.render.call_args[0][0]
         assert called_context["preheader"] == result.subject
-        assert called_context["heading"] == result.subject
+        assert called_context["heading"] == (random_template.heading_template or result.subject)
 
     def it_raises_value_error_when_subject_string_formatting_fails(
         mock_jinja_env,  # noqa: ARG001
@@ -65,6 +65,18 @@ def describe_render_email_template():
 
         result = render_email_template(random_template, context)
         assert result.headers is None
+
+    def it_uses_a_stable_heading_when_the_template_overrides_it(mock_jinja_env):
+        _, mock_jinja_template = mock_jinja_env
+        template = cast(Any, Templates.CELESTIA_VERIFY_EMAIL)
+        context = BaseContextFactory.build_for_template(template)
+
+        result = render_email_template(template, context)
+
+        assert result.subject != "Confirm your email on Canterlot"
+        called_context = mock_jinja_template.render.call_args[0][0]
+        assert called_context["heading"] == "Confirm your email on Canterlot"
+        assert called_context["preheader"] == result.subject
 
     @pytest.mark.integration
     @pytest.mark.parametrize("template", EmailTemplate.all())

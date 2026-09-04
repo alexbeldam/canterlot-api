@@ -73,22 +73,23 @@ class CreateSessionRequest(BaseModel):
     @model_validator(mode="after")
     def validate_session_type_fields(self) -> "CreateSessionRequest":
         if self.type is SessionType.PASSWORD:
-            # Check required
-            if self.username is None or self.password is None:
-                raise ValueError("username and password are required for a PASSWORD session")
-            # Check forbidden
-            if any(x is not None for x in (self.provider, self.credential, self.invite_id, self.invited_by)):
-                raise ValueError("OAuth fields and invite tokens must not be provided for a PASSWORD session")
-
+            self.__validate_password_fields()
         elif self.type is SessionType.OAUTH:
-            # Check required
-            if self.provider is None or self.credential is None:
-                raise ValueError("provider and credential are required for an OAUTH session")
-            # Check forbidden
-            if self.username is not None or self.password is not None:
-                raise ValueError("username and password must not be provided for an OAUTH session")
+            self.__validate_oauth_fields()
 
         return self
+
+    def __validate_password_fields(self) -> None:
+        if self.username is None or self.password is None:
+            raise ValueError("username and password are required for a PASSWORD session")
+        if any(x is not None for x in (self.provider, self.credential, self.invite_id, self.invited_by)):
+            raise ValueError("OAuth fields and invite tokens must not be provided for a PASSWORD session")
+
+    def __validate_oauth_fields(self) -> None:
+        if self.provider is None or self.credential is None:
+            raise ValueError("provider and credential are required for an OAUTH session")
+        if self.username is not None or self.password is not None:
+            raise ValueError("username and password must not be provided for an OAUTH session")
 
 
 class LinkProviderRequest(BaseModel):
@@ -179,7 +180,7 @@ class ConfirmEmailVerificationRequest(BaseModel):
     )
     code: SecretVerificationCode | None = Field(
         default=None,
-        description="8-character alphanumeric code entered manually in the app.",
+        description="6-digit code entered manually in the app.",
     )
 
     @model_validator(mode="after")

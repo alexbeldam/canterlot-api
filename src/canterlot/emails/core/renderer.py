@@ -90,7 +90,7 @@ def render_email_template[TContext: schemas.BaseEmailContext](
         template_enum=template,
     )
     render_context["heading"] = _format_string(
-        "{subject}",
+        template.heading_template or "{subject}",
         render_context,
         field_name="heading",
         template_enum=template,

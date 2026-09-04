@@ -43,7 +43,7 @@ class RequestEmailVerificationUseCase:
         # 3. Dispatch Verification Email
         # ---------------------------------------------------------
         context = EmailVerificationContext.from_domain(
-            user=user,
+            recipient=user,
             code=code,
         )
 

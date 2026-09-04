@@ -16,7 +16,7 @@ class VerificationService:
     async def create_code(self, user_id: PydanticObjectId, scope: VerificationScope) -> SecretVerificationCode:
         plaintext_code = generate_secure_code()
 
-        code_model = VerificationCodeModel.create(plaintext_code, user_id, scope)
+        code_model = VerificationCodeModel.build(plaintext_code, user_id, scope)
 
         await self.__repo.create_and_invalidate_previous(code_model)
 
