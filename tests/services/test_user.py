@@ -6,6 +6,7 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import HttpUrl
 
+from canterlot.emails.core.enums import EmailCategory
 from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     InvalidCredentialsError,
@@ -17,10 +18,12 @@ from canterlot.models.book import ReadBook
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.services.user import UserService
 from canterlot.types import AuthProviderName
+from canterlot.utils.security import UnsubscribeScope, UnsubscribeTokenData
 from tools.factories import UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439012")
+SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
 @pytest.fixture
@@ -363,3 +366,104 @@ def describe_get_id_by_username():
 
         with pytest.raises(UserNotFoundError):
             await service.get_id_by_username("missing_user")
+
+
+def describe_find_by_id():
+    async def it_delegates_to_user_repo(service: UserService, user_repo: AsyncMock):
+        fake_user = UserFactory.build(id=SOME_USER_ID)
+        user_repo.find_by_id.return_value = fake_user
+
+        assert await service.find_by_id(SOME_USER_ID) is fake_user
+        user_repo.find_by_id.assert_awaited_once_with(SOME_USER_ID)
+
+    async def it_returns_none_when_missing(service: UserService, user_repo: AsyncMock):
+        user_repo.find_by_id.return_value = None
+
+        assert await service.find_by_id(SOME_USER_ID) is None
+
+
+def describe_find_by_identifier():
+    async def it_delegates_to_user_repo(service: UserService, user_repo: AsyncMock):
+        fake_user = UserFactory.build(id=SOME_USER_ID)
+        user_repo.find_by_identifier.return_value = fake_user
+
+        assert await service.find_by_identifier("alice@example.com") is fake_user
+        user_repo.find_by_identifier.assert_awaited_once_with("alice@example.com")
+
+    async def it_returns_none_when_missing(service: UserService, user_repo: AsyncMock):
+        user_repo.find_by_identifier.return_value = None
+
+        assert await service.find_by_identifier("nobody@example.com") is None
+
+
+def describe_get_id_by_identifier():
+    async def it_returns_user_id_when_found(service: UserService, user_repo: AsyncMock):
+        user_repo.find_id_by_identifier.return_value = SOME_USER_ID
+
+        user_id = await service.get_id_by_identifier("alice@example.com")
+
+        assert user_id == SOME_USER_ID
+        user_repo.find_id_by_identifier.assert_awaited_once_with("alice@example.com")
+
+    async def it_raises_user_not_found_error_when_missing(service: UserService, user_repo: AsyncMock):
+        user_repo.find_id_by_identifier.return_value = None
+
+        with pytest.raises(UserNotFoundError):
+            await service.get_id_by_identifier("nobody@example.com")
+
+
+def describe_mark_email_as_verified():
+    async def it_delegates_to_user_repo_with_a_timestamp(service: UserService, user_repo: AsyncMock):
+        await service.mark_email_as_verified(user_id=SOME_USER_ID)
+
+        user_repo.mark_email_as_verified.assert_awaited_once()
+        call_kwargs = user_repo.mark_email_as_verified.call_args.kwargs
+        assert call_kwargs["user_id"] == SOME_USER_ID
+        assert isinstance(call_kwargs["verified_at"], datetime)
+
+
+def describe_process_unsubscribe():
+    async def it_applies_a_club_scoped_opt_out_and_invalidates_the_cache(
+        service: UserService, user_repo: AsyncMock, cache_repo: AsyncMock
+    ):
+        user = UserFactory.build(id=SOME_USER_ID, email="alice@example.com")
+        user_repo.find_by_id.return_value = user
+        token_data = UnsubscribeTokenData(scope=UnsubscribeScope.CLUB, user_id=SOME_USER_ID, club_id=SOME_CLUB_ID)
+
+        result = await service.process_unsubscribe(token_data)
+
+        assert result == UnsubscribeScope.CLUB
+        user_repo.opt_out_club_by_id.assert_awaited_once()
+        awaited_args = user_repo.opt_out_club_by_id.await_args.args
+        assert awaited_args[0] == SOME_USER_ID
+        assert awaited_args[1] == SOME_CLUB_ID
+        assert isinstance(awaited_args[2], datetime)
+        user_repo.opt_out_category_by_id.assert_not_called()
+        cache_repo.invalidate.assert_awaited_once()
+
+    async def it_applies_a_category_scoped_opt_out(service: UserService, user_repo: AsyncMock):
+        user = UserFactory.build(id=SOME_USER_ID, email="alice@example.com")
+        user_repo.find_by_id.return_value = user
+        token_data = UnsubscribeTokenData(
+            scope=UnsubscribeScope.CATEGORY, user_id=SOME_USER_ID, category=EmailCategory.ENGAGEMENT
+        )
+
+        result = await service.process_unsubscribe(token_data)
+
+        assert result == UnsubscribeScope.CATEGORY
+        user_repo.opt_out_category_by_id.assert_awaited_once()
+        awaited_args = user_repo.opt_out_category_by_id.await_args.args
+        assert awaited_args[0] == SOME_USER_ID
+        assert awaited_args[1] == EmailCategory.ENGAGEMENT
+        user_repo.opt_out_club_by_id.assert_not_called()
+
+    async def it_raises_user_not_found_error_when_the_token_targets_a_missing_user(
+        service: UserService, user_repo: AsyncMock
+    ):
+        user_repo.find_by_id.return_value = None
+        token_data = UnsubscribeTokenData(scope=UnsubscribeScope.CLUB, user_id=SOME_USER_ID, club_id=SOME_CLUB_ID)
+
+        with pytest.raises(UserNotFoundError):
+            await service.process_unsubscribe(token_data)
+
+        user_repo.opt_out_club_by_id.assert_not_called()

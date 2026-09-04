@@ -201,7 +201,7 @@ def describe_validate_incoming_invite():
         invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=None, created_by=SOME_INVITER_ID
+            type=InviteType.PUBLIC, is_active=True, expires_at=None, created_by=SOME_INVITER_ID
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         user_repo.find_username_by_id.return_value = "inviter_1"

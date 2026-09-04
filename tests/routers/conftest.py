@@ -25,6 +25,7 @@ from canterlot.routers.dependencies.providers import (
     get_change_password_use_case,
     get_club_repository,
     get_club_service,
+    get_confirm_email_verification_use_case,
     get_create_club_use_case,
     get_create_invite_use_case,
     get_create_password_use_case,
@@ -40,17 +41,22 @@ from canterlot.routers.dependencies.providers import (
     get_invite_service,
     get_link_auth_provider_use_case,
     get_optional_refresh_token_context,
+    get_process_unsubscribe_use_case,
     get_rate_limiter,
     get_reclaim_club_ownership_use_case,
     get_register_user_use_case,
     get_remove_club_member_use_case,
+    get_request_email_verification_use_case,
+    get_request_password_reset_use_case,
     get_resend_webhook_handler,
+    get_reset_password_use_case,
     get_revoke_auth_provider_use_case,
     get_transfer_club_ownership_use_case,
     get_user_id_from_valid_refresh_token,
     get_user_id_from_valid_reset_token,
     get_user_repository,
     get_user_service,
+    get_validate_password_reset_code_use_case,
     get_verification_repository,
     get_verification_service,
     get_verified_user,
@@ -61,6 +67,7 @@ from canterlot.use_cases import (
     ApprovePendingMemberUseCase,
     ChangeMemberRoleUseCase,
     ChangePasswordUseCase,
+    ConfirmEmailVerificationUseCase,
     CreateClubUseCase,
     CreateInviteUseCase,
     CreatePasswordUseCase,
@@ -68,11 +75,16 @@ from canterlot.use_cases import (
     DisconnectAuthProviderUseCase,
     DissolveClubUseCase,
     LinkAuthProviderUseCase,
+    ProcessUnsubscribeUseCase,
     ReclaimClubOwnershipUseCase,
     RegisterUserUseCase,
     RemoveClubMemberUseCase,
+    RequestEmailVerificationUseCase,
+    RequestPasswordResetUseCase,
+    ResetPasswordUseCase,
     RevokeAuthProviderUseCase,
     TransferClubOwnershipUseCase,
+    ValidatePasswordResetCodeUseCase,
 )
 from tools.factories import UserFactory
 
@@ -111,6 +123,36 @@ def change_member_role_use_case() -> AsyncMock:
 @pytest.fixture
 def change_password_use_case() -> AsyncMock:
     return AsyncMock(spec=ChangePasswordUseCase)
+
+
+@pytest.fixture
+def confirm_email_verification_use_case() -> AsyncMock:
+    return AsyncMock(spec=ConfirmEmailVerificationUseCase)
+
+
+@pytest.fixture
+def process_unsubscribe_use_case() -> AsyncMock:
+    return AsyncMock(spec=ProcessUnsubscribeUseCase)
+
+
+@pytest.fixture
+def request_email_verification_use_case() -> AsyncMock:
+    return AsyncMock(spec=RequestEmailVerificationUseCase)
+
+
+@pytest.fixture
+def request_password_reset_use_case() -> AsyncMock:
+    return AsyncMock(spec=RequestPasswordResetUseCase)
+
+
+@pytest.fixture
+def reset_password_use_case() -> AsyncMock:
+    return AsyncMock(spec=ResetPasswordUseCase)
+
+
+@pytest.fixture
+def validate_password_reset_code_use_case() -> AsyncMock:
+    return AsyncMock(spec=ValidatePasswordResetCodeUseCase)
 
 
 @pytest.fixture
@@ -231,6 +273,7 @@ def client(  # noqa: PLR0917
     approve_pending_member_use_case: AsyncMock,
     change_member_role_use_case: AsyncMock,
     change_password_use_case: AsyncMock,
+    confirm_email_verification_use_case: AsyncMock,
     create_club_use_case: AsyncMock,
     create_invite_use_case: AsyncMock,
     create_password_use_case: AsyncMock,
@@ -238,11 +281,16 @@ def client(  # noqa: PLR0917
     disconnect_auth_provider_use_case: AsyncMock,
     dissolve_club_use_case: AsyncMock,
     link_auth_provider_use_case: AsyncMock,
+    process_unsubscribe_use_case: AsyncMock,
     reclaim_club_ownership_use_case: AsyncMock,
     register_user_use_case: AsyncMock,
     remove_club_member_use_case: AsyncMock,
+    request_email_verification_use_case: AsyncMock,
+    request_password_reset_use_case: AsyncMock,
+    reset_password_use_case: AsyncMock,
     revoke_auth_provider_use_case: AsyncMock,
     transfer_club_ownership_use_case: AsyncMock,
+    validate_password_reset_code_use_case: AsyncMock,
     club_repo: AsyncMock,
     user_repo: AsyncMock,
     book_repo: AsyncMock,
@@ -294,6 +342,12 @@ def client(  # noqa: PLR0917
     app.dependency_overrides[get_remove_club_member_use_case] = lambda: remove_club_member_use_case
     app.dependency_overrides[get_revoke_auth_provider_use_case] = lambda: revoke_auth_provider_use_case
     app.dependency_overrides[get_transfer_club_ownership_use_case] = lambda: transfer_club_ownership_use_case
+    app.dependency_overrides[get_confirm_email_verification_use_case] = lambda: confirm_email_verification_use_case
+    app.dependency_overrides[get_process_unsubscribe_use_case] = lambda: process_unsubscribe_use_case
+    app.dependency_overrides[get_request_email_verification_use_case] = lambda: request_email_verification_use_case
+    app.dependency_overrides[get_request_password_reset_use_case] = lambda: request_password_reset_use_case
+    app.dependency_overrides[get_reset_password_use_case] = lambda: reset_password_use_case
+    app.dependency_overrides[get_validate_password_reset_code_use_case] = lambda: validate_password_reset_code_use_case
 
     # --- 3. Repository & Infra Overrides ---
     app.dependency_overrides[get_club_repository] = lambda: club_repo

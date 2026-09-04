@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
+from canterlot.dto.auth import TokenResponse
 from canterlot.exceptions import (
     GatewayConfigurationError,
     InvalidCredentialsError,
@@ -14,7 +15,7 @@ from canterlot.exceptions import (
 )
 from canterlot.routers.dependencies.providers import get_optional_refresh_token_context
 from canterlot.use_cases.create_session import CreateSessionResult
-from tools.factories import TokenResponseFactory
+from tools.factories import TokenResponseFactory, UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 
@@ -101,6 +102,22 @@ def describe_create_session():
         assert response.status_code == 201
         assert response.json()["access_token"] == "access"
         _assert_refresh_cookie_set(response, "refresh")
+
+    def it_sets_a_location_header_for_a_brand_new_oauth_account(client: TestClient, create_session_use_case: AsyncMock):
+        create_session_use_case.execute.return_value = CreateSessionResult(
+            access_token="access",
+            refresh_token="refresh",
+            is_new_user=True,
+            location_header="/v1/users/me",
+        )
+
+        response = client.post(
+            "/v1/auth/sessions",
+            json={"type": "OAUTH", "provider": "GOOGLE", "credential": "some-id-token"},
+        )
+
+        assert response.status_code == 201
+        assert response.headers["Location"] == "/v1/users/me"
 
     def it_returns_409_when_the_identity_requires_linking_to_an_existing_account(
         client: TestClient, create_session_use_case: AsyncMock
@@ -228,3 +245,92 @@ def describe_logout():
 
         assert response.status_code == 204
         auth_service.logout.assert_not_called()
+
+
+def describe_request_password_reset():
+    def it_accepts_the_request_and_delegates_to_the_use_case(
+        client: TestClient, request_password_reset_use_case: AsyncMock
+    ):
+        response = client.post("/v1/auth/resets", json={"identifier": "alice@example.com"})
+
+        assert response.status_code == 202
+        request_password_reset_use_case.execute.assert_awaited_once_with("alice@example.com")
+
+
+def describe_validate_password_reset_code():
+    def it_validates_the_code_and_sets_the_reset_cookie(
+        client: TestClient, validate_password_reset_code_use_case: AsyncMock
+    ):
+        validate_password_reset_code_use_case.execute.return_value = "reset-jwt"
+
+        response = client.post("/v1/auth/resets/sessions", json={"token": "some-action-link-token"})
+
+        assert response.status_code == 200
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "password_reset=reset-jwt" in set_cookie
+        assert "HttpOnly" in set_cookie
+        assert "Path=/v1/auth" in set_cookie
+
+
+def describe_reset_password():
+    def it_resets_the_password_clears_the_reset_cookie_and_sets_a_refresh_cookie(
+        client: TestClient, reset_password_use_case: AsyncMock, user_service: AsyncMock
+    ):
+        user_service.get_by_id.return_value = UserFactory.build(id=SOME_USER_ID)
+        reset_password_use_case.execute.return_value = TokenResponse(
+            access_token="access",
+            refresh_token="refresh",
+        )
+        client.cookies.set("password_reset", "some-reset-jwt")
+
+        response = client.post(
+            "/v1/auth/resets/sessions/me",
+            json={"new_password": "NewSecureP@ssword1"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["access_token"] == "access"
+        _assert_refresh_cookie_set(response, "refresh")
+        set_cookie = response.headers.get("set-cookie", "")
+        assert 'password_reset=""' in set_cookie
+
+
+def describe_get_reset_session_status():
+    def it_reports_creation_when_the_user_has_no_password(client: TestClient, user_service: AsyncMock):
+        user_service.get_by_id.return_value = UserFactory.build(id=SOME_USER_ID, hashed_password=None)
+        client.cookies.set("password_reset", "some-reset-jwt")
+
+        response = client.get("/v1/auth/resets/sessions/me")
+
+        assert response.status_code == 200
+        assert response.json()["is_creation"] is True
+
+    def it_reports_no_creation_when_the_user_already_has_a_password(client: TestClient, user_service: AsyncMock):
+        user_service.get_by_id.return_value = UserFactory.build(id=SOME_USER_ID, hashed_password="hashed")
+        client.cookies.set("password_reset", "some-reset-jwt")
+
+        response = client.get("/v1/auth/resets/sessions/me")
+
+        assert response.status_code == 200
+        assert response.json()["is_creation"] is False
+
+
+def describe_request_email_verification():
+    def it_accepts_the_request_and_delegates_to_the_use_case(
+        client: TestClient, request_email_verification_use_case: AsyncMock, current_user
+    ):
+        response = client.post("/v1/auth/verifications")
+
+        assert response.status_code == 202
+        request_email_verification_use_case.execute.assert_awaited_once_with(user=current_user)
+
+
+def describe_confirm_email_verification():
+    def it_confirms_via_a_signed_action_link_token(client: TestClient, confirm_email_verification_use_case: AsyncMock):
+        response = client.put("/v1/auth/verifications", json={"token": "some-action-link-token"})
+
+        assert response.status_code == 204
+        confirm_email_verification_use_case.execute.assert_awaited_once()
+        call_kwargs = confirm_email_verification_use_case.execute.call_args.kwargs
+        assert call_kwargs["payload"].token == "some-action-link-token"
+        assert call_kwargs["current_user"] is None

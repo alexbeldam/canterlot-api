@@ -8,12 +8,15 @@ from canterlot.config import get_settings
 from canterlot.constants import (
     CLUB_MODERATION_RATELIMIT_TEMPLATE,
     CLUB_OWNER_ACTION_RATELIMIT_TEMPLATE,
+    EMAIL_VERIFICATION_CONFIRM_RATELIMIT_TEMPLATE,
+    EMAIL_VERIFICATION_REQUEST_RATELIMIT_TEMPLATE,
     INVITE_CREATE_DIRECT_RATELIMIT_TEMPLATE,
     LOGIN_ACCOUNT_RATELIMIT_TEMPLATE,
     LOGIN_IP_RATELIMIT_TEMPLATE,
     OAUTH_SIGNIN_RATELIMIT_TEMPLATE,
     PASSWORD_CHANGE_RATELIMIT_TEMPLATE,
     PASSWORD_RESET_REQUEST_RATELIMIT_TEMPLATE,
+    PASSWORD_RESET_VALIDATE_RATELIMIT_TEMPLATE,
     PROVIDER_MUTATION_RATELIMIT_TEMPLATE,
     REFRESH_RATELIMIT_TEMPLATE,
     REGISTER_RATELIMIT_TEMPLATE,
@@ -24,9 +27,12 @@ from canterlot.routers.dependencies.rate_limiter import (
     rate_limit_club_moderation,
     rate_limit_club_owner_action,
     rate_limit_create_invite_attempt,
+    rate_limit_email_verification_confirm_attempt,
+    rate_limit_email_verification_request_attempt,
     rate_limit_login_attempt,
     rate_limit_password_change_attempt,
     rate_limit_password_reset_request_attempt,
+    rate_limit_password_reset_validation_attempt,
     rate_limit_provider_mutation_attempt,
     rate_limit_refresh_attempt,
     rate_limit_register_attempt,
@@ -255,6 +261,56 @@ def describe_rate_limit_password_reset_request_attempt():
             expected_key,
             settings.password_reset_request,
             settings.password_reset_request_window_seconds,
+        )
+
+
+def describe_rate_limit_password_reset_validation_attempt():
+    async def it_keys_the_counter_by_client_ip_using_its_own_bucket(make_request):
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
+
+        request = make_request("203.0.113.5")
+        await rate_limit_password_reset_validation_attempt(request, rate_limiter)
+
+        settings = get_settings().ratelimit
+        expected_key = PASSWORD_RESET_VALIDATE_RATELIMIT_TEMPLATE.format(ip="203.0.113.5")
+        rate_limiter.evaluate.assert_awaited_once_with(
+            expected_key,
+            settings.password_reset_validate,
+            settings.password_reset_validate_window_seconds,
+        )
+
+
+def describe_rate_limit_email_verification_request_attempt():
+    async def it_keys_the_counter_by_current_user_id():
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
+
+        await rate_limit_email_verification_request_attempt(SOME_USER_ID, rate_limiter)
+
+        settings = get_settings().ratelimit
+        expected_key = EMAIL_VERIFICATION_REQUEST_RATELIMIT_TEMPLATE.format(user_id=SOME_USER_ID)
+        rate_limiter.evaluate.assert_awaited_once_with(
+            expected_key,
+            settings.email_verification_request,
+            settings.email_verification_request_window_seconds,
+        )
+
+
+def describe_rate_limit_email_verification_confirm_attempt():
+    async def it_keys_the_counter_by_client_ip(make_request):
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.evaluate.return_value = 0
+
+        request = make_request("203.0.113.5")
+        await rate_limit_email_verification_confirm_attempt(request, rate_limiter)
+
+        settings = get_settings().ratelimit
+        expected_key = EMAIL_VERIFICATION_CONFIRM_RATELIMIT_TEMPLATE.format(ip="203.0.113.5")
+        rate_limiter.evaluate.assert_awaited_once_with(
+            expected_key,
+            settings.email_verification_confirm,
+            settings.email_verification_confirm_window_seconds,
         )
 
 

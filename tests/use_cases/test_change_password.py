@@ -34,7 +34,7 @@ def describe_change_password_use_case():
         email_dispatch_service: AsyncMock,
     ):
         user = UserFactory.build(name="Twilight Sparkle", hashed_password=DEFAULT_HASHED_PASSWORD)
-        current_password = DEFAULT_PASSWORD
+        current_password = SecretStr(DEFAULT_PASSWORD)
         new_password = SecretStr("NewSecurePassword456!")
 
         token_mock = MagicMock()

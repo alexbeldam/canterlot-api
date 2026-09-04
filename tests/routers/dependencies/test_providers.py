@@ -64,6 +64,7 @@ from canterlot.routers.dependencies.providers import (
     get_club_id_from_slug,
     get_club_repository,
     get_club_service,
+    get_confirm_email_verification_use_case,
     get_create_club_use_case,
     get_create_invite_use_case,
     get_create_password_use_case,
@@ -83,21 +84,29 @@ from canterlot.routers.dependencies.providers import (
     get_link_auth_provider_use_case,
     get_link_providers,
     get_oauth_providers,
+    get_optional_current_user,
+    get_optional_current_user_id,
     get_optional_refresh_token_context,
+    get_process_unsubscribe_use_case,
     get_rate_limiter,
     get_reclaim_club_ownership_use_case,
     get_redis_client,
     get_register_user_use_case,
     get_remove_club_member_use_case,
+    get_request_email_verification_use_case,
+    get_request_password_reset_use_case,
     get_resend_webhook_handler,
+    get_reset_password_use_case,
     get_revoke_auth_provider_use_case,
     get_transfer_club_ownership_use_case,
+    get_user_from_reset_cookie,
     get_user_from_username,
     get_user_id_from_username,
     get_user_id_from_valid_refresh_token,
     get_user_id_from_valid_reset_token,
     get_user_repository,
     get_user_service,
+    get_validate_password_reset_code_use_case,
     get_verification_repository,
     get_verification_service,
     get_verified_user,
@@ -234,6 +243,30 @@ def describe_get_user_id_from_valid_reset_token():
             await get_user_id_from_valid_reset_token(access_token)
 
 
+def describe_get_optional_current_user_id():
+    async def it_returns_the_user_id_for_a_valid_access_token():
+        token = create_access_token(SOME_USER_ID)
+        assert await get_optional_current_user_id(token) == SOME_USER_ID
+
+    async def it_returns_none_when_no_token_is_provided():
+        assert await get_optional_current_user_id(None) is None
+
+    async def it_returns_none_for_a_token_missing_the_subject_claim():
+        token = create_jwt_token({"type": "access"}, timedelta(minutes=5))
+        assert await get_optional_current_user_id(token) is None
+
+    async def it_returns_none_for_a_refresh_token_used_as_an_access_token():
+        token = create_refresh_token(SOME_USER_ID)
+        assert await get_optional_current_user_id(token) is None
+
+    async def it_returns_none_for_an_expired_token():
+        token = create_jwt_token({"sub": str(SOME_USER_ID), "type": "access"}, timedelta(seconds=-1))
+        assert await get_optional_current_user_id(token) is None
+
+    async def it_returns_none_for_a_garbage_token():
+        assert await get_optional_current_user_id("not.a.jwt") is None
+
+
 def describe_get_current_user():
     async def it_returns_the_user_when_found(user_service: AsyncMock):
         fake_user = SimpleNamespace(id=SOME_USER_ID)
@@ -246,6 +279,27 @@ def describe_get_current_user():
 
         with pytest.raises(InvalidCredentialsError):
             await get_current_user(SOME_USER_ID, user_service)
+
+
+def describe_get_optional_current_user():
+    async def it_returns_none_when_no_user_id_is_present(user_service: AsyncMock):
+        assert await get_optional_current_user(None, user_service) is None
+        user_service.find_by_id.assert_not_called()
+
+    async def it_returns_the_user_when_a_user_id_is_present(user_service: AsyncMock):
+        fake_user = SimpleNamespace(id=SOME_USER_ID)
+        user_service.find_by_id.return_value = fake_user
+
+        assert await get_optional_current_user(SOME_USER_ID, user_service) is fake_user
+        user_service.find_by_id.assert_awaited_once_with(SOME_USER_ID)
+
+
+def describe_get_user_from_reset_cookie():
+    async def it_returns_the_user_for_a_valid_reset_session(user_service: AsyncMock):
+        fake_user = SimpleNamespace(id=SOME_USER_ID)
+        user_service.get_by_id.return_value = fake_user
+
+        assert await get_user_from_reset_cookie(SOME_USER_ID, user_service) is fake_user
 
 
 def describe_verified_user_checks():
@@ -479,6 +533,12 @@ def describe_use_case_factories():
         assert await get_remove_club_member_use_case(s, s) is not None
         assert await get_dissolve_club_use_case(s, s, s) is not None
         assert await get_revoke_auth_provider_use_case(s, s) is not None
+        assert await get_process_unsubscribe_use_case(s) is not None
+        assert await get_request_password_reset_use_case(s, s, s) is not None
+        assert await get_validate_password_reset_code_use_case(s, s) is not None
+        assert await get_reset_password_use_case(s, s) is not None
+        assert await get_request_email_verification_use_case(s, s) is not None
+        assert await get_confirm_email_verification_use_case(s, s) is not None
 
 
 def describe_oauth2_scheme():
