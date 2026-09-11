@@ -6,6 +6,7 @@ from beanie import PydanticObjectId
 
 from canterlot.config import get_settings
 from canterlot.constants import EMAIL_PREFERENCES_KEY_TEMPLATE
+from canterlot.dto.book import RatedBook
 from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     InvalidCredentialsError,
@@ -13,9 +14,10 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.exceptions.user import UserNotFoundError
-from canterlot.models.book import ReadBook
 from canterlot.models.user import EmailPreferencesSchema, UserModel
-from canterlot.repositories import CacheRepository, UserRepository
+from canterlot.pagination import Page, SortDirection
+from canterlot.repositories import BookRepository, CacheRepository, ReadBookRepository, UserRepository
+from canterlot.services.rated_books import resolve_rated_books_page
 from canterlot.types import AuthProviderName, AvatarSchema, HttpsUrl, NormalizedEmailStr, PersonNameStr, UsernameStr
 from canterlot.utils import get_logger
 from canterlot.utils.security import UnsubscribeScope, UnsubscribeTokenData
@@ -33,9 +35,17 @@ def _resolve_linked_provider_avatar_value(user: UserModel, provider: AuthProvide
 
 
 class UserService:
-    def __init__(self, user_repo: UserRepository, cache_repo: CacheRepository):
+    def __init__(
+        self,
+        user_repo: UserRepository,
+        cache_repo: CacheRepository,
+        read_book_repo: ReadBookRepository,
+        book_repo: BookRepository,
+    ):
         self.__user_repo = user_repo
         self.__cache_repo = cache_repo
+        self.__read_book_repo = read_book_repo
+        self.__book_repo = book_repo
 
     async def _invalidate_email_preferences_cache(self, email: NormalizedEmailStr) -> None:
         await self.__cache_repo.invalidate(EMAIL_PREFERENCES_KEY_TEMPLATE.format(email=email))
@@ -46,13 +56,34 @@ class UserService:
             raise UserNotFoundError(f"User with username {username} not found")
         return user
 
-    async def mark_book_read(self, user_id: PydanticObjectId, book_id: PydanticObjectId) -> None:
-        log = logger.bind(user_id=str(user_id), book_id=str(book_id))
+    async def mark_book_read(
+        self,
+        user_id: PydanticObjectId,
+        book_id: PydanticObjectId,
+        rating: float | None = None,
+    ) -> None:
+        log = logger.bind(user_id=str(user_id), book_id=str(book_id), rating=rating)
         log.info("Marking book as read for user")
 
-        await self.__user_repo.push_read_book_by_id(user_id=user_id, read_book=ReadBook(id=book_id))
+        await self.__read_book_repo.upsert(user_id=user_id, book_id=book_id, rating=rating)
 
         log.info("Book marked as read successfully")
+
+    async def get_read_books(
+        self,
+        user_id: PydanticObjectId,
+        page: int,
+        limit: int,
+        sort_direction: SortDirection = SortDirection.DESC,
+    ) -> Page[RatedBook]:
+        return await resolve_rated_books_page(
+            self.__book_repo,
+            self.__read_book_repo,
+            user_id,
+            page,
+            limit,
+            sort_direction,
+        )
 
     async def update_profile(
         self,

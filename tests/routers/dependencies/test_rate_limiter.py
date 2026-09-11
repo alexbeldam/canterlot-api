@@ -148,7 +148,9 @@ def describe_rate_limit_login_attempt():
         rate_limiter = AsyncMock(spec=RateLimiter)
         rate_limiter.evaluate.return_value = 0
         payload = CreateSessionRequestFactory.build(
-            type=SessionType.OAUTH, provider=AuthProviderName.GOOGLE, credential="token"
+            type=SessionType.OAUTH,
+            provider=AuthProviderName.GOOGLE,
+            credential="token",
         )
 
         request = make_request("203.0.113.5")
@@ -166,7 +168,9 @@ def describe_rate_limit_login_attempt():
         rate_limiter = AsyncMock(spec=RateLimiter)
         rate_limiter.evaluate.return_value = 0
         payload = CreateSessionRequestFactory.build(
-            type=SessionType.PASSWORD, username="alice_1", password=SOME_PASSWORD
+            type=SessionType.PASSWORD,
+            username="alice_1",
+            password=SOME_PASSWORD,
         )
 
         request = make_request("203.0.113.5")
@@ -185,7 +189,9 @@ def describe_rate_limit_login_attempt():
         rate_limiter = AsyncMock(spec=RateLimiter)
         rate_limiter.evaluate.return_value = 10
         payload = CreateSessionRequestFactory.build(
-            type=SessionType.PASSWORD, username="alice_1", password=SOME_PASSWORD
+            type=SessionType.PASSWORD,
+            username="alice_1",
+            password=SOME_PASSWORD,
         )
 
         with pytest.raises(RateLimitExceededError) as exc_info:
@@ -197,7 +203,9 @@ def describe_rate_limit_login_attempt():
         rate_limiter = AsyncMock(spec=RateLimiter)
         rate_limiter.evaluate.side_effect = [0, 10]
         payload = CreateSessionRequestFactory.build(
-            type=SessionType.PASSWORD, username="alice_1", password=SOME_PASSWORD
+            type=SessionType.PASSWORD,
+            username="alice_1",
+            password=SOME_PASSWORD,
         )
 
         with pytest.raises(RateLimitExceededError) as exc_info:

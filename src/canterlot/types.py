@@ -238,11 +238,13 @@ class BookProviderIdentifier:
 
         return core_schema.json_or_python_schema(
             json_schema=core_schema.no_info_plain_validator_function(
-                validate, json_schema_input_schema=core_schema.str_schema()
+                validate,
+                json_schema_input_schema=core_schema.str_schema(),
             ),
             python_schema=core_schema.no_info_plain_validator_function(validate),
             serialization=core_schema.plain_serializer_function_ser_schema(
-                serialize, return_schema=core_schema.str_schema()
+                serialize,
+                return_schema=core_schema.str_schema(),
             ),
         )
 

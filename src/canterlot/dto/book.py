@@ -1,8 +1,12 @@
+from dataclasses import dataclass
 from datetime import datetime
 
+from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from canterlot.pagination import Page
+from canterlot.models.book import BookModel
+from canterlot.models.read_book import RatingStats
+from canterlot.pagination import Page, SortDirection
 from canterlot.types import (
     AuthorList,
     BookExternalId,
@@ -16,6 +20,38 @@ from canterlot.types import (
     TitleStr,
     UrlList,
 )
+
+
+@dataclass(frozen=True)
+class RatedBook:
+    book: BookModel
+    rating: float | None
+    read_at: datetime
+
+
+class RatedBookSummaryDTO(BaseModel):
+    external_id: BookExternalId
+    title: TitleStr
+    authors: AuthorList
+    cover_url: HttpsUrl | None = None
+    rating: float | None = None
+
+    @classmethod
+    def from_model(cls, rated: RatedBook) -> "RatedBookSummaryDTO":
+        return cls(
+            external_id=rated.book.external_id,
+            title=rated.book.title,
+            authors=rated.book.authors,
+            cover_url=rated.book.cover_url,
+            rating=rated.rating,
+        )
+
+
+@dataclass
+class ReadBooksFilters:
+    page: int = Query(default=1, ge=1)
+    limit: int = Query(default=20, ge=1, le=100)
+    sort_direction: SortDirection = Query(default=SortDirection.DESC)  # noqa: RUF009
 
 
 class BookSearchResult(BaseModel):
@@ -64,3 +100,12 @@ class BookResponse(BaseModel):
     cover_url: HttpsUrl | None = None
     urls: UrlList = Field(default_factory=dict)
     created_at: datetime
+    average_rating: float | None = None
+    rating_count: int = 0
+
+    @classmethod
+    def with_rating_stats(cls, book: BookModel, rating_stats: RatingStats) -> "BookResponse":
+        base = cls.model_validate(book, from_attributes=True)
+        return base.model_copy(
+            update={"average_rating": rating_stats.average_rating, "rating_count": rating_stats.rating_count}
+        )

@@ -3,16 +3,21 @@ from datetime import datetime
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from canterlot.config import get_settings
+from canterlot.dto.book import RatedBook
 from canterlot.models import UserModel
+from canterlot.pagination import Page
 from canterlot.types import (
+    AuthorList,
     AuthProviderName,
     AvatarSchema,
     BadgeReason,
+    BookExternalId,
     EarnedBadgeSchema,
     HttpsUrl,
     NormalizedEmailStr,
     PasswordStr,
     PersonNameStr,
+    TitleStr,
     UsernameStr,
 )
 
@@ -88,6 +93,29 @@ class UserProfileResponse(BaseModel):
         )
 
 
+class ReadBookSummaryDTO(BaseModel):
+    external_id: BookExternalId
+    title: TitleStr
+    authors: AuthorList
+    cover_url: HttpsUrl | None = None
+    rating: float | None = None
+    read_at: datetime
+
+    @classmethod
+    def from_model(cls, rated: RatedBook) -> "ReadBookSummaryDTO":
+        return cls(
+            external_id=rated.book.external_id,
+            title=rated.book.title,
+            authors=rated.book.authors,
+            cover_url=rated.book.cover_url,
+            rating=rated.rating,
+            read_at=rated.read_at,
+        )
+
+
+PaginatedReadBooksResponse = Page[ReadBookSummaryDTO]
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: SecretStr
     new_password: PasswordStr
@@ -102,6 +130,10 @@ class ChangePasswordRequest(BaseModel):
 
 class CreatePasswordRequest(BaseModel):
     password: PasswordStr
+
+
+class MarkBookReadRequest(BaseModel):
+    rating: float | None = Field(default=None, ge=0.5, le=5.0, multiple_of=0.5)
 
 
 class LegalAcceptanceRequest(BaseModel):

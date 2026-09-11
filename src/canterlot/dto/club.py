@@ -6,9 +6,11 @@ from beanie import PydanticObjectId
 from pydantic import BaseModel, Field, model_validator
 
 from canterlot.config import get_settings
+from canterlot.dto.book import RatedBookSummaryDTO
 from canterlot.dto.user import AvatarDTO, BadgeDTO
 from canterlot.models.club import ClubModel
 from canterlot.models.user import UserModel
+from canterlot.pagination import Page
 from canterlot.types import (
     ClubNameStr,
     ClubOnboardingStatus,
@@ -82,6 +84,9 @@ class ClubMemberProfileResponse(BaseModel):
             generated_avatar_seed=user.generated_avatar_seed,
             badges=[BadgeDTO.from_model(badge) for badge in user.badges],
         )
+
+
+PaginatedMemberReadBooksResponse = Page[RatedBookSummaryDTO]
 
 
 class ChangeMemberRoleRequest(BaseModel):

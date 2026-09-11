@@ -249,7 +249,10 @@ def describe_from_domain_constructors():
         frontend_url = get_settings().frontend_url
 
         ctx = SpikeBookContext.from_domain(
-            recipient=user, club=club, book_title="The Art of War", action_path="/books/1"
+            recipient=user,
+            club=club,
+            book_title="The Art of War",
+            action_path="/books/1",
         )
         assert ctx.book_title == "The Art of War"
         assert str(ctx.action_url) == f"{frontend_url}/books/1"

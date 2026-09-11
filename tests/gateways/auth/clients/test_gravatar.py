@@ -39,7 +39,8 @@ def describe_supports_avatar():
 
 def describe_verify():
     async def it_returns_the_identity_extracted_from_the_verified_profile(
-        provider: GravatarAuthProvider, session: AsyncMock
+        provider: GravatarAuthProvider,
+        session: AsyncMock,
     ):
         session.post.return_value = _response(200, {"access_token": "some-access-token"})
         session.get.return_value = _response(
@@ -90,7 +91,8 @@ def describe_verify():
         session.get.assert_not_called()
 
     async def it_raises_when_the_token_exchange_response_has_no_access_token(
-        provider: GravatarAuthProvider, session: AsyncMock
+        provider: GravatarAuthProvider,
+        session: AsyncMock,
     ):
         session.post.return_value = _response(200, {})
 

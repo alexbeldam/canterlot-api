@@ -369,10 +369,12 @@ def client(  # noqa: PLR0917
     app.dependency_overrides[get_verified_user] = lambda: current_user
 
     app.dependency_overrides[get_user_id_from_valid_refresh_token] = lambda: RefreshTokenContext(
-        user_id=SOME_USER_ID, token="old-refresh-token"
+        user_id=SOME_USER_ID,
+        token="old-refresh-token",
     )
     app.dependency_overrides[get_optional_refresh_token_context] = lambda: RefreshTokenContext(
-        user_id=SOME_USER_ID, token="old-refresh-token"
+        user_id=SOME_USER_ID,
+        token="old-refresh-token",
     )
     app.dependency_overrides[get_user_id_from_valid_reset_token] = lambda: SOME_USER_ID
 

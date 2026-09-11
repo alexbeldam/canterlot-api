@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from beanie import PydanticObjectId
 
 from canterlot.config import get_settings
+from canterlot.dto.book import RatedBook
 from canterlot.dto.club import ClubCreateRequest, ClubOnboarding, ClubSettingsUpdateRequest
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
@@ -21,7 +22,9 @@ from canterlot.exceptions import (
 )
 from canterlot.exceptions.user import UserNotFoundError
 from canterlot.models import ClubModel
-from canterlot.repositories import ClubRepository, UserRepository
+from canterlot.pagination import Page
+from canterlot.repositories import BookRepository, ClubRepository, ReadBookRepository, UserRepository
+from canterlot.services.rated_books import resolve_rated_books_page
 from canterlot.types import (
     ClubOnboardingStatus,
     ClubSlugStr,
@@ -61,11 +64,19 @@ class ClubView:
 
 
 class ClubService:
-    def __init__(self, club_repo: ClubRepository, user_repo: UserRepository):
+    def __init__(
+        self,
+        club_repo: ClubRepository,
+        user_repo: UserRepository,
+        book_repo: BookRepository,
+        read_book_repo: ReadBookRepository,
+    ):
         settings = get_settings().ratelimit
 
         self.__club_repo = club_repo
         self.__user_repo = user_repo
+        self.__book_repo = book_repo
+        self.__read_book_repo = read_book_repo
         self.__reclaim_window = timedelta(hours=settings.club_ownership_reclaim_window_hours)
         self.__transfer_cooldown = timedelta(days=settings.club_ownership_transfer_cooldown_days)
 
@@ -204,6 +215,24 @@ class ClubService:
         await self.__club_repo.remove_from_pending_approvals(club_id, target_user_id)
         log.info("Pending join request reviewed successfully", outcome="approved" if approve else "rejected")
 
+    def __ensure_viewer_can_view_member(
+        self,
+        club: ClubModel,
+        viewer_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+        log,
+    ) -> MemberSchema:
+        if _find_member(club.members, viewer_id) is None:
+            log.warning("Member lookup rejected: caller is not a member of this club")
+            raise UnauthorizedClubMemberError("Only members of this club can view another member's profile.")
+
+        target = _find_member(club.members, target_user_id)
+        if target is None:
+            log.warning("Member lookup rejected: target user is not a member of this club")
+            raise ClubMemberNotFoundError("This user is not a member of this club.")
+
+        return target
+
     async def get_member_profile(
         self,
         club: ClubModel,
@@ -213,17 +242,34 @@ class ClubService:
         log = logger.bind(club_id=str(club.id), viewer_id=str(viewer_id), target_user_id=str(target_user_id))
         log.info("Fetching club member profile")
 
-        if _find_member(club.members, viewer_id) is None:
-            log.warning("Member profile lookup rejected: caller is not a member of this club")
-            raise UnauthorizedClubMemberError("Only members of this club can view another member's profile.")
-
-        target = _find_member(club.members, target_user_id)
-        if target is None:
-            log.warning("Member profile lookup rejected: target user is not a member of this club")
-            raise ClubMemberNotFoundError("This user is not a member of this club.")
+        target = self.__ensure_viewer_can_view_member(club, viewer_id, target_user_id, log)
 
         log.info("Club member profile resolved successfully")
         return target
+
+    async def get_member_read_books_page(
+        self,
+        club: ClubModel,
+        viewer_id: PydanticObjectId,
+        target_user_id: PydanticObjectId,
+        page: int,
+        limit: int,
+    ) -> Page[RatedBook]:
+        log = logger.bind(club_id=str(club.id), viewer_id=str(viewer_id), target_user_id=str(target_user_id))
+        log.info("Fetching club member's rated books page")
+
+        self.__ensure_viewer_can_view_member(club, viewer_id, target_user_id, log)
+
+        rated_books_page = await resolve_rated_books_page(
+            self.__book_repo,
+            self.__read_book_repo,
+            target_user_id,
+            page,
+            limit,
+        )
+
+        log.info("Club member's rated books page resolved successfully")
+        return rated_books_page
 
     async def remove_member(
         self,

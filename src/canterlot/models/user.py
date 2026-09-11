@@ -18,8 +18,6 @@ from canterlot.types import (
     UsernameStr,
 )
 
-from .book import ReadBook
-
 
 class LinkedProviderSchema(BaseModel):
     provider: AuthProviderName
@@ -47,7 +45,6 @@ class UserModel(Document):
     referral_count: int = Field(default=0)
     badges: list[EarnedBadgeSchema] = Field(default_factory=lambda: [EarnedBadgeSchema(reason=BadgeReason.JOINED)])
     refresh_tokens: list[str] = Field(default_factory=list)
-    books_read: list[ReadBook] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     accepted_terms_version: int | None = None
     accepted_terms_at: datetime | None = None

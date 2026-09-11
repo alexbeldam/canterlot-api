@@ -6,6 +6,7 @@ from beanie import PydanticObjectId
 from pydantic import HttpUrl
 from starlette.testclient import TestClient
 
+from canterlot.dto.book import RatedBook
 from canterlot.dto.club import ClubResponse, OwnershipTransferResponse
 from canterlot.exceptions import (
     CannotChangeOwnerRoleError,
@@ -25,9 +26,10 @@ from canterlot.exceptions import (
 )
 from canterlot.models.club import ClubModel, MemberSchema, PendingApprovalSchema
 from canterlot.models.user import AvatarSchema, UserModel
+from canterlot.pagination import Page
 from canterlot.services.club import ClubView
 from canterlot.types import AuthProviderName, MemberRole
-from tools.factories import ClubFactory, InviteTokenResponseFactory, UserFactory
+from tools.factories import BookFactory, ClubFactory, InviteTokenResponseFactory, UserFactory
 
 SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_CLUB_SLUG = "book-club"
@@ -76,7 +78,8 @@ def _club_view(
 def describe_create_club():
     def it_creates_a_club_and_returns_it(client: TestClient, create_club_use_case: AsyncMock):
         create_club_use_case.execute.return_value = ClubResponse.from_model(
-            _created_club(), user_usernames={SOME_OWNER_ID: "alice_1"}
+            _created_club(),
+            user_usernames={SOME_OWNER_ID: "alice_1"},
         )
 
         response = client.post("/v1/clubs", json={"name": "Book Club"})
@@ -92,7 +95,8 @@ def describe_create_club():
 
     def it_does_not_leak_the_internal_object_id(client: TestClient, create_club_use_case: AsyncMock):
         create_club_use_case.execute.return_value = ClubResponse.from_model(
-            _created_club(), user_usernames={SOME_OWNER_ID: "alice_1"}
+            _created_club(),
+            user_usernames={SOME_OWNER_ID: "alice_1"},
         )
 
         response = client.post("/v1/clubs", json={"name": "Book Club"})
@@ -162,7 +166,8 @@ def describe_get_club():
         assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
 
     def it_exposes_ownership_transfer_protection_state_to_the_protected_former_owner(
-        client: TestClient, club_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
     ):
         club = _created_club()
         club.ownership_transferred_at = datetime.now(UTC) - timedelta(hours=1)
@@ -228,11 +233,17 @@ def describe_update_club_settings():
 
 def describe_approve_pending_request():
     def it_returns_204_when_approved(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, approve_pending_member_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        approve_pending_member_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = UserFactory.build(
-            id=SOME_PENDING_ID, name="Bob", username=SOME_PENDING_USERNAME, email="bob@test.com"
+            id=SOME_PENDING_ID,
+            name="Bob",
+            username=SOME_PENDING_USERNAME,
+            email="bob@test.com",
         )
 
         response = client.patch(f"/v1/clubs/{SOME_CLUB_SLUG}/pending-approvals/{SOME_PENDING_USERNAME}")
@@ -241,11 +252,17 @@ def describe_approve_pending_request():
         approve_pending_member_use_case.execute.assert_awaited_once()
 
     def it_returns_403_when_the_caller_is_not_owner_or_admin(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, approve_pending_member_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        approve_pending_member_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = UserFactory.build(
-            id=SOME_PENDING_ID, name="Bob", username=SOME_PENDING_USERNAME, email="bob@test.com"
+            id=SOME_PENDING_ID,
+            name="Bob",
+            username=SOME_PENDING_USERNAME,
+            email="bob@test.com",
         )
         approve_pending_member_use_case.execute.side_effect = UnauthorizedClubMemberError("nope")
 
@@ -254,11 +271,17 @@ def describe_approve_pending_request():
         assert response.status_code == 403
 
     def it_returns_404_when_there_is_no_such_pending_request(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, approve_pending_member_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        approve_pending_member_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = UserFactory.build(
-            id=SOME_PENDING_ID, name="Bob", username=SOME_PENDING_USERNAME, email="bob@test.com"
+            id=SOME_PENDING_ID,
+            name="Bob",
+            username=SOME_PENDING_USERNAME,
+            email="bob@test.com",
         )
         approve_pending_member_use_case.execute.side_effect = PendingRequestNotFoundError("not queued")
 
@@ -275,7 +298,9 @@ def describe_approve_pending_request():
         assert response.status_code == 404
 
     def it_returns_404_when_the_username_does_not_exist(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.side_effect = UserNotFoundError("user not found")
@@ -295,11 +320,16 @@ def describe_reject_pending_request():
 
         assert response.status_code == 204
         club_service.review_pending_request.assert_awaited_once_with(
-            SOME_CLUB_ID, SOME_OWNER_ID, SOME_PENDING_ID, approve=False
+            SOME_CLUB_ID,
+            SOME_OWNER_ID,
+            SOME_PENDING_ID,
+            approve=False,
         )
 
     def it_returns_403_when_the_caller_is_not_owner_or_admin(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         user_service.get_id_by_username.return_value = SOME_PENDING_ID
@@ -310,7 +340,9 @@ def describe_reject_pending_request():
         assert response.status_code == 403
 
     def it_returns_404_when_there_is_no_such_pending_request(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         user_service.get_id_by_username.return_value = SOME_PENDING_ID
@@ -321,7 +353,9 @@ def describe_reject_pending_request():
         assert response.status_code == 404
 
     def it_returns_404_when_the_username_does_not_exist(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         user_service.get_id_by_username.side_effect = UserNotFoundError("user not found")
@@ -379,7 +413,10 @@ def describe_leave_club():
 
 def describe_get_club_member():
     def it_returns_the_target_members_profile(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, target_user: UserModel
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = target_user
@@ -393,10 +430,14 @@ def describe_get_club_member():
         assert body["name"] == "Carol Jones"
         assert body["role"] == "ADMIN"
         assert body["avatar"] == {"source": "GRAVATAR", "value": "https://gravatar.com/avatar/somehash"}
+        assert "books_read" not in body
         assert "email" not in body
 
     def it_returns_403_when_the_caller_is_not_a_member(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, target_user: UserModel
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = target_user
@@ -408,7 +449,10 @@ def describe_get_club_member():
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
 
     def it_returns_404_when_the_target_is_not_a_member(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, target_user: UserModel
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = target_user
@@ -420,7 +464,9 @@ def describe_get_club_member():
         assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
 
     def it_returns_404_when_the_username_does_not_exist(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.side_effect = UserNotFoundError("not found")
@@ -429,6 +475,64 @@ def describe_get_club_member():
 
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
+
+
+def describe_get_club_member_read_books():
+    def it_returns_a_paginated_page_of_the_targets_rated_books(
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
+    ):
+        club_service.get_club_by_slug.return_value = _created_club()
+        user_service.get_by_username.return_value = target_user
+        book = BookFactory.build(external_id="google-books__abc123")
+        club_service.get_member_read_books_page.return_value = Page(
+            items=[RatedBook(book=book, rating=4.5, read_at=datetime.now(UTC))],
+            total_items=1,
+            current_page=1,
+            page_size=20,
+        )
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/read-books")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_items"] == 1
+        assert len(body["items"]) == 1
+        assert body["items"][0]["external_id"] == "google-books__abc123"
+        assert body["items"][0]["rating"] == 4.5
+        assert "read_at" not in body["items"][0]
+
+    def it_returns_403_when_the_caller_is_not_a_member(
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
+    ):
+        club_service.get_club_by_slug.return_value = _created_club()
+        user_service.get_by_username.return_value = target_user
+        club_service.get_member_read_books_page.side_effect = UnauthorizedClubMemberError("not a member")
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/read-books")
+
+        assert response.status_code == 403
+        assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
+
+    def it_returns_404_when_the_target_is_not_a_member(
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
+    ):
+        club_service.get_club_by_slug.return_value = _created_club()
+        user_service.get_by_username.return_value = target_user
+        club_service.get_member_read_books_page.side_effect = ClubMemberNotFoundError("not a member")
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/read-books")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
 
 
 def describe_remove_club_member():
@@ -480,7 +584,9 @@ def describe_remove_club_member():
         assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
 
     def it_returns_404_when_the_username_does_not_exist(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.side_effect = UserNotFoundError("not found")
@@ -535,7 +641,8 @@ def describe_change_club_member_role():
         change_member_role_use_case.execute.side_effect = CannotChangeOwnerRoleError("nope")
 
         response = client.put(
-            f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "MEMBER"}
+            f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role",
+            json={"role": "MEMBER"},
         )
 
         assert response.status_code == 400
@@ -574,7 +681,9 @@ def describe_change_club_member_role():
         assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
 
     def it_returns_404_when_the_username_does_not_exist(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.side_effect = UserNotFoundError("not found")
@@ -596,7 +705,8 @@ def describe_change_club_member_role():
         change_member_role_use_case.execute.side_effect = FormerOwnerProtectedError("protected")
 
         response = client.put(
-            f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role", json={"role": "MEMBER"}
+            f"/v1/clubs/{SOME_CLUB_SLUG}/members/{SOME_TARGET_USERNAME}/role",
+            json={"role": "MEMBER"},
         )
 
         assert response.status_code == 409
@@ -619,7 +729,10 @@ def describe_change_club_member_role():
         assert response.json()["error"]["error_code"] == "MEMBER_ROLE_CHANGE_CONFLICT"
 
     def it_returns_422_when_the_requested_role_is_owner(
-        client: TestClient, club_service: AsyncMock, user_service: AsyncMock, target_user: UserModel
+        client: TestClient,
+        club_service: AsyncMock,
+        user_service: AsyncMock,
+        target_user: UserModel,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = target_user
@@ -631,7 +744,9 @@ def describe_change_club_member_role():
 
 def describe_create_ownership_transfer():
     def it_returns_201_with_the_reclaim_deadline_when_transferred(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         deadline = datetime(2026, 7, 13, 12, 0, 0, tzinfo=UTC)
@@ -646,7 +761,9 @@ def describe_create_ownership_transfer():
         assert response.json()["reclaim_deadline"] == "2026-07-13T12:00:00Z"
 
     def it_returns_400_when_the_target_is_the_caller(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         transfer_club_ownership_use_case.execute.side_effect = CannotTransferOwnershipToSelfError("nope")
@@ -660,7 +777,9 @@ def describe_create_ownership_transfer():
         assert response.json()["error"]["error_code"] == "CANNOT_TRANSFER_OWNERSHIP_TO_SELF"
 
     def it_returns_403_when_the_caller_is_not_owner(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         transfer_club_ownership_use_case.execute.side_effect = UnauthorizedClubMemberError("nope")
@@ -673,7 +792,9 @@ def describe_create_ownership_transfer():
         assert response.status_code == 403
 
     def it_returns_404_when_the_target_is_not_a_member(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         transfer_club_ownership_use_case.execute.side_effect = ClubMemberNotFoundError("not a member")
@@ -687,7 +808,9 @@ def describe_create_ownership_transfer():
         assert response.json()["error"]["error_code"] == "CLUB_MEMBER_NOT_FOUND"
 
     def it_returns_404_when_the_username_does_not_exist(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         transfer_club_ownership_use_case.execute.side_effect = UserNotFoundError("no such user")
@@ -701,7 +824,9 @@ def describe_create_ownership_transfer():
         assert response.json()["error"]["error_code"] == "USER_NOT_FOUND"
 
     def it_returns_409_when_the_new_owner_cooldown_is_active(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         transfer_club_ownership_use_case.execute.side_effect = OwnershipTransferCooldownError("too soon")
@@ -715,7 +840,9 @@ def describe_create_ownership_transfer():
         assert response.json()["error"]["error_code"] == "OWNERSHIP_TRANSFER_COOLDOWN"
 
     def it_returns_409_when_the_repository_reports_a_conflict(
-        client: TestClient, club_service: AsyncMock, transfer_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        transfer_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         transfer_club_ownership_use_case.execute.side_effect = OwnershipTransferConflictError("stale")
@@ -731,7 +858,9 @@ def describe_create_ownership_transfer():
 
 def describe_reclaim_club_ownership():
     def it_returns_204_when_reclaimed(
-        client: TestClient, club_service: AsyncMock, reclaim_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        reclaim_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
 
@@ -741,7 +870,9 @@ def describe_reclaim_club_ownership():
         reclaim_club_ownership_use_case.execute.assert_awaited_once()
 
     def it_returns_403_when_the_caller_is_not_the_recorded_former_owner(
-        client: TestClient, club_service: AsyncMock, reclaim_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        reclaim_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         reclaim_club_ownership_use_case.execute.side_effect = UnauthorizedClubMemberError("nope")
@@ -758,7 +889,9 @@ def describe_reclaim_club_ownership():
         assert response.status_code == 404
 
     def it_returns_409_when_the_reclaim_window_has_expired(
-        client: TestClient, club_service: AsyncMock, reclaim_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        reclaim_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         reclaim_club_ownership_use_case.execute.side_effect = OwnershipReclaimWindowExpiredError("too late")
@@ -769,7 +902,9 @@ def describe_reclaim_club_ownership():
         assert response.json()["error"]["error_code"] == "OWNERSHIP_RECLAIM_WINDOW_EXPIRED"
 
     def it_returns_409_when_the_repository_reports_a_conflict(
-        client: TestClient, club_service: AsyncMock, reclaim_club_ownership_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        reclaim_club_ownership_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         reclaim_club_ownership_use_case.execute.side_effect = OwnershipTransferConflictError("stale")
@@ -790,7 +925,9 @@ def describe_dissolve_club():
         dissolve_club_use_case.execute.assert_awaited_once()
 
     def it_returns_403_when_the_caller_is_not_the_owner(
-        client: TestClient, club_service: AsyncMock, dissolve_club_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        dissolve_club_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         dissolve_club_use_case.execute.side_effect = UnauthorizedClubMemberError("nope")
@@ -807,7 +944,9 @@ def describe_dissolve_club():
         assert response.status_code == 404
 
     def it_returns_409_when_a_former_owner_is_still_protected(
-        client: TestClient, club_service: AsyncMock, dissolve_club_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        dissolve_club_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         dissolve_club_use_case.execute.side_effect = FormerOwnerProtectedError("still protected")
@@ -820,7 +959,9 @@ def describe_dissolve_club():
 
 def describe_create_invite():
     def it_rotates_the_public_link_and_returns_the_new_token(
-        client: TestClient, club_service: AsyncMock, create_invite_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        create_invite_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         create_invite_use_case.execute.return_value = InviteTokenResponseFactory.build(invite_token="new-token")
@@ -832,7 +973,8 @@ def describe_create_invite():
         assert response.headers["Location"] == "/v1/invites/new-token/preview"
 
     def it_returns_404_when_the_club_slug_does_not_exist_for_a_public_invite(
-        client: TestClient, club_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
     ):
         club_service.get_club_by_slug.side_effect = ClubNotFoundError("not found")
 
@@ -842,7 +984,9 @@ def describe_create_invite():
         assert response.json()["error"]["error_code"] == "CLUB_NOT_FOUND"
 
     def it_returns_403_when_the_requester_lacks_permission_for_a_public_invite(
-        client: TestClient, club_service: AsyncMock, create_invite_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        create_invite_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         create_invite_use_case.execute.side_effect = UnauthorizedClubMemberError("nope")
@@ -852,13 +996,16 @@ def describe_create_invite():
         assert response.status_code == 403
 
     def it_creates_a_direct_invite_and_returns_the_new_token(
-        client: TestClient, club_service: AsyncMock, create_invite_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        create_invite_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
         create_invite_use_case.execute.return_value = InviteTokenResponseFactory.build(invite_token="direct-token")
 
         response = client.post(
-            f"/v1/clubs/{SOME_CLUB_SLUG}/invites", json={"type": "DIRECT", "email": "alice@example.com"}
+            f"/v1/clubs/{SOME_CLUB_SLUG}/invites",
+            json={"type": "DIRECT", "email": "alice@example.com"},
         )
 
         assert response.status_code == 201
@@ -866,18 +1013,22 @@ def describe_create_invite():
         assert response.headers["Location"] == "/v1/invites/direct-token/preview"
 
     def it_returns_404_when_the_club_slug_does_not_exist_for_a_direct_invite(
-        client: TestClient, club_service: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
     ):
         club_service.get_club_by_slug.side_effect = ClubNotFoundError("not found")
 
         response = client.post(
-            f"/v1/clubs/{SOME_CLUB_SLUG}/invites", json={"type": "DIRECT", "email": "alice@example.com"}
+            f"/v1/clubs/{SOME_CLUB_SLUG}/invites",
+            json={"type": "DIRECT", "email": "alice@example.com"},
         )
 
         assert response.status_code == 404
 
     def it_returns_422_for_an_invalid_email(
-        client: TestClient, club_service: AsyncMock, create_invite_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        create_invite_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
 
@@ -887,7 +1038,9 @@ def describe_create_invite():
         create_invite_use_case.execute.assert_not_called()
 
     def it_returns_422_when_a_direct_invite_has_no_email(
-        client: TestClient, club_service: AsyncMock, create_invite_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        create_invite_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
 
@@ -897,12 +1050,15 @@ def describe_create_invite():
         create_invite_use_case.execute.assert_not_called()
 
     def it_returns_422_when_a_public_invite_includes_an_email(
-        client: TestClient, club_service: AsyncMock, create_invite_use_case: AsyncMock
+        client: TestClient,
+        club_service: AsyncMock,
+        create_invite_use_case: AsyncMock,
     ):
         club_service.get_club_by_slug.return_value = _created_club()
 
         response = client.post(
-            f"/v1/clubs/{SOME_CLUB_SLUG}/invites", json={"type": "PUBLIC", "email": "alice@example.com"}
+            f"/v1/clubs/{SOME_CLUB_SLUG}/invites",
+            json={"type": "PUBLIC", "email": "alice@example.com"},
         )
 
         assert response.status_code == 422
@@ -911,7 +1067,9 @@ def describe_create_invite():
 
 def describe_get_public_invite():
     def it_returns_the_active_public_invite_token(
-        client: TestClient, invite_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        invite_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         invite_service.get_public_link.return_value = "public-token"
@@ -929,7 +1087,9 @@ def describe_get_public_invite():
         assert response.status_code == 404
 
     def it_returns_410_when_there_is_no_active_link(
-        client: TestClient, invite_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        invite_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         invite_service.get_public_link.side_effect = InviteLinkDeactivatedError("gone")

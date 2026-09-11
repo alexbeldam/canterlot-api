@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from canterlot.dto.book import BookDetails, BookResponse, BookSearchResult, PaginatedBooksResponse
+from canterlot.models.read_book import RatingStats
 from tools.factories import BookFactory
 
 
@@ -60,3 +61,32 @@ def describe_book_response():
         assert response.title == book.title
         assert response.external_id == book.external_id
         assert not hasattr(response, "id")
+
+    def it_defaults_rating_fields_to_none_and_zero():
+        book = BookFactory.build()
+
+        response = BookResponse.model_validate(book, from_attributes=True)
+
+        assert response.average_rating is None
+        assert response.rating_count == 0
+
+
+def describe_book_response_with_rating_stats():
+    def it_merges_rating_stats_into_the_base_response():
+        book = BookFactory.build()
+        stats = RatingStats(average_rating=4.0, rating_count=3)
+
+        response = BookResponse.with_rating_stats(book, stats)
+
+        assert response.title == book.title
+        assert response.average_rating == 4.0
+        assert response.rating_count == 3
+
+    def it_keeps_average_rating_none_when_nobody_has_rated_it():
+        book = BookFactory.build()
+        stats = RatingStats(average_rating=None, rating_count=0)
+
+        response = BookResponse.with_rating_stats(book, stats)
+
+        assert response.average_rating is None
+        assert response.rating_count == 0

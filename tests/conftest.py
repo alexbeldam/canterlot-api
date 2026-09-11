@@ -17,11 +17,13 @@ from canterlot.config import get_settings
 from canterlot.config.enums import Environment
 from canterlot.emails import EmailTemplate
 from canterlot.models import BEANIE_DOCUMENT_MODELS
+from canterlot.models.read_book import RatingStats
 from canterlot.repositories import (
     BookRepository,
     CacheRepository,
     ClubRepository,
     InviteRepository,
+    ReadBookRepository,
     UserRepository,
     VerificationRepository,
 )
@@ -153,6 +155,11 @@ def verification_repo() -> AsyncMock:
     return AsyncMock(spec=VerificationRepository)
 
 
+@pytest.fixture
+def read_book_repo() -> AsyncMock:
+    return AsyncMock(spec=ReadBookRepository)
+
+
 # ========================================================
 # Shared Service Mocks
 # ========================================================
@@ -165,7 +172,9 @@ def auth_service() -> AsyncMock:
 
 @pytest.fixture
 def book_service() -> AsyncMock:
-    return AsyncMock(spec=BookService)
+    service = AsyncMock(spec=BookService)
+    service.get_rating_stats.return_value = RatingStats(average_rating=None, rating_count=0)
+    return service
 
 
 @pytest.fixture

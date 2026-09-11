@@ -38,7 +38,8 @@ def describe_get_preview_metadata():
 
     async def it_raises_for_an_expired_invite(invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=datetime.now(UTC) - timedelta(days=1)
+            is_active=True,
+            expires_at=datetime.now(UTC) - timedelta(days=1),
         )
         service = InviteService(invite_repo, club_repo, user_repo)
 
@@ -46,7 +47,9 @@ def describe_get_preview_metadata():
             await service.get_preview_metadata("some-id")
 
     async def it_raises_when_the_target_club_no_longer_exists(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(is_active=True, expires_at=None)
         club_repo.find_by_id.return_value = None
@@ -56,7 +59,9 @@ def describe_get_preview_metadata():
             await service.get_preview_metadata("some-id")
 
     async def it_omits_the_inviter_username_when_created_by_is_absent(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(type=InviteType.PUBLIC)
         club_repo.find_by_id.return_value = ClubFactory.build(id=SOME_CLUB_ID)
@@ -68,7 +73,9 @@ def describe_get_preview_metadata():
         user_repo.find_username_by_id.assert_not_called()
 
     async def it_resolves_the_inviter_username_when_created_by_is_present(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
             is_active=True,
@@ -85,7 +92,9 @@ def describe_get_preview_metadata():
         user_repo.find_username_by_id.assert_awaited_once_with(SOME_INVITER_ID)
 
     async def it_resolves_the_inviter_username_from_invited_by_for_a_public_invite(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(type=InviteType.PUBLIC)
         club_repo.find_by_id.return_value = ClubFactory.build(id=SOME_CLUB_ID)
@@ -97,7 +106,9 @@ def describe_get_preview_metadata():
         assert preview.invited_by_username == "referrer_1"
 
     async def it_ignores_invited_by_when_the_referrer_does_not_exist(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(type=InviteType.PUBLIC)
         club_repo.find_by_id.return_value = ClubFactory.build(id=SOME_CLUB_ID)
@@ -111,7 +122,9 @@ def describe_get_preview_metadata():
 
 def describe_validate_incoming_invite():
     async def it_raises_when_the_invite_does_not_exist(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = None
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -120,7 +133,9 @@ def describe_validate_incoming_invite():
             await service.validate_incoming_invite("bad-id")
 
     async def it_raises_when_the_invite_is_deactivated(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(is_active=False)
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -130,7 +145,8 @@ def describe_validate_incoming_invite():
 
     async def it_raises_for_an_expired_invite(invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=datetime.now(UTC) - timedelta(days=1)
+            is_active=True,
+            expires_at=datetime.now(UTC) - timedelta(days=1),
         )
         service = InviteService(invite_repo, club_repo, user_repo)
 
@@ -138,7 +154,9 @@ def describe_validate_incoming_invite():
             await service.validate_incoming_invite("some-id")
 
     async def it_raises_when_the_club_no_longer_exists(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(is_active=True, expires_at=None)
         club_repo.find_club_name_by_id.return_value = None
@@ -148,10 +166,15 @@ def describe_validate_incoming_invite():
             await service.validate_incoming_invite("some-id")
 
     async def it_raises_on_a_direct_invite_email_mismatch(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=None, type=InviteType.DIRECT, target_email="alice@example.com"
+            is_active=True,
+            expires_at=None,
+            type=InviteType.DIRECT,
+            target_email="alice@example.com",
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -160,10 +183,15 @@ def describe_validate_incoming_invite():
             await service.validate_incoming_invite("some-id", user_email="bob@example.com")
 
     async def it_raises_on_a_direct_invite_with_no_email_supplied(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=None, type=InviteType.DIRECT, target_email="alice@example.com"
+            is_active=True,
+            expires_at=None,
+            type=InviteType.DIRECT,
+            target_email="alice@example.com",
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -172,10 +200,15 @@ def describe_validate_incoming_invite():
             await service.validate_incoming_invite("some-id")
 
     async def it_accepts_a_direct_invite_with_a_matching_email(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=None, type=InviteType.DIRECT, target_email="alice@example.com"
+            is_active=True,
+            expires_at=None,
+            type=InviteType.DIRECT,
+            target_email="alice@example.com",
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -185,10 +218,14 @@ def describe_validate_incoming_invite():
         assert result.is_direct is True
 
     async def it_accepts_a_public_invite_without_requiring_an_email(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            is_active=True, expires_at=None, type=InviteType.PUBLIC
+            is_active=True,
+            expires_at=None,
+            type=InviteType.PUBLIC,
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -198,10 +235,15 @@ def describe_validate_incoming_invite():
         assert result.is_direct is False
 
     async def it_resolves_the_inviter_username_from_created_by(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(
-            type=InviteType.PUBLIC, is_active=True, expires_at=None, created_by=SOME_INVITER_ID
+            type=InviteType.PUBLIC,
+            is_active=True,
+            expires_at=None,
+            created_by=SOME_INVITER_ID,
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         user_repo.find_username_by_id.return_value = "inviter_1"
@@ -212,7 +254,9 @@ def describe_validate_incoming_invite():
         assert result.invited_by == "inviter_1"
 
     async def it_resolves_the_inviter_username_from_invited_by_when_it_exists(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(type=InviteType.PUBLIC)
         club_repo.find_club_name_by_id.return_value = "Book Club"
@@ -224,7 +268,9 @@ def describe_validate_incoming_invite():
         assert result.invited_by == "referrer_1"
 
     async def it_ignores_invited_by_when_the_referrer_does_not_exist(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(type=InviteType.PUBLIC)
         club_repo.find_club_name_by_id.return_value = "Book Club"
@@ -238,7 +284,9 @@ def describe_validate_incoming_invite():
 
 def describe_rotate_public_link():
     async def it_raises_when_the_requester_lacks_a_privileged_role(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -248,7 +296,10 @@ def describe_rotate_public_link():
 
     @pytest.mark.parametrize("role", [MemberRole.OWNER, MemberRole.ADMIN])
     async def it_deactivates_existing_links_and_issues_a_new_one(
-        role: MemberRole, invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        role: MemberRole,
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = role
         invite_repo.save.return_value = InviteFactory.build(id="new-invite-id")
@@ -268,7 +319,9 @@ def describe_get_public_link():
         assert await service.get_public_link(SOME_CLUB_ID) == "public-id"
 
     async def it_raises_when_there_is_no_active_public_link(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_one_active_public_by_club_id.return_value = None
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -279,7 +332,9 @@ def describe_get_public_link():
 
 def describe_create_direct_invite():
     async def it_raises_when_the_issuer_lacks_a_privileged_role(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = None
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -288,7 +343,9 @@ def describe_create_direct_invite():
             await service.create_external_invite(SOME_CLUB_ID, SOME_USER_ID, "alice@example.com")
 
     async def it_issues_a_direct_invite_for_a_privileged_issuer(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         invite_repo.save.return_value = InviteFactory.build(id="direct-invite-id", type=InviteType.DIRECT)
@@ -298,13 +355,16 @@ def describe_create_direct_invite():
 
         assert result == "direct-invite-id"
         invite_repo.deactivate_all_direct_by_club_id_and_target_email.assert_awaited_once_with(
-            SOME_CLUB_ID, "alice@example.com"
+            SOME_CLUB_ID,
+            "alice@example.com",
         )
 
 
 def describe_create_internal_invite():
     async def it_raises_when_the_issuer_lacks_a_privileged_role(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = None
         service = InviteService(invite_repo, club_repo, user_repo)
@@ -313,7 +373,9 @@ def describe_create_internal_invite():
             await service.create_internal_invite(SOME_CLUB_ID, SOME_USER_ID, SOME_TARGET_USER_ID)
 
     async def it_issues_an_internal_direct_invite_for_a_privileged_issuer(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         invite_repo.save.return_value = InviteFactory.build(id="internal-invite-id", type=InviteType.DIRECT)
@@ -323,7 +385,8 @@ def describe_create_internal_invite():
 
         assert result == "internal-invite-id"
         invite_repo.deactivate_all_direct_by_club_id_and_target_user_id.assert_awaited_once_with(
-            SOME_CLUB_ID, SOME_TARGET_USER_ID
+            SOME_CLUB_ID,
+            SOME_TARGET_USER_ID,
         )
 
 
@@ -337,7 +400,9 @@ def describe_register_invite_usage():
         invite_repo.increment_uses_count_by_id.assert_not_called()
 
     async def it_increments_usage_for_a_public_invite_without_deactivating_it(
-        invite_repo: AsyncMock, club_repo: AsyncMock, user_repo: AsyncMock
+        invite_repo: AsyncMock,
+        club_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         invite_repo.find_by_id.return_value = InviteFactory.build(type=InviteType.PUBLIC)
         service = InviteService(invite_repo, club_repo, user_repo)

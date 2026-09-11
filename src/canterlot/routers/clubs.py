@@ -3,6 +3,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Response, status
 
+from canterlot.dto.book import RatedBookSummaryDTO, ReadBooksFilters
 from canterlot.dto.club import (
     ChangeMemberRoleRequest,
     ClubCreateRequest,
@@ -12,6 +13,7 @@ from canterlot.dto.club import (
     ClubSettingsUpdateRequest,
     OwnershipTransferRequest,
     OwnershipTransferResponse,
+    PaginatedMemberReadBooksResponse,
 )
 from canterlot.dto.invite import CreateInviteRequest, InviteTokenResponse
 from canterlot.models import ClubModel, UserModel
@@ -21,6 +23,7 @@ from canterlot.routers.responses import (
     CREATE_INVITE_RESPONSES,
     CREATE_OWNERSHIP_TRANSFER_RESPONSES,
     DISSOLVE_CLUB_RESPONSES,
+    GET_CLUB_MEMBER_READ_BOOKS_RESPONSES,
     GET_CLUB_MEMBER_RESPONSES,
     GET_CLUB_RESPONSES,
     GET_PUBLIC_INVITE_RESPONSES,
@@ -243,6 +246,30 @@ async def get_club_member(
     member = await club_service.get_member_profile(club, current_user_id, PydanticObjectId(target_user.id))
 
     return ClubMemberProfileResponse.from_models(target_user, member)
+
+
+@router.get(
+    "/{club_slug}/members/{username}/read-books",
+    operation_id="getClubMemberReadBooks",
+    response_model=PaginatedMemberReadBooksResponse,
+    responses=GET_CLUB_MEMBER_READ_BOOKS_RESPONSES,
+)
+async def get_club_member_read_books(
+    club: Annotated[ClubModel, Depends(get_club_from_slug)],
+    target_user: Annotated[UserModel, Depends(get_user_from_username)],
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    club_service: Annotated[ClubService, Depends(get_club_service)],
+    filters: Annotated[ReadBooksFilters, Depends()],
+) -> PaginatedMemberReadBooksResponse:
+    page = await club_service.get_member_read_books_page(
+        club,
+        current_user_id,
+        PydanticObjectId(target_user.id),
+        filters.page,
+        filters.limit,
+    )
+
+    return page.map(RatedBookSummaryDTO.from_model)
 
 
 @router.delete(

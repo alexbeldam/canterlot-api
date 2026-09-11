@@ -553,6 +553,24 @@ GET_CLUB_MEMBER_RESPONSES: ResponseDict = {
     **RESP_500_INTERNAL,
 }
 
+GET_CLUB_MEMBER_READ_BOOKS_RESPONSES: ResponseDict = {
+    status.HTTP_200_OK: {"description": "Successfully retrieved a paginated page of the target member's rated books."},
+    **RESP_400_MALFORMED_TOKEN,
+    **RESP_401_AUTH,
+    status.HTTP_403_FORBIDDEN: {
+        "model": ErrorResponseModel,
+        "description": "UnauthorizedClubMemberError: Caller is not a member of this club.",
+        "content": error_example(UnauthorizedClubMemberError),
+    },
+    status.HTTP_404_NOT_FOUND: {
+        "model": ErrorResponseModel,
+        "description": "ClubNotFoundError, UserNotFoundError, or ClubMemberNotFoundError.",
+        "content": error_example(ClubNotFoundError, UserNotFoundError, ClubMemberNotFoundError),
+    },
+    status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error on query params."},
+    **RESP_500_INTERNAL,
+}
+
 REMOVE_CLUB_MEMBER_RESPONSES: ResponseDict = {
     status.HTTP_204_NO_CONTENT: {"description": "Member removed and banned from the club."},
     **RESP_400_MALFORMED_TOKEN,
@@ -904,6 +922,14 @@ MARK_BOOK_READ_RESPONSES: ResponseDict = {
         "content": error_example(BookNotFoundError),
     },
     status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error on identifier."},
+    **RESP_500_INTERNAL,
+}
+
+GET_READ_BOOKS_RESPONSES: ResponseDict = {
+    status.HTTP_200_OK: {"description": "Successfully retrieved a paginated page of the caller's read books."},
+    **RESP_400_MALFORMED_TOKEN,
+    **RESP_401_AUTH,
+    status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error on query params."},
     **RESP_500_INTERNAL,
 }
 

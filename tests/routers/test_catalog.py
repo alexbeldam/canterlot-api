@@ -22,7 +22,9 @@ SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 def describe_suggest_book_to_club():
     def it_returns_the_suggestion_result_on_success(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.return_value = SuggestionResponse(
@@ -40,7 +42,9 @@ def describe_suggest_book_to_club():
         assert response.headers["Location"] == f"/v1/clubs/{SOME_CLUB_SLUG}/catalog/google-books__ext-1"
 
     def it_returns_200_when_the_book_already_exists_in_the_catalog(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.return_value = SuggestionResponse(
@@ -58,7 +62,9 @@ def describe_suggest_book_to_club():
         assert "Location" not in response.headers
 
     def it_returns_403_when_the_user_is_not_a_club_member(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.side_effect = UnauthorizedClubMemberError("not a member")
@@ -72,7 +78,9 @@ def describe_suggest_book_to_club():
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
 
     def it_returns_403_when_suggestions_are_closed(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.suggest_book_to_club.side_effect = ClubSuggestionsClosedError("closed")
@@ -86,7 +94,9 @@ def describe_suggest_book_to_club():
         assert response.json()["error"]["error_code"] == "CLUB_SUGGESTIONS_CLOSED"
 
     def it_returns_422_when_the_payload_is_missing_required_fields(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
 
@@ -96,7 +106,9 @@ def describe_suggest_book_to_club():
         catalog_service.suggest_book_to_club.assert_not_called()
 
     def it_returns_404_when_the_club_slug_does_not_exist(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.side_effect = ClubNotFoundError("not found")
 
@@ -131,7 +143,9 @@ def describe_get_club_catalog():
         assert body["items"][0]["suggested_by"] == "alice_1"
 
     def it_returns_403_when_the_caller_is_not_a_club_member(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.side_effect = UnauthorizedClubMemberError("not a member")
@@ -142,7 +156,9 @@ def describe_get_club_catalog():
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
 
     def it_returns_404_when_the_club_slug_does_not_exist(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.side_effect = ClubNotFoundError("not found")
 
@@ -152,11 +168,16 @@ def describe_get_club_catalog():
         catalog_service.get_catalog_page.assert_not_called()
 
     def it_passes_sort_and_filter_query_params_through(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
-            items=[], total_items=0, current_page=1, page_size=20
+            items=[],
+            total_items=0,
+            current_page=1,
+            page_size=20,
         )
 
         response = client.get(
@@ -174,7 +195,9 @@ def describe_get_club_catalog():
         assert kwargs["q"] == "gatsby"
 
     def it_returns_422_for_an_invalid_sort_field(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
 
@@ -186,7 +209,10 @@ def describe_get_club_catalog():
 
 def describe_remove_from_club():
     def it_returns_204_on_success(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock, book_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
+        book_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
@@ -197,7 +223,10 @@ def describe_remove_from_club():
         catalog_service.remove_book_from_club.assert_awaited_once()
 
     def it_returns_403_when_the_caller_is_not_privileged_or_the_suggester(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock, book_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
+        book_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
@@ -209,7 +238,10 @@ def describe_remove_from_club():
         assert response.json()["error"]["error_code"] == "UNAUTHORIZED_CLUB_MEMBER"
 
     def it_returns_404_when_the_book_is_not_in_the_catalog(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock, book_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
+        book_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
@@ -221,7 +253,10 @@ def describe_remove_from_club():
         assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
 
     def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock, book_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
+        book_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
         book_service.get_book_id_by_identifier.side_effect = BookNotFoundError("missing book")
@@ -233,7 +268,9 @@ def describe_remove_from_club():
         catalog_service.remove_book_from_club.assert_not_called()
 
     def it_returns_404_when_the_club_slug_does_not_exist(
-        client: TestClient, catalog_service: AsyncMock, club_service: AsyncMock
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
     ):
         club_service.get_club_id_by_slug.side_effect = ClubNotFoundError("not found")
 

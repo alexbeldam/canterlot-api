@@ -35,6 +35,7 @@ from canterlot.repositories import (
     DatabaseRepository,
     InviteRepository,
     RateLimiter,
+    ReadBookRepository,
     UserRepository,
     VerificationRepository,
 )
@@ -43,6 +44,7 @@ from canterlot.repositories.beanie import (
     BeanieClubRepository,
     BeanieDatabaseRepository,
     BeanieInviteRepository,
+    BeanieReadBookRepository,
     BeanieUserRepository,
     BeanieVerificationRepository,
 )
@@ -134,6 +136,10 @@ def get_verification_repository() -> VerificationRepository:
     return BeanieVerificationRepository()
 
 
+def get_read_book_repository() -> ReadBookRepository:
+    return BeanieReadBookRepository()
+
+
 def get_database_repositories(
     redis_client: Annotated[aioredis.Redis, Depends(get_redis_client)],
 ) -> list[DatabaseRepository]:
@@ -151,9 +157,10 @@ async def get_link_providers(session: Annotated[AsyncSession, Depends(get_curl_c
 async def get_book_service(
     cache: Annotated[CacheRepository, Depends(get_cache_repository)],
     book_repo: Annotated[BookRepository, Depends(get_book_repository)],
+    read_book_repo: Annotated[ReadBookRepository, Depends(get_read_book_repository)],
     providers: Annotated[list[BookProvider], Depends(get_book_providers)],
 ) -> BookService:
-    return BookService(cache=cache, book_repo=book_repo, providers=providers)
+    return BookService(cache=cache, book_repo=book_repo, read_book_repo=read_book_repo, providers=providers)
 
 
 async def get_catalog_service(
@@ -209,8 +216,10 @@ async def get_auth_service(
 async def get_club_service(
     club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    book_repo: Annotated[BookRepository, Depends(get_book_repository)],
+    read_book_repo: Annotated[ReadBookRepository, Depends(get_read_book_repository)],
 ):
-    return ClubService(club_repo, user_repo)
+    return ClubService(club_repo, user_repo, book_repo, read_book_repo)
 
 
 async def get_invite_service(
@@ -224,8 +233,10 @@ async def get_invite_service(
 async def get_user_service(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
     cache_repo: Annotated[CacheRepository, Depends(get_cache_repository)],
+    read_book_repo: Annotated[ReadBookRepository, Depends(get_read_book_repository)],
+    book_repo: Annotated[BookRepository, Depends(get_book_repository)],
 ) -> UserService:
-    return UserService(user_repo, cache_repo)
+    return UserService(user_repo, cache_repo, read_book_repo, book_repo)
 
 
 async def get_email_dispatch_service(

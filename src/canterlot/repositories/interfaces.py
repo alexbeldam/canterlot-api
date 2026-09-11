@@ -10,10 +10,11 @@ from canterlot.models import (
     ClubModel,
     InviteModel,
     LinkedProviderSchema,
+    RatingStats,
+    ReadBookModel,
     UserModel,
     VerificationCodeModel,
 )
-from canterlot.models.book import ReadBook
 from canterlot.models.user import EmailPreferencesSchema
 from canterlot.pagination import Page, SortDirection
 from canterlot.types import (
@@ -190,7 +191,6 @@ class UserRepository(Protocol):
     async def save(self, user: UserModel) -> UserModel: ...
     async def save_new_oauth_account(self, user: UserModel) -> UserModel | None: ...
     async def increment_referral_count_by_username(self, username: UsernameStr) -> None: ...
-    async def push_read_book_by_id(self, user_id: PydanticObjectId, read_book: ReadBook) -> None: ...
     async def push_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None: ...
     async def pull_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> bool: ...
     async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> bool: ...
@@ -298,3 +298,20 @@ class VerificationRepository(Protocol):
         scope: VerificationScope,
         max_attempts: int = 5,
     ) -> None: ...
+
+
+class ReadBookRepository(Protocol):
+    async def upsert(
+        self,
+        user_id: PydanticObjectId,
+        book_id: PydanticObjectId,
+        rating: float | None,
+    ) -> None: ...
+    async def find_rating_stats_by_book_id(self, book_id: PydanticObjectId) -> RatingStats: ...
+    async def find_page_by_user_id(
+        self,
+        user_id: PydanticObjectId,
+        page: int,
+        limit: int,
+        sort_direction: SortDirection = SortDirection.DESC,
+    ) -> Page[ReadBookModel]: ...

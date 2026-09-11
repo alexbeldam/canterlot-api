@@ -8,6 +8,7 @@ from pydantic import HttpUrl
 from starlette.testclient import TestClient
 
 from canterlot.dto.auth import RegisterResponse
+from canterlot.dto.book import RatedBook
 from canterlot.dto.club import ClubOnboarding
 from canterlot.exceptions import (
     AuthProviderAlreadyLinkedError,
@@ -21,11 +22,13 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.models.user import AvatarSchema
+from canterlot.pagination import Page, SortDirection
 from canterlot.types import AuthProviderName, ClubOnboardingStatus
 from canterlot.use_cases.change_password import ChangePasswordUseCaseResult
 from canterlot.use_cases.register_user import RegisterUserUseCaseResult
 from tools.factories import (
     AccessTokenResponseFactory,
+    BookFactory,
     RegisterResponseFactory,
     UserFactory,
     UserRegisterRequestFactory,
@@ -150,7 +153,8 @@ def describe_link_provider():
         assert response.status_code == 401
 
     def it_returns_409_when_already_linked_to_a_different_account(
-        client: TestClient, link_auth_provider_use_case: AsyncMock
+        client: TestClient,
+        link_auth_provider_use_case: AsyncMock,
     ):
         link_auth_provider_use_case.execute.side_effect = AuthProviderAlreadyLinkedError("taken")
 
@@ -190,7 +194,8 @@ def describe_disconnect_provider():
         assert response.json()["error"]["error_code"] == "AUTH_PROVIDER_NOT_LINKED"
 
     def it_returns_409_when_it_is_the_last_authentication_method(
-        client: TestClient, disconnect_auth_provider_use_case: AsyncMock
+        client: TestClient,
+        disconnect_auth_provider_use_case: AsyncMock,
     ):
         disconnect_auth_provider_use_case.execute.side_effect = LastAuthenticationMethodError("last one")
 
@@ -202,7 +207,8 @@ def describe_disconnect_provider():
 
 def describe_get_own_profile():
     def it_returns_the_callers_profile_with_no_active_provider_avatar(
-        client: TestClient, current_user: SimpleNamespace
+        client: TestClient,
+        current_user: SimpleNamespace,
     ):
         current_user.name = "Alice Smith"
         current_user.username = "alice_1"
@@ -238,13 +244,18 @@ def describe_get_own_profile():
         assert response.status_code == 200
         body = response.json()
         assert body["avatar"] == {"source": "GOOGLE", "value": "https://example.com/pic.jpg"}
+        assert "books_read" not in body
 
 
 def describe_update_profile():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.update_profile.return_value = UserFactory.build(
-            name="Alice Sparkle", username="new_alice", email="alice@example.com"
+        updated = UserFactory.build(
+            id=SOME_USER_ID,
+            name="Alice Sparkle",
+            username="new_alice",
+            email="alice@example.com",
         )
+        user_service.update_profile.return_value = updated
 
         response = client.patch("/v1/users/me", json={"name": "Alice Sparkle", "username": "new_alice"})
 
@@ -270,7 +281,8 @@ def describe_update_profile():
 
 def describe_change_password():
     def it_returns_a_fresh_access_token_and_sets_a_refresh_cookie_on_success(
-        client: TestClient, change_password_use_case: AsyncMock
+        client: TestClient,
+        change_password_use_case: AsyncMock,
     ):
         change_password_use_case.execute.return_value = ChangePasswordUseCaseResult(
             response=AccessTokenResponseFactory.build(access_token="new-access-token"),
@@ -311,7 +323,8 @@ def describe_change_password():
         change_password_use_case.execute.assert_not_called()
 
     def it_returns_200_when_setting_a_password_with_no_current_password(
-        client: TestClient, create_password_use_case: AsyncMock
+        client: TestClient,
+        create_password_use_case: AsyncMock,
     ):
         create_password_use_case.execute.return_value = ChangePasswordUseCaseResult(
             response=AccessTokenResponseFactory.build(access_token="new-access-token"),
@@ -325,14 +338,17 @@ def describe_change_password():
 
 def describe_set_avatar():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.set_avatar_source.return_value = UserFactory.build(
+        updated = UserFactory.build(
+            id=SOME_USER_ID,
             name="Alice Smith",
             username="alice_1",
             email="alice@example.com",
             avatar=AvatarSchema(
-                source=AuthProviderName.GRAVATAR, value=HttpUrl("https://gravatar.com/avatar/somehash")
+                source=AuthProviderName.GRAVATAR,
+                value=HttpUrl("https://gravatar.com/avatar/somehash"),
             ),
         )
+        user_service.set_avatar_source.return_value = updated
 
         response = client.put("/v1/users/me/avatar", json={"source": "GRAVATAR"})
 
@@ -368,12 +384,14 @@ def describe_clear_avatar():
 
 def describe_regenerate_avatar_seed():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.regenerate_avatar_seed.return_value = UserFactory.build(
+        updated = UserFactory.build(
+            id=SOME_USER_ID,
             name="Alice Smith",
             username="alice_1",
             email="alice@example.com",
             generated_avatar_seed="fresh-seed",
         )
+        user_service.regenerate_avatar_seed.return_value = updated
 
         response = client.post("/v1/users/me/avatar/seed")
 
@@ -385,7 +403,8 @@ def describe_regenerate_avatar_seed():
 
 def describe_accept_legal_documents():
     def it_returns_the_updated_profile(client: TestClient, user_service: AsyncMock):
-        user_service.accept_legal_documents.return_value = UserFactory.build(
+        updated = UserFactory.build(
+            id=SOME_USER_ID,
             name="Alice Smith",
             username="alice_1",
             email="alice@example.com",
@@ -393,6 +412,7 @@ def describe_accept_legal_documents():
             accepted_privacy_version=1,
             profile_completed_at=datetime.now(UTC),
         )
+        user_service.accept_legal_documents.return_value = updated
 
         response = client.post("/v1/users/me/legal-acceptance", json={"terms_version": 1, "privacy_version": 1})
 
@@ -417,17 +437,78 @@ def describe_accept_legal_documents():
         user_service.accept_legal_documents.assert_not_called()
 
 
+def describe_get_read_books():
+    def it_returns_a_paginated_page_of_the_callers_read_books(client: TestClient, user_service: AsyncMock):
+        book = BookFactory.build(external_id="google-books__abc123")
+        user_service.get_read_books.return_value = Page(
+            items=[RatedBook(book=book, rating=4.5, read_at=datetime(2025, 6, 1, tzinfo=UTC))],
+            total_items=1,
+            current_page=1,
+            page_size=20,
+        )
+
+        response = client.get("/v1/users/me/read-books")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_items"] == 1
+        assert len(body["items"]) == 1
+        assert body["items"][0]["external_id"] == "google-books__abc123"
+        assert body["items"][0]["rating"] == 4.5
+        assert body["items"][0]["read_at"] == "2025-06-01T00:00:00Z"
+
+    def it_returns_an_empty_page_when_nothing_has_been_read(client: TestClient, user_service: AsyncMock):
+        user_service.get_read_books.return_value = Page(items=[], total_items=0, current_page=1, page_size=20)
+
+        response = client.get("/v1/users/me/read-books")
+
+        assert response.status_code == 200
+        assert response.json()["items"] == []
+
+    def it_forwards_pagination_query_params(client: TestClient, user_service: AsyncMock):
+        user_service.get_read_books.return_value = Page(items=[], total_items=0, current_page=2, page_size=5)
+
+        response = client.get("/v1/users/me/read-books?page=2&limit=5&sort_direction=ASC")
+
+        assert response.status_code == 200
+        user_service.get_read_books.assert_awaited_once_with(SOME_USER_ID, 2, 5, SortDirection.ASC)
+
+    def it_returns_422_for_an_invalid_page(client: TestClient, user_service: AsyncMock):
+        response = client.get("/v1/users/me/read-books?page=0")
+
+        assert response.status_code == 422
+        user_service.get_read_books.assert_not_called()
+
+
 def describe_mark_book_read():
-    def it_returns_204_on_success(client: TestClient, user_service: AsyncMock, book_service: AsyncMock):
+    def it_returns_204_on_success_with_no_body(client: TestClient, user_service: AsyncMock, book_service: AsyncMock):
         book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
 
         response = client.put("/v1/users/me/read-books/google-books__ext-1")
 
         assert response.status_code == 204
-        user_service.mark_book_read.assert_awaited_once()
+        user_service.mark_book_read.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=None)
+
+    def it_returns_204_on_success_with_a_rating(client: TestClient, user_service: AsyncMock, book_service: AsyncMock):
+        book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
+
+        response = client.put("/v1/users/me/read-books/google-books__ext-1", json={"rating": 4.5})
+
+        assert response.status_code == 204
+        user_service.mark_book_read.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=4.5)
+
+    def it_returns_422_for_an_invalid_rating(client: TestClient, user_service: AsyncMock, book_service: AsyncMock):
+        book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
+
+        response = client.put("/v1/users/me/read-books/google-books__ext-1", json={"rating": 1.2})
+
+        assert response.status_code == 422
+        user_service.mark_book_read.assert_not_called()
 
     def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
-        client: TestClient, user_service: AsyncMock, book_service: AsyncMock
+        client: TestClient,
+        user_service: AsyncMock,
+        book_service: AsyncMock,
     ):
         book_service.get_book_id_by_identifier.side_effect = BookNotFoundError("missing")
 

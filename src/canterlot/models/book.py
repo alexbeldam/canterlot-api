@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar
 
-from beanie import Document, Indexed, PydanticObjectId
+from beanie import Document, Indexed
 from pydantic import BaseModel, Field, model_validator
 from pymongo import ASCENDING, IndexModel
 
@@ -30,11 +30,6 @@ class LinkCandidate(BaseModel):
     languages: list[LanguageStr]
     extension: ExtensionType
     url: HttpsUrl
-
-
-class ReadBook(BaseModel):
-    id: PydanticObjectId
-    read_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class BookModel(Document):

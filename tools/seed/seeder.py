@@ -8,13 +8,12 @@ from canterlot.config import get_settings
 from canterlot.config.database import DatabaseManager
 from canterlot.emails import EmailCategory
 from canterlot.models import BEANIE_DOCUMENT_MODELS, BookModel, ClubModel, UserModel
-from canterlot.models.book import ReadBook
 from canterlot.models.club import CatalogEntryModel, PendingApprovalSchema
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.types import AuthProviderName, AvatarSchema, InviteType, JoinPolicy, MemberRole, MemberSchema
 from canterlot.utils import get_logger, hash_password
 from canterlot.utils.slugs import make_slug
-from tools.factories import BookFactory, ClubFactory, InviteFactory, UserFactory
+from tools.factories import BookFactory, ClubFactory, InviteFactory, ReadBookFactory, UserFactory
 
 logger = get_logger(__name__)
 
@@ -60,7 +59,7 @@ async def _seed_books() -> tuple[BookModel, BookModel, list[BookModel]]:
     return flawless, sparse, batch
 
 
-async def _seed_users(read_candidates: list[BookModel], now: datetime) -> dict[str, UserModel]:
+async def _seed_users(now: datetime) -> dict[str, UserModel]:
     log = logger.bind(phase="users")
     log.info("Seeding users")
 
@@ -76,7 +75,6 @@ async def _seed_users(read_candidates: list[BookModel], now: datetime) -> dict[s
         username="twilight_sparkle",
         email="twilight.sparkle@seed.canterlot.dev",
         hashed_password=password_hash,
-        books_read=[ReadBook(id=_get_id(book)) for book in read_candidates[:3]],
         **legal_acceptance,
     )
 
@@ -211,6 +209,28 @@ async def _seed_clubs(users: dict[str, UserModel], batch_books: list[BookModel],
     return clubs
 
 
+async def _seed_read_books(
+    flawless_book: BookModel,
+    sparse_book: BookModel,  # noqa: ARG001 - deliberately given zero ratings, kept for documentation
+    batch_books: list[BookModel],
+    users: dict[str, UserModel],
+) -> None:
+    log = logger.bind(phase="read_books")
+    log.info("Seeding read books")
+
+    standard_id = _get_id(users["standard"])
+    unverified_id = _get_id(users["unverified"])
+    oauth_id = _get_id(users["oauth"])
+    flawless_id = _get_id(flawless_book)
+
+    for user_id, rating in ((standard_id, 5.0), (unverified_id, 4.0), (oauth_id, 3.0)):
+        await ReadBookFactory.create_async(user_id=user_id, book_id=flawless_id, rating=rating)
+
+    await ReadBookFactory.create_async(user_id=standard_id, book_id=_get_id(batch_books[0]), rating=None)
+
+    log.info("Read books seeded")
+
+
 async def _seed_invites(clubs: list[ClubModel], users: dict[str, UserModel], now: datetime) -> None:
     log = logger.bind(phase="invites")
     log.info("Seeding invites")
@@ -238,14 +258,15 @@ async def run_seed() -> None:
     async with DatabaseManager() as db:
         await _wipe_database(db)
 
-        _flawless_book, _sparse_book, batch_books = await _seed_books()
-        users = await _seed_users(batch_books, now)
+        flawless_book, sparse_book, batch_books = await _seed_books()
+        users = await _seed_users(now)
         clubs = await _seed_clubs(users, batch_books, now)
 
         hybrid = users["hybrid"]
         hybrid.email_preferences.clubs_opt_out[_get_id(clubs[0])] = now
         await hybrid.save()
 
+        await _seed_read_books(flawless_book, sparse_book, batch_books, users)
         await _seed_invites(clubs, users, now)
 
     logger.info(

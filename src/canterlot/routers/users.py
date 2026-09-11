@@ -10,10 +10,14 @@ from canterlot.dto.auth import (
     RegisterResponse,
     UserRegisterRequest,
 )
+from canterlot.dto.book import ReadBooksFilters
 from canterlot.dto.user import (
     ChangePasswordRequest,
     CreatePasswordRequest,
     LegalAcceptanceRequest,
+    MarkBookReadRequest,
+    PaginatedReadBooksResponse,
+    ReadBookSummaryDTO,
     SetAvatarRequest,
     UpdateProfileRequest,
     UserProfileResponse,
@@ -28,6 +32,7 @@ from canterlot.routers.responses import (
     DISCONNECT_PROVIDER_RESPONSES,
     GET_CONNECTED_PROVIDERS_RESPONSES,
     GET_OWN_PROFILE_RESPONSES,
+    GET_READ_BOOKS_RESPONSES,
     LINK_PROVIDER_RESPONSES,
     MARK_BOOK_READ_RESPONSES,
     REGENERATE_AVATAR_SEED_RESPONSES,
@@ -276,6 +281,21 @@ async def disconnect_provider(
     )
 
 
+@_read_books.get(
+    "",
+    operation_id="getReadBooks",
+    response_model=PaginatedReadBooksResponse,
+    responses=GET_READ_BOOKS_RESPONSES,
+)
+async def get_read_books(
+    current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    filters: Annotated[ReadBooksFilters, Depends()],
+) -> PaginatedReadBooksResponse:
+    page = await user_service.get_read_books(current_user_id, filters.page, filters.limit, filters.sort_direction)
+    return page.map(ReadBookSummaryDTO.from_model)
+
+
 @_read_books.put(
     "/{identifier}",
     operation_id="markBookRead",
@@ -286,8 +306,10 @@ async def mark_book_read(
     book_id: Annotated[PydanticObjectId, Depends(get_book_id_from_identifier)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     user_service: Annotated[UserService, Depends(get_user_service)],
+    payload: MarkBookReadRequest | None = None,
 ) -> None:
-    await user_service.mark_book_read(user_id=current_user_id, book_id=book_id)
+    rating = payload.rating if payload is not None else None
+    await user_service.mark_book_read(user_id=current_user_id, book_id=book_id, rating=rating)
 
 
 _profile.include_router(_oauth)

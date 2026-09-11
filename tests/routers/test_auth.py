@@ -60,7 +60,8 @@ def describe_create_session():
         assert response.json()["error"]["error_code"] == "INVALID_CREDENTIALS"
 
     def it_returns_422_for_a_password_session_missing_the_password(
-        client: TestClient, create_session_use_case: AsyncMock
+        client: TestClient,
+        create_session_use_case: AsyncMock,
     ):
         response = client.post("/v1/auth/sessions", json={"type": "PASSWORD", "username": "alice_1"})
 
@@ -68,7 +69,8 @@ def describe_create_session():
         create_session_use_case.execute.assert_not_called()
 
     def it_logs_in_via_oauth_when_the_identity_is_already_linked(
-        client: TestClient, create_session_use_case: AsyncMock
+        client: TestClient,
+        create_session_use_case: AsyncMock,
     ):
         create_session_use_case.execute.return_value = CreateSessionResult(
             access_token="access",
@@ -120,7 +122,8 @@ def describe_create_session():
         assert response.headers["Location"] == "/v1/users/me"
 
     def it_returns_409_when_the_identity_requires_linking_to_an_existing_account(
-        client: TestClient, create_session_use_case: AsyncMock
+        client: TestClient,
+        create_session_use_case: AsyncMock,
     ):
         create_session_use_case.execute.side_effect = OAuthLinkRequiredError("linking required")
 
@@ -145,7 +148,8 @@ def describe_create_session():
         assert response.json()["error"]["error_code"] == "INVALID_OAUTH_CREDENTIAL"
 
     def it_returns_503_when_the_oauth_provider_is_not_configured(
-        client: TestClient, create_session_use_case: AsyncMock
+        client: TestClient,
+        create_session_use_case: AsyncMock,
     ):
         create_session_use_case.execute.side_effect = GatewayConfigurationError("disabled")
 
@@ -167,7 +171,8 @@ def describe_create_session():
         create_session_use_case.execute.assert_not_called()
 
     def it_returns_422_for_an_oauth_session_missing_the_credential(
-        client: TestClient, create_session_use_case: AsyncMock
+        client: TestClient,
+        create_session_use_case: AsyncMock,
     ):
         response = client.post(
             "/v1/auth/sessions",
@@ -249,7 +254,8 @@ def describe_logout():
 
 def describe_request_password_reset():
     def it_accepts_the_request_and_delegates_to_the_use_case(
-        client: TestClient, request_password_reset_use_case: AsyncMock
+        client: TestClient,
+        request_password_reset_use_case: AsyncMock,
     ):
         response = client.post("/v1/auth/resets", json={"identifier": "alice@example.com"})
 
@@ -259,7 +265,8 @@ def describe_request_password_reset():
 
 def describe_validate_password_reset_code():
     def it_validates_the_code_and_sets_the_reset_cookie(
-        client: TestClient, validate_password_reset_code_use_case: AsyncMock
+        client: TestClient,
+        validate_password_reset_code_use_case: AsyncMock,
     ):
         validate_password_reset_code_use_case.execute.return_value = "reset-jwt"
 
@@ -274,7 +281,9 @@ def describe_validate_password_reset_code():
 
 def describe_reset_password():
     def it_resets_the_password_clears_the_reset_cookie_and_sets_a_refresh_cookie(
-        client: TestClient, reset_password_use_case: AsyncMock, user_service: AsyncMock
+        client: TestClient,
+        reset_password_use_case: AsyncMock,
+        user_service: AsyncMock,
     ):
         user_service.get_by_id.return_value = UserFactory.build(id=SOME_USER_ID)
         reset_password_use_case.execute.return_value = TokenResponse(
@@ -317,7 +326,9 @@ def describe_get_reset_session_status():
 
 def describe_request_email_verification():
     def it_accepts_the_request_and_delegates_to_the_use_case(
-        client: TestClient, request_email_verification_use_case: AsyncMock, current_user
+        client: TestClient,
+        request_email_verification_use_case: AsyncMock,
+        current_user,
     ):
         response = client.post("/v1/auth/verifications")
 

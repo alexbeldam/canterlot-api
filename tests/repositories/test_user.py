@@ -5,7 +5,6 @@ from beanie import PydanticObjectId
 from pydantic import HttpUrl
 
 from canterlot.emails import EmailCategory
-from canterlot.models.book import ReadBook
 from canterlot.models.user import UserModel
 from canterlot.repositories.beanie.user import BeanieUserRepository
 from canterlot.types import AuthProviderName
@@ -148,18 +147,6 @@ def describe_increment_referral_count_by_username():
         found = await repo.find_by_id(_id(user))
         assert found is not None
         assert found.referral_count == initial_count + 1
-
-
-def describe_push_read_book_by_id():
-    async def it_appends_a_read_book():
-        user = await UserFactory.create_async()
-        book_id = PydanticObjectId()
-
-        await repo.push_read_book_by_id(_id(user), ReadBook(id=book_id, read_at=datetime.now(UTC)))
-
-        found = await repo.find_by_id(_id(user))
-        assert found is not None
-        assert [b.id for b in found.books_read] == [book_id]
 
 
 def describe_push_refresh_token_by_id():

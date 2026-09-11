@@ -23,7 +23,8 @@ def describe_supports_avatar():
 
 def describe_verify():
     async def it_returns_the_identity_extracted_from_the_verified_claims(
-        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+        monkeypatch: pytest.MonkeyPatch,
+        provider: GoogleAuthProvider,
     ):
         monkeypatch.setattr(
             google_module.google_id_token,
@@ -44,7 +45,8 @@ def describe_verify():
         assert identity.picture is None
 
     async def it_defaults_the_name_to_none_when_absent_from_the_claims(
-        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+        monkeypatch: pytest.MonkeyPatch,
+        provider: GoogleAuthProvider,
     ):
         monkeypatch.setattr(
             google_module.google_id_token,
@@ -73,7 +75,8 @@ def describe_verify():
         assert identity.picture == "https://example.com/pic.jpg"
 
     async def it_defaults_the_picture_to_none_when_absent_from_the_claims(
-        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+        monkeypatch: pytest.MonkeyPatch,
+        provider: GoogleAuthProvider,
     ):
         monkeypatch.setattr(
             google_module.google_id_token,
@@ -86,7 +89,8 @@ def describe_verify():
         assert identity.picture is None
 
     async def it_raises_invalid_oauth_credential_when_verification_fails(
-        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+        monkeypatch: pytest.MonkeyPatch,
+        provider: GoogleAuthProvider,
     ):
         def raise_value_error(*_args, **_kwargs):
             raise ValueError("Token used too late")
@@ -97,7 +101,8 @@ def describe_verify():
             await provider.verify("expired-token")
 
     async def it_raises_invalid_oauth_credential_when_google_has_not_verified_the_email(
-        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+        monkeypatch: pytest.MonkeyPatch,
+        provider: GoogleAuthProvider,
     ):
         monkeypatch.setattr(
             google_module.google_id_token,
@@ -113,7 +118,8 @@ def describe_verify():
             await provider.verify("some-id-token")
 
     async def it_raises_invalid_oauth_credential_when_the_email_verified_claim_is_absent(
-        monkeypatch: pytest.MonkeyPatch, provider: GoogleAuthProvider
+        monkeypatch: pytest.MonkeyPatch,
+        provider: GoogleAuthProvider,
     ):
         monkeypatch.setattr(
             google_module.google_id_token,
