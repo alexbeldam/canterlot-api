@@ -14,7 +14,8 @@ from canterlot.exceptions import (
 from canterlot.exceptions.book import BookNotFoundError
 from canterlot.gateways.books import BookProvider, ProviderSearchResponse
 from canterlot.models.book import BookModel, SearchParams
-from canterlot.repositories import BookRepository, CacheRepository
+from canterlot.models.read_book import RatingStats
+from canterlot.repositories import BookRepository, CacheRepository, ReadBookRepository
 from canterlot.types import (
     BookExternalId,
     BookProviderIdentifier,
@@ -46,10 +47,12 @@ class BookService:
         self,
         cache: CacheRepository,
         book_repo: BookRepository,
+        read_book_repo: ReadBookRepository,
         providers: list[BookProvider],
     ):
         self.__cache = cache
         self.__repo = book_repo
+        self.__read_book_repo = read_book_repo
         self.__providers: dict[BookProviderName, BookProvider] = {p.name: p for p in providers}
 
     def __slice_pagination(
@@ -65,7 +68,10 @@ class BookService:
         paginated_books = sorted_books[start_idx:end_idx]
 
         return PaginatedBooksResponse(
-            items=paginated_books, total_items=total_results, current_page=page, page_size=limit
+            items=paginated_books,
+            total_items=total_results,
+            current_page=page,
+            page_size=limit,
         )
 
     async def search_external_books(
@@ -340,3 +346,6 @@ class BookService:
         if book_id is None:
             raise BookNotFoundError(f"Book with identifier '{identifier}' not found")
         return book_id
+
+    async def get_rating_stats(self, book_id: PydanticObjectId) -> RatingStats:
+        return await self.__read_book_repo.find_rating_stats_by_book_id(book_id)

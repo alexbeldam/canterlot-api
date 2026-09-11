@@ -14,12 +14,12 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.exceptions.user import UserNotFoundError
-from canterlot.models.book import ReadBook
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
+from canterlot.pagination import Page, SortDirection
 from canterlot.services.user import UserService
 from canterlot.types import AuthProviderName
 from canterlot.utils.security import UnsubscribeScope, UnsubscribeTokenData
-from tools.factories import UserFactory
+from tools.factories import BookFactory, ReadBookFactory, UserFactory
 
 SOME_USER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_BOOK_ID = PydanticObjectId("507f1f77bcf86cd799439012")
@@ -27,8 +27,13 @@ SOME_CLUB_ID = PydanticObjectId("507f1f77bcf86cd799439013")
 
 
 @pytest.fixture
-def service(user_repo: AsyncMock, cache_repo: AsyncMock) -> UserService:
-    return UserService(user_repo=user_repo, cache_repo=cache_repo)
+def service(
+    user_repo: AsyncMock,
+    cache_repo: AsyncMock,
+    read_book_repo: AsyncMock,
+    book_repo: AsyncMock,
+) -> UserService:
+    return UserService(user_repo=user_repo, cache_repo=cache_repo, read_book_repo=read_book_repo, book_repo=book_repo)
 
 
 def describe_get_by_username():
@@ -48,14 +53,53 @@ def describe_get_by_username():
 
 
 def describe_marking_a_book_as_read():
-    async def it_appends_the_book_to_the_users_reading_history(service: UserService, user_repo: AsyncMock):
+    async def it_upserts_the_read_book_entry_without_a_rating(service: UserService, read_book_repo: AsyncMock):
         await service.mark_book_read(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID)
 
-        user_repo.push_read_book_by_id.assert_awaited_once()
-        call_kwargs = user_repo.push_read_book_by_id.call_args.kwargs
-        assert call_kwargs["user_id"] == SOME_USER_ID
-        assert isinstance(call_kwargs["read_book"], ReadBook)
-        assert call_kwargs["read_book"].id == SOME_BOOK_ID
+        read_book_repo.upsert.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=None)
+
+    async def it_upserts_the_read_book_entry_with_a_rating(service: UserService, read_book_repo: AsyncMock):
+        await service.mark_book_read(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=4.5)
+
+        read_book_repo.upsert.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=4.5)
+
+
+def describe_get_read_books():
+    async def it_returns_an_empty_page_when_nothing_has_been_read(service: UserService, read_book_repo: AsyncMock):
+        read_book_repo.find_page_by_user_id.return_value = Page(items=[], total_items=0, current_page=1, page_size=20)
+
+        result = await service.get_read_books(SOME_USER_ID, page=1, limit=20)
+
+        assert result.items == []
+        read_book_repo.find_page_by_user_id.assert_awaited_once_with(SOME_USER_ID, 1, 20, SortDirection.DESC)
+
+    async def it_pairs_each_read_book_with_its_resolved_book_and_rating(
+        service: UserService,
+        read_book_repo: AsyncMock,
+        book_repo: AsyncMock,
+    ):
+        book = BookFactory.build(id=SOME_BOOK_ID)
+        entry = ReadBookFactory.build(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=3.5)
+        read_book_repo.find_page_by_user_id.return_value = Page(
+            items=[entry],
+            total_items=1,
+            current_page=1,
+            page_size=20,
+        )
+        book_repo.find_by_ids.return_value = {SOME_BOOK_ID: book}
+
+        result = await service.get_read_books(SOME_USER_ID, page=1, limit=20)
+
+        assert len(result.items) == 1
+        assert result.items[0].book == book
+        assert result.items[0].rating == 3.5
+
+    async def it_forwards_a_custom_sort_direction(service: UserService, read_book_repo: AsyncMock):
+        read_book_repo.find_page_by_user_id.return_value = Page(items=[], total_items=0, current_page=1, page_size=20)
+
+        await service.get_read_books(SOME_USER_ID, page=1, limit=20, sort_direction=SortDirection.ASC)
+
+        read_book_repo.find_page_by_user_id.assert_awaited_once_with(SOME_USER_ID, 1, 20, SortDirection.ASC)
 
 
 def describe_update_profile():
@@ -271,7 +315,8 @@ def describe_accept_legal_documents():
         assert call_kwargs["profile_completed_at"] == updated.profile_completed_at
 
     async def it_preserves_the_original_profile_completed_at_on_reacceptance(
-        service: UserService, user_repo: AsyncMock
+        service: UserService,
+        user_repo: AsyncMock,
     ):
         original_completed_at = datetime(2025, 1, 1, tzinfo=UTC)
         user = UserFactory.build(profile_completed_at=original_completed_at)
@@ -291,7 +336,9 @@ def describe_accept_legal_documents():
 
 def describe_get_email_preferences():
     async def it_returns_cached_preferences_when_available(
-        service: UserService, cache_repo: AsyncMock, user_repo: AsyncMock
+        service: UserService,
+        cache_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         email = "a@b.com"
         expected_prefs = EmailPreferencesSchema()
@@ -305,7 +352,9 @@ def describe_get_email_preferences():
         user_repo.find_email_preferences_by_email.assert_not_called()
 
     async def it_falls_back_to_db_when_cache_contains_malformed_json(
-        service: UserService, cache_repo: AsyncMock, user_repo: AsyncMock
+        service: UserService,
+        cache_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         email = "a@b.com"
         cache_repo.find.return_value = {"payload": "invalid-json{"}
@@ -319,7 +368,9 @@ def describe_get_email_preferences():
         cache_repo.save.assert_awaited_once()
 
     async def it_returns_default_preferences_if_not_found_in_db(
-        service: UserService, cache_repo: AsyncMock, user_repo: AsyncMock
+        service: UserService,
+        cache_repo: AsyncMock,
+        user_repo: AsyncMock,
     ):
         email = "unknown@b.com"
         cache_repo.find.return_value = None
@@ -424,7 +475,9 @@ def describe_mark_email_as_verified():
 
 def describe_process_unsubscribe():
     async def it_applies_a_club_scoped_opt_out_and_invalidates_the_cache(
-        service: UserService, user_repo: AsyncMock, cache_repo: AsyncMock
+        service: UserService,
+        user_repo: AsyncMock,
+        cache_repo: AsyncMock,
     ):
         user = UserFactory.build(id=SOME_USER_ID, email="alice@example.com")
         user_repo.find_by_id.return_value = user
@@ -445,7 +498,9 @@ def describe_process_unsubscribe():
         user = UserFactory.build(id=SOME_USER_ID, email="alice@example.com")
         user_repo.find_by_id.return_value = user
         token_data = UnsubscribeTokenData(
-            scope=UnsubscribeScope.CATEGORY, user_id=SOME_USER_ID, category=EmailCategory.ENGAGEMENT
+            scope=UnsubscribeScope.CATEGORY,
+            user_id=SOME_USER_ID,
+            category=EmailCategory.ENGAGEMENT,
         )
 
         result = await service.process_unsubscribe(token_data)
@@ -458,7 +513,8 @@ def describe_process_unsubscribe():
         user_repo.opt_out_club_by_id.assert_not_called()
 
     async def it_raises_user_not_found_error_when_the_token_targets_a_missing_user(
-        service: UserService, user_repo: AsyncMock
+        service: UserService,
+        user_repo: AsyncMock,
     ):
         user_repo.find_by_id.return_value = None
         token_data = UnsubscribeTokenData(scope=UnsubscribeScope.CLUB, user_id=SOME_USER_ID, club_id=SOME_CLUB_ID)

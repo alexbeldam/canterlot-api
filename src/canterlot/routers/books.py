@@ -77,5 +77,9 @@ async def search_external_books(
     response_model=BookResponse,
     responses=GET_BOOK_RESPONSES,
 )
-async def get_book(book: Annotated[BookModel, Depends(get_book_from_identifier)]):
-    return BookResponse.model_validate(book, from_attributes=True)
+async def get_book(
+    book: Annotated[BookModel, Depends(get_book_from_identifier)],
+    book_service: Annotated[BookService, Depends(get_book_service)],
+):
+    rating_stats = await book_service.get_rating_stats(PydanticObjectId(book.id))
+    return BookResponse.with_rating_stats(book, rating_stats)

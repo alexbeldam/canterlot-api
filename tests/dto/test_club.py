@@ -4,6 +4,7 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import HttpUrl, ValidationError
 
+from canterlot.dto.book import RatedBook, RatedBookSummaryDTO
 from canterlot.dto.club import (
     ClubCreateRequest,
     ClubDetailResponse,
@@ -13,8 +14,8 @@ from canterlot.dto.club import (
 )
 from canterlot.models.club import MemberSchema, PendingApprovalSchema
 from canterlot.models.user import AvatarSchema
-from canterlot.types import AuthProviderName, JoinPolicy, MemberRole
-from tools.factories import ClubCreateRequestFactory, ClubFactory, UserFactory
+from canterlot.types import AuthProviderName, BookProviderIdentifier, BookProviderName, JoinPolicy, MemberRole
+from tools.factories import BookFactory, ClubCreateRequestFactory, ClubFactory, UserFactory
 
 SOME_OWNER_ID = PydanticObjectId("507f1f77bcf86cd799439011")
 SOME_PENDING_ID = PydanticObjectId("507f1f77bcf86cd799439012")
@@ -115,6 +116,7 @@ def describe_club_member_profile_response_from_models():
         assert response.joined_at == member.joined_at
         assert response.avatar is None
         assert not hasattr(response, "email")
+        assert not hasattr(response, "books_read")
 
     def it_reflects_the_users_avatar_when_set():
         user = UserFactory.build(
@@ -133,6 +135,19 @@ def describe_club_member_profile_response_from_models():
         assert response.avatar is not None
         assert response.avatar.source == AuthProviderName.GRAVATAR
         assert str(response.avatar.value) == "https://gravatar.com/avatar/somehash"
+
+
+def describe_rated_book_summary_dto():
+    def it_maps_a_rated_book_to_a_summary_without_leaking_read_at():
+        book = BookFactory.build(external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "abc123"))
+        rated = RatedBook(book=book, rating=4.5, read_at=datetime.now(UTC))
+
+        summary = RatedBookSummaryDTO.from_model(rated)
+
+        assert summary.external_id == book.external_id
+        assert summary.title == book.title
+        assert summary.rating == 4.5
+        assert not hasattr(summary, "read_at")
 
 
 def describe_club_detail_response_from_model_with_pending():
@@ -193,7 +208,10 @@ def describe_club_detail_response_from_model_with_pending():
         )
 
         response = ClubDetailResponse.from_model_with_pending(
-            club, user_usernames={SOME_OWNER_ID: "owner_1"}, pending_usernames={}, viewer_id=SOME_OWNER_ID
+            club,
+            user_usernames={SOME_OWNER_ID: "owner_1"},
+            pending_usernames={},
+            viewer_id=SOME_OWNER_ID,
         )
 
         assert response.protected_former_owner is None

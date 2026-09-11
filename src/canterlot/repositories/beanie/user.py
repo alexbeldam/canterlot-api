@@ -121,9 +121,6 @@ class BeanieUserRepository(UserRepository):
     async def increment_referral_count_by_username(self, username: UsernameStr) -> None:
         await UserModel.find_one(UserModel.username == username).inc({UserModel.referral_count: 1})
 
-    async def push_read_book_by_id(self, user_id, read_book):
-        await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.books_read: read_book}))
-
     async def push_refresh_token_by_id(self, user_id: PydanticObjectId, token: str) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.refresh_tokens: token}))
 
@@ -146,7 +143,10 @@ class BeanieUserRepository(UserRepository):
         )
 
     async def update_linked_provider_picture(
-        self, user_id: PydanticObjectId, provider: AuthProviderName, picture_url: HttpsUrl
+        self,
+        user_id: PydanticObjectId,
+        provider: AuthProviderName,
+        picture_url: HttpsUrl,
     ) -> None:
         await UserModel.find_one(UserModel.id == user_id).update_one(
             {"$set": {"linked_providers.$[target].picture_url": picture_url}},

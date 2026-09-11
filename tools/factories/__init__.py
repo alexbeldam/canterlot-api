@@ -30,6 +30,7 @@ from .models import (
     InviteFactory,
     LinkCadidateFactory,
     LinkedProviderFactory,
+    ReadBookFactory,
     UserFactory,
     VerificationCodeFactory,
 )
@@ -63,6 +64,7 @@ __all__ = [
     "LinkProviderRequestFactory",
     "LinkedProviderFactory",
     "MemberFactory",
+    "ReadBookFactory",
     "RegisterResponseFactory",
     "SearchResultFactory",
     "TokenResponseFactory",

@@ -15,7 +15,7 @@ from canterlot.constants import DEAD_LETTER_QUEUE_NAME, EMAIL_TASKS_QUEUE_NAME, 
 from canterlot.emails import EmailClient, EmailPriority, EmailTaskPayload, get_email_client, render_email_template
 from canterlot.emails.core.policy import EmailPolicyEngine
 from canterlot.repositories import CacheRepository
-from canterlot.repositories.beanie import BeanieUserRepository
+from canterlot.repositories.beanie import BeanieBookRepository, BeanieReadBookRepository, BeanieUserRepository
 from canterlot.repositories.redis import RedisRepository
 from canterlot.services import UserService
 from canterlot.utils import get_logger, setup_logging
@@ -40,7 +40,11 @@ async def _requeue_job(job: Any, delay_seconds: float, kwargs: dict[str, Any]) -
 
 
 async def _is_quota_lock_active(
-    ctx: CanterlotContext, priority_val: object, job: Any, kwargs: dict[str, Any], log: Any
+    ctx: CanterlotContext,
+    priority_val: object,
+    job: Any,
+    kwargs: dict[str, Any],
+    log: Any,
 ) -> bool:
     repo = ctx["cache_repo"]
     quota_depleted = await repo.find(QUOTA_LOCK_KEY)
@@ -227,7 +231,14 @@ def build_worker(redis_client: Redis) -> Worker:
     email_client = get_email_client()
     cache_repo = RedisRepository(redis_client)
     user_repo = BeanieUserRepository()
-    user_service = UserService(user_repo=user_repo, cache_repo=cache_repo)
+    read_book_repo = BeanieReadBookRepository()
+    book_repo = BeanieBookRepository()
+    user_service = UserService(
+        user_repo=user_repo,
+        cache_repo=cache_repo,
+        read_book_repo=read_book_repo,
+        book_repo=book_repo,
+    )
     saq_queue = RedisQueue(redis_client, name=EMAIL_TASKS_QUEUE_NAME)
     dlq_queue = RedisQueue(redis_client, name=DEAD_LETTER_QUEUE_NAME)
 

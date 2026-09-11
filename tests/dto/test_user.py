@@ -4,14 +4,17 @@ import pytest
 from pydantic import HttpUrl, ValidationError
 
 from canterlot.config import get_settings
+from canterlot.dto.book import RatedBook
 from canterlot.dto.user import (
     AvatarDTO,
+    MarkBookReadRequest,
+    ReadBookSummaryDTO,
     SetAvatarRequest,
     UserProfileResponse,
 )
 from canterlot.models.user import AvatarSchema
 from canterlot.types import AuthProviderName, BadgeReason
-from tools.factories import UpdateProfileRequestFactory, UserFactory
+from tools.factories import BookFactory, UpdateProfileRequestFactory, UserFactory
 
 
 def describe_update_profile_request():
@@ -42,6 +45,26 @@ def describe_update_profile_request():
     def it_rejects_a_name_outside_constraints(bad_name: str):
         with pytest.raises(ValidationError):
             UpdateProfileRequestFactory.build(name=bad_name)
+
+
+def describe_mark_book_read_request():
+    def it_defaults_rating_to_none():
+        request = MarkBookReadRequest()
+        assert request.rating is None
+
+    @pytest.mark.parametrize("rating", [0.5, 1.0, 2.5, 5.0])
+    def it_accepts_half_step_ratings_within_bounds(rating: float):
+        request = MarkBookReadRequest(rating=rating)
+        assert request.rating == rating
+
+    @pytest.mark.parametrize("rating", [0.0, 0.4, 5.5])
+    def it_rejects_ratings_outside_bounds(rating: float):
+        with pytest.raises(ValidationError):
+            MarkBookReadRequest(rating=rating)
+
+    def it_rejects_a_rating_not_on_a_half_step():
+        with pytest.raises(ValidationError):
+            MarkBookReadRequest(rating=1.2)
 
 
 def describe_avatar_dto():
@@ -151,3 +174,24 @@ def describe_user_profile_response_from_model():
 
         assert response.needs_terms_reacceptance is True
         assert response.needs_privacy_reacceptance is False
+
+
+def describe_read_book_summary_dto():
+    def it_reflects_the_book_rating_and_read_at():
+        book = BookFactory.build()
+        read_at = datetime(2025, 6, 1, tzinfo=UTC)
+
+        summary = ReadBookSummaryDTO.from_model(RatedBook(book=book, rating=4.5, read_at=read_at))
+
+        assert summary.external_id == book.external_id
+        assert summary.title == book.title
+        assert summary.rating == 4.5
+        assert summary.read_at == read_at
+
+    def it_allows_a_null_rating_for_an_unrated_read_book():
+        book = BookFactory.build()
+        read_at = datetime(2025, 6, 1, tzinfo=UTC)
+
+        summary = ReadBookSummaryDTO.from_model(RatedBook(book=book, rating=None, read_at=read_at))
+
+        assert summary.rating is None

@@ -7,8 +7,8 @@ from polyfactory import Use
 from pydantic import HttpUrl
 
 from canterlot.emails.core.enums import EmailCategory
-from canterlot.models import BookModel, CatalogEntryModel, ClubModel, InviteModel, UserModel
-from canterlot.models.book import LinkCandidate, ReadBook
+from canterlot.models import BookModel, CatalogEntryModel, ClubModel, InviteModel, ReadBookModel, UserModel
+from canterlot.models.book import LinkCandidate
 from canterlot.models.club import PendingApprovalSchema
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.models.verification import VerificationCodeModel
@@ -60,7 +60,7 @@ class BookFactory(BaseDocumentFactory[BookModel]):
     languages = Use(lambda: [BookFactory.__faker__.language_code() for _ in range(2)])
     description = Use(lambda: BookFactory.__faker__.paragraph(nb_sentences=3))
     categories = Use(lambda: [BookFactory.__faker__.word() for _ in range(3)])
-    cover_url = Use(lambda: BookFactory.__faker__.image_url())
+    cover_url = Use(lambda: BookFactory.__faker__.image_url(width=500, height=700))
     urls = Use(
         lambda: {
             ext: HttpUrl(
@@ -158,7 +158,7 @@ class AvatarFactory(BaseModelFactory[AvatarSchema]):
     __model__ = AvatarSchema
     __set_as_default_factory_for_type__ = True
 
-    value = Use(lambda: AvatarFactory.__faker__.image_url())
+    value = Use(lambda: AvatarFactory.__faker__.image_url(width=300, height=300))
 
 
 class LinkedProviderFactory(BaseModelFactory[LinkedProviderSchema]):
@@ -166,7 +166,7 @@ class LinkedProviderFactory(BaseModelFactory[LinkedProviderSchema]):
     __set_as_default_factory_for_type__ = True
 
     external_id = Use(lambda: LinkedProviderFactory.__faker__.uuid4())
-    picture_url = Use(lambda: LinkedProviderFactory.__faker__.image_url())
+    picture_url = Use(lambda: LinkedProviderFactory.__faker__.image_url(width=300, height=300))
 
 
 class UserFactory(BaseDocumentFactory[UserModel]):
@@ -182,7 +182,6 @@ class UserFactory(BaseDocumentFactory[UserModel]):
     referral_count = 0
     badges = Use(lambda: [EarnedBadgeSchema(reason=BadgeReason.JOINED)])
     refresh_tokens = Use(lambda: cast(list[str], []))
-    books_read = Use(lambda: cast(list[ReadBook], []))
     accepted_terms_version = 1
     accepted_terms_at = Use(
         lambda: UserFactory.__faker__.date_time_between(start_date="-1y", end_date="now", tzinfo=UTC)
@@ -195,6 +194,14 @@ class UserFactory(BaseDocumentFactory[UserModel]):
         lambda: UserFactory.__faker__.date_time_between(start_date="-1y", end_date="now", tzinfo=UTC)
     )
     last_seen_at = Use(lambda: UserFactory.__faker__.date_time_between(start_date="-2m", end_date="now", tzinfo=UTC))
+
+
+class ReadBookFactory(BaseDocumentFactory[ReadBookModel]):
+    __model__ = ReadBookModel
+
+    rating = Use(
+        lambda: ReadBookFactory.__faker__.random_element([None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+    )
 
 
 class VerificationCodeFactory(BaseDocumentFactory[VerificationCodeModel]):

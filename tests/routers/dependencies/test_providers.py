@@ -32,6 +32,7 @@ from canterlot.repositories import (
     ClubRepository,
     DatabaseRepository,
     InviteRepository,
+    ReadBookRepository,
     UserRepository,
     VerificationRepository,
 )
@@ -40,6 +41,7 @@ from canterlot.repositories.beanie import (
     BeanieClubRepository,
     BeanieDatabaseRepository,
     BeanieInviteRepository,
+    BeanieReadBookRepository,
     BeanieUserRepository,
     BeanieVerificationRepository,
 )
@@ -89,6 +91,7 @@ from canterlot.routers.dependencies.providers import (
     get_optional_refresh_token_context,
     get_process_unsubscribe_use_case,
     get_rate_limiter,
+    get_read_book_repository,
     get_reclaim_club_ownership_use_case,
     get_redis_client,
     get_register_user_use_case,
@@ -350,6 +353,7 @@ def describe_service_factories():
         assert isinstance(get_user_repository(), BeanieUserRepository)
         assert isinstance(get_invite_repository(), BeanieInviteRepository)
         assert isinstance(get_verification_repository(), BeanieVerificationRepository)
+        assert isinstance(get_read_book_repository(), BeanieReadBookRepository)
 
     def it_builds_the_database_repositories_used_for_health_checks():
         repos = get_database_repositories(AsyncMock())
@@ -456,6 +460,7 @@ def describe_service_factories_real():
         service = await get_book_service(
             cache=AsyncMock(spec=CacheRepository),
             book_repo=AsyncMock(spec=BookRepository),
+            read_book_repo=AsyncMock(spec=ReadBookRepository),
             providers=[AsyncMock(spec=BookProvider)],
         )
         assert isinstance(service, BookService)
@@ -477,6 +482,8 @@ def describe_service_factories_real():
         service = await get_club_service(
             club_repo=AsyncMock(spec=ClubRepository),
             user_repo=AsyncMock(spec=UserRepository),
+            book_repo=AsyncMock(spec=BookRepository),
+            read_book_repo=AsyncMock(spec=ReadBookRepository),
         )
         assert isinstance(service, ClubService)
 
@@ -492,6 +499,8 @@ def describe_service_factories_real():
         service = await get_user_service(
             user_repo=AsyncMock(spec=UserRepository),
             cache_repo=AsyncMock(spec=CacheRepository),
+            read_book_repo=AsyncMock(spec=ReadBookRepository),
+            book_repo=AsyncMock(spec=BookRepository),
         )
         assert isinstance(service, UserService)
 

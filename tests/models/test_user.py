@@ -23,7 +23,6 @@ def describe_user_model_defaults():
         document = UserFactory.build()
         assert document.referral_count == 0
         assert document.refresh_tokens == []
-        assert document.books_read == []
         assert document.linked_providers == []
 
     def it_allows_a_user_created_purely_from_an_oauth_provider_to_have_no_password():
