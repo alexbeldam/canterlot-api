@@ -94,6 +94,7 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 ## Tests
 
+- **Try writing the test first:** For new functionality or a new branch in existing code, writing the failing `it_<behavior>` test before the implementation tends to surface awkward interfaces or layering issues immediately instead of after the fact, and keeps coverage naturally at 100% of new branches instead of chasing the gate below after the fact.
 - **High Coverage Gate:** We hold test coverage to a strict **95% threshold evaluated per-file**, rather than an aggregate codebase average. Please ensure new code exercises actual conditional loops, error routines, and branch flows, not just the happy path.
 
 - **Layout & Style:** Test paths mirror `src/canterlot/` hierarchy exactly. We use a `pytest-describe` style layout, grouping suites into `describe_<unit>` blocks containing `it_<behavior>` functions.
