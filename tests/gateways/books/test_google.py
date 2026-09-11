@@ -77,7 +77,8 @@ def describe_fetch_volumes():
         assert str(book.cover_url) == "https://books.google.com/cover.jpg"
 
     async def it_leaves_the_cover_url_unset_when_no_image_is_available(
-        provider: GoogleBookProvider, session: AsyncMock
+        provider: GoogleBookProvider,
+        session: AsyncMock,
     ):
         session.get.return_value = _response(
             json_data={"totalItems": 1, "items": [{"id": "abc123", "volumeInfo": {"title": "No Cover"}}]}
@@ -88,7 +89,8 @@ def describe_fetch_volumes():
         assert result["books"][0].cover_url is None
 
     async def it_defaults_to_an_empty_language_list_when_the_field_is_absent(
-        provider: GoogleBookProvider, session: AsyncMock
+        provider: GoogleBookProvider,
+        session: AsyncMock,
     ):
         session.get.return_value = _response(
             json_data={"totalItems": 1, "items": [{"id": "abc123", "volumeInfo": {"title": "No Language"}}]}
@@ -158,7 +160,8 @@ def describe_fetch_volumes():
         assert result["books"][0].isbn_10 is None
 
     async def it_builds_a_query_from_title_and_authors_when_no_isbn_is_given(
-        provider: GoogleBookProvider, session: AsyncMock
+        provider: GoogleBookProvider,
+        session: AsyncMock,
     ):
         session.get.return_value = _response(json_data={"totalItems": 0, "items": []})
 
@@ -196,7 +199,8 @@ def describe_fetch_volume_details():
         assert await provider.fetch_volume_details("abc123") is None
 
     async def it_raises_when_the_provider_returns_an_unexpected_status(
-        provider: GoogleBookProvider, session: AsyncMock
+        provider: GoogleBookProvider,
+        session: AsyncMock,
     ):
         session.get.return_value = _response(status_code=503, text="Service temporarily unavailable.")
 

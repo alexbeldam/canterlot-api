@@ -20,7 +20,8 @@ def describe_one_click_unsubscribe():
         process_unsubscribe_use_case.execute.assert_awaited_once_with("some-unsubscribe-token")
 
     def it_rejects_a_request_missing_the_one_click_form_field(
-        client: TestClient, process_unsubscribe_use_case: AsyncMock
+        client: TestClient,
+        process_unsubscribe_use_case: AsyncMock,
     ):
         response = client.post("/v1/unsubscribe", params={"token": "some-unsubscribe-token"})
 
@@ -41,7 +42,8 @@ def describe_one_click_unsubscribe():
 
 def describe_browser_unsubscribe():
     def it_redirects_to_the_frontend_with_the_resolved_scope(
-        client: TestClient, process_unsubscribe_use_case: AsyncMock
+        client: TestClient,
+        process_unsubscribe_use_case: AsyncMock,
     ):
         process_unsubscribe_use_case.execute.return_value = UnsubscribeScope.CATEGORY
 

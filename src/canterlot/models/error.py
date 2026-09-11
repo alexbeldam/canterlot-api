@@ -16,7 +16,8 @@ class ErrorDetail(BaseModel):
         description="A human-readable description of the error suitable for logs or debugging.",
     )
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC), description="The exact UTC timestamp when the error occurred."
+        default_factory=lambda: datetime.now(UTC),
+        description="The exact UTC timestamp when the error occurred.",
     )
     context: dict[str, Any] | None = Field(
         default=None,

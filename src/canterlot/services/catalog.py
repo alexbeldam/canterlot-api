@@ -172,7 +172,9 @@ class CatalogService:
 
         return catalog_page.map(
             lambda entry: CatalogEntryResponse.from_model(
-                books[entry.book_id], usernames[entry.suggested_by], entry.suggested_at
+                books[entry.book_id],
+                usernames[entry.suggested_by],
+                entry.suggested_at,
             )
         )
 
@@ -206,7 +208,8 @@ class CatalogService:
 
         if missing_extensions:
             log.info(
-                "Book found but missing formats, initiating targeted scraping sequence", formats=missing_extensions
+                "Book found but missing formats, initiating targeted scraping sequence",
+                formats=missing_extensions,
             )
             links = await self.__scrape_best_links(suggestion, missing_extensions)
 

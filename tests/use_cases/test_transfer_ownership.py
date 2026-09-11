@@ -33,7 +33,8 @@ def describe_transfer_club_ownership_use_case():
         email_dispatch_service: AsyncMock,
     ):
         current_owner = UserFactory.build(
-            id=PydanticObjectId("507f1f77bcf86cd799439011"), email="celestia@canterlot.dev"
+            id=PydanticObjectId("507f1f77bcf86cd799439011"),
+            email="celestia@canterlot.dev",
         )
         new_owner = UserFactory.build(
             id=PydanticObjectId("507f1f77bcf86cd799439099"),

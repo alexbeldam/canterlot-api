@@ -39,7 +39,9 @@ def describe_create_code():
 def describe_validate_code():
 
     async def it_raises_invalid_code_error_if_no_matching_active_code_exists(
-        service, verification_repo, sample_user_id
+        service,
+        verification_repo,
+        sample_user_id,
     ):
         verification_repo.find_active_code.return_value = None
 

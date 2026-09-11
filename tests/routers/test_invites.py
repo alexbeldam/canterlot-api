@@ -80,7 +80,8 @@ def describe_preview_invitation():
 def describe_accept_invitation():
     def it_returns_200_when_joined_outright(client: TestClient, accept_invite_use_case: AsyncMock):
         accept_invite_use_case.execute.return_value = ClubOnboarding(
-            club_name="Book Club", status=ClubOnboardingStatus.JOINED
+            club_name="Book Club",
+            status=ClubOnboardingStatus.JOINED,
         )
 
         response = client.patch(f"/v1/invites/{SOME_INVITE_ID}")
@@ -90,7 +91,8 @@ def describe_accept_invitation():
 
     def it_returns_202_when_queued_for_approval(client: TestClient, accept_invite_use_case: AsyncMock):
         accept_invite_use_case.execute.return_value = ClubOnboarding(
-            club_name="Book Club", status=ClubOnboardingStatus.PENDING_APPROVAL
+            club_name="Book Club",
+            status=ClubOnboardingStatus.PENDING_APPROVAL,
         )
 
         response = client.patch(f"/v1/invites/{SOME_INVITE_ID}")
@@ -99,10 +101,12 @@ def describe_accept_invitation():
         assert response.json()["status"] == "PENDING_APPROVAL"
 
     def it_does_not_register_usage_when_the_user_was_already_a_member(
-        client: TestClient, accept_invite_use_case: AsyncMock
+        client: TestClient,
+        accept_invite_use_case: AsyncMock,
     ):
         accept_invite_use_case.execute.return_value = ClubOnboarding(
-            club_name="Book Club", status=ClubOnboardingStatus.ALREADY_MEMBER
+            club_name="Book Club",
+            status=ClubOnboardingStatus.ALREADY_MEMBER,
         )
 
         response = client.patch(f"/v1/invites/{SOME_INVITE_ID}")
@@ -110,7 +114,8 @@ def describe_accept_invitation():
         assert response.status_code == 200
 
     def it_returns_403_and_does_not_register_usage_when_the_user_is_banned(
-        client: TestClient, accept_invite_use_case: AsyncMock
+        client: TestClient,
+        accept_invite_use_case: AsyncMock,
     ):
         accept_invite_use_case.execute.side_effect = MemberBannedError("banned")
 

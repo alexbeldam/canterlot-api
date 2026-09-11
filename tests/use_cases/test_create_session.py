@@ -39,7 +39,9 @@ def describe_create_session_use_case():
             email_dispatch_service: AsyncMock,
         ):
             payload = CreateSessionRequestFactory.build(
-                type=SessionType.PASSWORD, username="twilight", password=SecretStr("securePassword123!")
+                type=SessionType.PASSWORD,
+                username="twilight",
+                password=SecretStr("securePassword123!"),
             )
 
             auth_service.login_user.return_value = TokenResponseFactory.build(

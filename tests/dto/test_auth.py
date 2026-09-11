@@ -245,7 +245,9 @@ def describe_connected_providers_response_from_model():
 
     def it_reports_the_password_flag_and_linked_providers():
         linked = LinkedProviderSchema(
-            provider=AuthProviderName.GOOGLE, external_id="sub-1", picture_url=HttpUrl("https://example.com/pic.jpg")
+            provider=AuthProviderName.GOOGLE,
+            external_id="sub-1",
+            picture_url=HttpUrl("https://example.com/pic.jpg"),
         )
         user = UserFactory.build(
             name="Alice Smith",

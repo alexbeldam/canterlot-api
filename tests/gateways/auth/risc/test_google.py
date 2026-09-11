@@ -61,7 +61,9 @@ def _patch_jwk_client(public_key):
 
 def describe_verify():
     async def it_returns_the_decoded_claims_for_a_validly_signed_token(
-        verifier: GoogleRiscVerifier, session: AsyncMock, key_pair
+        verifier: GoogleRiscVerifier,
+        session: AsyncMock,
+        key_pair,
     ):
         private_key, public_key = key_pair
         _configure_discovery(session)

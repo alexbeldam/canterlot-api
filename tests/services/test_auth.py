@@ -240,7 +240,10 @@ def describe_sign_in_with_provider():
     async def it_resyncs_the_stored_picture_on_every_login_with_a_picture(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(
-            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/new.jpg"
+            external_id="sub-1",
+            email="alice@example.com",
+            name="Alice",
+            picture="https://example.com/new.jpg",
         )
         user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
         user_repo.find_avatar_by_id.return_value = None
@@ -249,13 +252,18 @@ def describe_sign_in_with_provider():
         await service.sign_in_with_provider(AuthProviderName.GOOGLE, "some-credential")
 
         user_repo.update_linked_provider_picture.assert_awaited_once_with(
-            SOME_USER_ID, AuthProviderName.GOOGLE, HttpUrl("https://example.com/new.jpg")
+            SOME_USER_ID,
+            AuthProviderName.GOOGLE,
+            HttpUrl("https://example.com/new.jpg"),
         )
 
     async def it_refreshes_the_active_avatar_value_when_its_source_is_already_google(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(
-            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/new.jpg"
+            external_id="sub-1",
+            email="alice@example.com",
+            name="Alice",
+            picture="https://example.com/new.jpg",
         )
         user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
         user_repo.find_avatar_by_id.return_value = AvatarSchema(
@@ -274,7 +282,10 @@ def describe_sign_in_with_provider():
     async def it_never_overrides_a_generated_or_gravatar_choice_on_login(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(
-            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/new.jpg"
+            external_id="sub-1",
+            email="alice@example.com",
+            name="Alice",
+            picture="https://example.com/new.jpg",
         )
         user_repo.find_id_by_linked_provider.return_value = SOME_USER_ID
         user_repo.find_avatar_by_id.return_value = None
@@ -346,7 +357,10 @@ def describe_sign_in_with_provider():
     async def it_adopts_the_google_picture_as_the_new_accounts_avatar_when_present(user_repo: AsyncMock):
         google = _google_provider()
         google.verify.return_value = OAuthIdentity(
-            external_id="sub-1", email="alice@example.com", name="Alice", picture="https://example.com/pic.jpg"
+            external_id="sub-1",
+            email="alice@example.com",
+            name="Alice",
+            picture="https://example.com/pic.jpg",
         )
         user_repo.find_id_by_linked_provider.return_value = None
         user_repo.find_by_email.return_value = None
@@ -483,7 +497,9 @@ def describe_link_provider():
         await service.link_provider(SOME_USER_ID, AuthProviderName.GOOGLE, "some-credential")
 
         user_repo.update_linked_provider_picture.assert_awaited_once_with(
-            SOME_USER_ID, AuthProviderName.GOOGLE, HttpUrl("https://example.com/new.jpg")
+            SOME_USER_ID,
+            AuthProviderName.GOOGLE,
+            HttpUrl("https://example.com/new.jpg"),
         )
         user_repo.set_avatar.assert_awaited_once()
 

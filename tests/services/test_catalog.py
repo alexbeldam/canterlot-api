@@ -83,7 +83,9 @@ def describe_membership_and_suggestion_gating():
         club_repo.is_suggestions_allowed.assert_not_called()
 
     async def it_rejects_a_suggestion_when_the_queue_is_closed(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = False
@@ -95,7 +97,9 @@ def describe_membership_and_suggestion_gating():
 
 def describe_suggesting_a_new_book():
     async def it_scrapes_all_formats_creates_and_catalogs_a_new_book(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -118,7 +122,9 @@ def describe_suggesting_a_new_book():
         club_repo.add_to_catalog.assert_awaited_once()
 
     async def it_persists_the_description_onto_the_new_book(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -142,7 +148,9 @@ def describe_suggesting_a_new_book():
 
 def describe_suggesting_an_existing_book():
     async def it_returns_already_exists_without_scraping_when_all_formats_are_present_and_linked(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -158,7 +166,9 @@ def describe_suggesting_an_existing_book():
         club_repo.add_to_catalog.assert_not_called()
 
     async def it_scrapes_missing_formats_and_supplements_the_existing_book(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -174,7 +184,9 @@ def describe_suggesting_an_existing_book():
         club_repo.add_to_catalog.assert_awaited_once()
 
     async def it_finds_an_existing_book_by_isbn_before_falling_back_to_provider_and_source_id(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -190,7 +202,9 @@ def describe_suggesting_an_existing_book():
         book_repo.find_by_external_id.assert_not_called()
 
     async def it_falls_back_to_provider_and_source_id_when_no_book_matches_the_isbn(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -207,7 +221,9 @@ def describe_suggesting_an_existing_book():
         book_repo.find_by_external_id.assert_awaited_once()
 
     async def it_skips_the_isbn_lookup_when_the_suggestion_has_no_isbn(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -222,7 +238,9 @@ def describe_suggesting_an_existing_book():
         book_repo.find_by_isbn.assert_not_called()
 
     async def it_does_not_touch_urls_when_scraping_finds_nothing_new(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -241,7 +259,9 @@ def describe_removing_a_book_from_the_catalog():
         return CatalogEntryModel(book_id=SOME_BOOK_ID, suggested_by=suggested_by)
 
     async def it_removes_the_book_when_the_caller_is_an_owner(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
@@ -252,7 +272,9 @@ def describe_removing_a_book_from_the_catalog():
         club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
     async def it_removes_the_book_when_the_caller_is_an_admin(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.ADMIN
@@ -263,7 +285,9 @@ def describe_removing_a_book_from_the_catalog():
         club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
     async def it_removes_the_book_when_the_caller_is_the_original_suggester(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry(suggested_by=SOME_USER_ID)
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
@@ -274,7 +298,9 @@ def describe_removing_a_book_from_the_catalog():
         club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
     async def it_rejects_a_plain_member_who_did_not_suggest_the_book(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry(suggested_by=OTHER_USER_ID)
         club_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
@@ -286,7 +312,9 @@ def describe_removing_a_book_from_the_catalog():
         club_repo.remove_from_catalog.assert_not_called()
 
     async def it_raises_when_the_book_is_not_in_this_clubs_catalog(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = None
         service = _service(book_repo, club_repo, link_provider)
@@ -304,7 +332,10 @@ def describe_get_catalog_page():
         return Page(items=entries, total_items=len(entries), current_page=1, page_size=20)
 
     async def it_rejects_a_non_member(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = False
         service = _service(book_repo, club_repo, link_provider, user_repo)
@@ -315,7 +346,10 @@ def describe_get_catalog_page():
         club_repo.find_catalog_page_by_club_id.assert_not_called()
 
     async def it_resolves_the_book_and_suggesters_username_for_each_entry(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         entry = CatalogEntryModel(
@@ -336,7 +370,10 @@ def describe_get_catalog_page():
         user_repo.get_usernames_by_ids.assert_awaited_once_with([SOME_USER_ID])
 
     async def it_resolves_a_suggested_by_username_filter_before_querying_the_catalog(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         user_repo.find_id_by_username.return_value = SOME_USER_ID
@@ -344,7 +381,13 @@ def describe_get_catalog_page():
         service = _service(book_repo, club_repo, link_provider, user_repo)
 
         await service.get_catalog_page(
-            SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC, suggested_by="alice_1"
+            SOME_CLUB_ID,
+            SOME_USER_ID,
+            1,
+            20,
+            None,
+            SortDirection.DESC,
+            suggested_by="alice_1",
         )
 
         club_repo.find_catalog_page_by_club_id.assert_awaited_once_with(
@@ -358,7 +401,10 @@ def describe_get_catalog_page():
         )
 
     async def it_passes_the_free_text_query_through_to_the_repository(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.find_catalog_page_by_club_id.return_value = _page([])
@@ -377,14 +423,23 @@ def describe_get_catalog_page():
         )
 
     async def it_returns_an_empty_page_when_the_suggested_by_filter_does_not_resolve(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock, user_repo: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
+        user_repo: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         user_repo.find_id_by_username.return_value = None
         service = _service(book_repo, club_repo, link_provider, user_repo)
 
         page = await service.get_catalog_page(
-            SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC, suggested_by="ghost"
+            SOME_CLUB_ID,
+            SOME_USER_ID,
+            1,
+            20,
+            None,
+            SortDirection.DESC,
+            suggested_by="ghost",
         )
 
         assert page.items == []
@@ -394,7 +449,9 @@ def describe_get_catalog_page():
 
 def describe_backfilling_missing_metadata():
     async def it_fills_missing_scalar_fields_from_the_suggestion(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -414,7 +471,9 @@ def describe_backfilling_missing_metadata():
         assert str(updates["cover_url"]) == "https://example.com/c.jpg"
 
     async def it_fills_an_empty_list_field_from_the_suggestion(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -434,7 +493,9 @@ def describe_backfilling_missing_metadata():
         book_repo.fill_missing_fields.assert_awaited_once_with(SOME_BOOK_ID, {"authors": ["J.R.R. Tolkien"]})
 
     async def it_does_not_touch_a_list_field_that_already_has_entries(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -445,14 +506,18 @@ def describe_backfilling_missing_metadata():
         service = _service(book_repo, club_repo, link_provider)
 
         await service.suggest_book_to_club(
-            SOME_CLUB_ID, SOME_USER_ID, _suggestion(authors=["J.R.R. Tolkien", "A Co-Author"])
+            SOME_CLUB_ID,
+            SOME_USER_ID,
+            _suggestion(authors=["J.R.R. Tolkien", "A Co-Author"]),
         )
 
         updates = book_repo.fill_missing_fields.call_args.args[1]
         assert "authors" not in updates
 
     async def it_does_not_call_fill_missing_fields_when_nothing_is_missing(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -475,7 +540,9 @@ def describe_backfilling_missing_metadata():
 
 def describe_link_candidate_scoring():
     async def it_discards_candidates_below_the_similarity_threshold(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -499,7 +566,9 @@ def describe_link_candidate_scoring():
         assert captured["book"].urls == {}
 
     async def it_excludes_candidates_whose_language_does_not_match_preferred_languages(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -521,7 +590,9 @@ def describe_link_candidate_scoring():
         assert captured["book"].urls == {}
 
     async def it_keeps_a_candidate_with_multiple_languages_when_any_of_them_matches(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -543,7 +614,9 @@ def describe_link_candidate_scoring():
         assert str(captured["book"].urls[ExtensionType.PDF]) == "https://mirror.example.com/hobbit.pdf"
 
     async def it_prefers_an_exact_language_match_over_a_same_base_language_match_for_the_same_extension(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -567,7 +640,9 @@ def describe_link_candidate_scoring():
         assert str(captured["book"].urls[ExtensionType.PDF]) == "https://mirror.example.com/pt-br.pdf"
 
     async def it_does_not_filter_by_language_when_no_preferred_languages_are_given(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -589,7 +664,9 @@ def describe_link_candidate_scoring():
         assert str(captured["book"].urls[ExtensionType.PDF]) == "https://mirror.example.com/hobbit.pdf"
 
     async def it_redistributes_the_author_weight_when_the_suggestion_has_no_authors(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -611,7 +688,9 @@ def describe_link_candidate_scoring():
         assert str(captured["book"].urls[ExtensionType.PDF]) == "https://mirror.example.com/hobbit.pdf"
 
     async def it_prefers_a_verified_author_match_over_a_candidate_missing_author_data(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -635,7 +714,9 @@ def describe_link_candidate_scoring():
         assert str(captured["book"].urls[ExtensionType.PDF]) == "https://mirror.example.com/verified-author.pdf"
 
     async def it_ignores_a_link_provider_that_raises(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
@@ -658,7 +739,9 @@ def describe_link_candidate_scoring():
         assert captured["book"].urls == {}
 
     async def it_ignores_a_link_provider_returning_an_unexpected_payload_shape(
-        book_repo: AsyncMock, club_repo: AsyncMock, link_provider: AsyncMock
+        book_repo: AsyncMock,
+        club_repo: AsyncMock,
+        link_provider: AsyncMock,
     ):
         club_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True

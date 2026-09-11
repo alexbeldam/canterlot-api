@@ -39,7 +39,9 @@ class InviteService:
         self.__user_repo = user_repo
 
     async def get_preview_metadata(
-        self, invite_id: str, invited_by: UsernameStr | None = None
+        self,
+        invite_id: str,
+        invited_by: UsernameStr | None = None,
     ) -> InvitePreviewResponse:
         log = logger.bind(invite_id=invite_id)
         log.info("Fetching stateful token preview metadata")

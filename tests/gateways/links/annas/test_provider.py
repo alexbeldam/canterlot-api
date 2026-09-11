@@ -44,7 +44,9 @@ def describe_name():
 
 def describe_query_generation():
     async def it_issues_one_search_per_generated_query_variation(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [])
         session.get.return_value = _response()
@@ -54,7 +56,9 @@ def describe_query_generation():
         assert session.get.await_count == 2
 
     async def it_includes_preferred_languages_and_extensions_in_the_request(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [])
         session.get.return_value = _response()
@@ -66,7 +70,9 @@ def describe_query_generation():
         assert params["ext"] == ["epub"]
 
     async def it_defaults_to_all_extensions_when_none_are_specified(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [])
         session.get.return_value = _response()
@@ -77,7 +83,9 @@ def describe_query_generation():
         assert set(params["ext"]) == {e.value for e in ExtensionType}
 
     async def it_returns_no_queries_and_no_candidates_for_an_empty_search(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [])
 
@@ -89,7 +97,9 @@ def describe_query_generation():
 
 def describe_result_merging():
     async def it_dedupes_candidates_sharing_the_same_md5_across_queries(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         shared = SearchResultFactory.build()
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [shared])
@@ -102,7 +112,9 @@ def describe_result_merging():
         assert results[0].md5 == shared.md5
 
     async def it_tolerates_one_query_failing_while_keeping_results_from_others(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         good_result = SearchResultFactory.build()
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [good_result])
@@ -119,7 +131,9 @@ def describe_result_merging():
         assert [r.md5 for r in results if isinstance(r, SearchResult)] == [good_result.md5]
 
     async def it_raises_for_a_non_200_response_which_is_treated_as_a_failed_query(
-        monkeypatch: pytest.MonkeyPatch, provider: AnnaLinkProvider, session: AsyncMock
+        monkeypatch: pytest.MonkeyPatch,
+        provider: AnnaLinkProvider,
+        session: AsyncMock,
     ):
         monkeypatch.setattr(provider_module, "parse_response", lambda _response: [])
         session.get.return_value = _response(status_code=500)
