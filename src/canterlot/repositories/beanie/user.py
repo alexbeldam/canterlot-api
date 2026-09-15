@@ -130,6 +130,9 @@ class BeanieUserRepository(UserRepository):
         )
         return cast(UpdateResult, result).matched_count > 0
 
+    async def clear_all_refresh_tokens(self, user_id: PydanticObjectId) -> None:
+        await UserModel.find_one(UserModel.id == user_id).update_one(Set({UserModel.refresh_tokens: []}))
+
     async def add_linked_provider(self, user_id: PydanticObjectId, entry: LinkedProviderSchema) -> bool:
         try:
             await UserModel.find_one(UserModel.id == user_id).update_one(Push({UserModel.linked_providers: entry}))
