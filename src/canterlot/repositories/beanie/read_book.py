@@ -59,3 +59,7 @@ class BeanieReadBookRepository(ReadBookRepository):
         items = await query.sort(sort_field).skip((page - 1) * limit).limit(limit).to_list()
 
         return Page(items=items, total_items=total_items, current_page=page, page_size=limit)
+
+    async def delete(self, user_id: PydanticObjectId, book_id: PydanticObjectId) -> bool:
+        result = await ReadBookModel.find_one(ReadBookModel.user_id == user_id, ReadBookModel.book_id == book_id).delete()
+        return result.deleted_count > 0

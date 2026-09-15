@@ -12,6 +12,11 @@ class BookNotFoundError(BookDomainError):
     status_code = status.HTTP_404_NOT_FOUND
 
 
+class ReadBookNotFoundError(BookDomainError):
+    error_code = ErrorCode.READ_BOOK_NOT_FOUND
+    status_code = status.HTTP_404_NOT_FOUND
+
+
 class BookDetailsNotFoundError(BookDomainError):
     error_code = ErrorCode.EXTERNAL_BOOK_DETAILS_NOT_FOUND
     status_code = status.HTTP_404_NOT_FOUND
