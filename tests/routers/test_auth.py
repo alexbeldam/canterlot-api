@@ -252,6 +252,21 @@ def describe_logout():
         auth_service.logout.assert_not_called()
 
 
+def describe_logout_all():
+    async def revokes_all_sessions_and_clears_cookie(client: AsyncClient, auth_service: AsyncMock):
+        client.cookies.set("refresh_token", "old-refresh-token")
+        response = await client.post("/auth/logout-all")
+
+        assert response.status_code == 204
+        assert response.cookies.get("refresh_token") == '""'
+        auth_service.logout_all.assert_awaited_once_with(SOME_USER_ID)
+
+    async def ignores_unauthenticated(client: AsyncClient, auth_service: AsyncMock):
+        response = await client.post("/auth/logout-all")
+
+        assert response.status_code == 204
+        auth_service.logout_all.assert_not_called()
+
 def describe_request_password_reset():
     def it_accepts_the_request_and_delegates_to_the_use_case(
         client: TestClient,
