@@ -149,6 +149,24 @@ async def logout(
 
 
 @router.post(
+    "/logout-all",
+    operation_id="logoutAll",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Log out of all devices",
+    description="Revokes every session on the caller's account, including the current one.",
+)
+async def logout_all(
+    token_data: Annotated[RefreshTokenContext | None, Depends(get_optional_refresh_token_context)],
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> None:
+    clear_refresh_token_cookie(response)
+    if token_data is None:
+        return
+    await auth_service.logout_all(token_data.user_id)
+
+
+@router.post(
     "/resets",
     operation_id="requestPasswordReset",
     status_code=status.HTTP_202_ACCEPTED,
