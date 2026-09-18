@@ -36,6 +36,69 @@ def mongodb_container() -> Iterator[DockerContainer]:
         yield container
 
 
+
+async def _wait_for_connectable(client: AsyncMongoClient) -> None:
+    for _ in range(30):
+        try:
+            await client.admin.command("ping")
+            return
+        except (AutoReconnect, OperationFailure):
+            await asyncio.sleep(1)
+    raise RuntimeError("mongod never became connectable")
+
+
+async def _initiate_replica_set(url: str) -> None:
+    probe_client: AsyncMongoClient = AsyncMongoClient(
+        url,
+        directConnection=True,
+        serverSelectionTimeoutMS=30_000,
+    )
+
+    try:
+        await _wait_for_connectable(probe_client)
+
+        try:
+            await probe_client.admin.command("replSetGetStatus")
+            return
+        except OperationFailure as e:
+            if e.code != _REPL_SET_NOT_YET_INITIALIZED:
+                raise
+
+        await probe_client.admin.command(
+            "replSetInitiate",
+            {
+                "_id": "rs0",
+                "members": [
+                    {
+                        "_id": 0,
+                        "host": "localhost:27017",
+                    }
+                ],
+            },
+        )
+
+        # Give MongoDB time to transition from STARTUP to PRIMARY.
+        await asyncio.sleep(2)
+
+        for _ in range(60):
+            try:
+                status = await probe_client.admin.command("replSetGetStatus")
+
+                if status["myState"] == 1:
+                    return
+
+            except OperationFailure as e:
+                if e.code != _REPL_SET_NOT_YET_INITIALIZED:
+                    raise
+
+            await asyncio.sleep(1)
+
+        raise RuntimeError("mongod replica set never reached PRIMARY state")
+
+    finally:
+        await probe_client.close()
+
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _beanie_client(mongodb_container: DockerContainer) -> AsyncIterator[AsyncMongoClient]:
     host = mongodb_container.get_container_host_ip()
