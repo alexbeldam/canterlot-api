@@ -121,10 +121,8 @@ def describe_find_rating_stats_by_book_ids():
 
 
 def describe_count_readers_among_users():
-    async def it_returns_empty_dict_when_no_one_has_read_any_of_the_books():
-        book = await BookFactory.create_async()
-
-        counts = await repo.count_readers_among_users([_id(book)], [PydanticObjectId()])
+    async def it_returns_empty_dict_when_no_book_ids_are_given():
+        counts = await repo.count_readers_among_users([], [PydanticObjectId()])
 
         assert counts == {}
 
