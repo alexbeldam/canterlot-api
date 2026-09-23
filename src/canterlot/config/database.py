@@ -1,10 +1,11 @@
+from beanie import init_beanie
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 
 from canterlot.models import BEANIE_DOCUMENT_MODELS
 from canterlot.utils import get_logger
 
-from .bootstrap import bootstrap_beanie, init_beanie_when_primary
+from .search_index import ensure_registered_search_indexes
 from .settings import get_settings
 
 logger = get_logger(__name__)
@@ -22,6 +23,10 @@ class DatabaseManager:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
+    async def _reindex(self) -> None:
+        await init_beanie(database=self.__database, document_models=BEANIE_DOCUMENT_MODELS)
+        await ensure_registered_search_indexes()
+
     async def open(self):
         settings = get_settings().db
         mongodb_url = settings.mongodb_url.get_secret_value()
@@ -34,15 +39,15 @@ class DatabaseManager:
         )
         self.__database = self.__client[settings.mongodb_db_name]
 
-        await bootstrap_beanie(mongodb_url, self.__database, BEANIE_DOCUMENT_MODELS)
+        await self._reindex()
         logger.info("Connected to MongoDB pool.")
 
-    async def reinitialize_beanie(self) -> None:
+    async def reinitialize(self) -> None:
         if self.__database is None:
             raise RuntimeError("DatabaseManager is not open.")
 
-        await init_beanie_when_primary(self.__database, BEANIE_DOCUMENT_MODELS)
-        logger.info("Beanie reinitialized.")
+        await self._reindex()
+        logger.info("Database reinitialized.")
 
     async def close(self):
         if self.__client:
