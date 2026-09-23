@@ -1,7 +1,8 @@
 from beanie import Document
 
 from .book import BookModel, LinkCandidate
-from .club import CatalogEntryModel, ClubModel
+from .catalog_entry import CatalogEntryModel
+from .club import ClubModel
 from .club_membership import ClubMembershipModel
 from .error import ErrorCode, ErrorDetail, ErrorResponseModel
 from .invite import InviteModel
@@ -14,6 +15,7 @@ from .verification import VerificationCodeModel
 
 BEANIE_DOCUMENT_MODELS: list[type[Document]] = [
     BookModel,
+    CatalogEntryModel,
     ClubMembershipModel,
     ClubModel,
     InviteModel,
