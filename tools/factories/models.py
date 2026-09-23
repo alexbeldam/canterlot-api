@@ -86,7 +86,7 @@ class BookFactory(BaseDocumentFactory[BookModel]):
     )
 
 
-class CatalogEntryFactory(BaseModelFactory[CatalogEntryModel]):
+class CatalogEntryFactory(BaseDocumentFactory[CatalogEntryModel]):
     __model__ = CatalogEntryModel
 
 
@@ -98,7 +98,6 @@ class ClubFactory(BaseDocumentFactory[ClubModel]):
     slug = Use(lambda: ClubFactory.__faker__.slug())
     allow_suggestions = Use(lambda: ClubFactory.__faker__.boolean())
     preferred_languages = Use(lambda: [ClubFactory.__faker__.language_code() for _ in range(2)])
-    catalog = Use(lambda: cast(list[CatalogEntryModel], []))
     ownership_transferred_at = None
     protected_former_owner_id = None
 

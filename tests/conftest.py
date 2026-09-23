@@ -21,6 +21,7 @@ from canterlot.models.read_book import RatingStats
 from canterlot.repositories import (
     BookRepository,
     CacheRepository,
+    CatalogRepository,
     ClubMembershipRepository,
     ClubRepository,
     InviteRepository,
@@ -131,6 +132,13 @@ def user_repo() -> AsyncMock:
 def club_repo() -> AsyncMock:
     repo = AsyncMock(spec=ClubRepository)
     repo.exists_by_club_slug.return_value = False
+    return repo
+
+
+@pytest.fixture
+def catalog_repo() -> AsyncMock:
+    repo = AsyncMock(spec=CatalogRepository)
+    repo.add.return_value = True
     return repo
 
 

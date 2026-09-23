@@ -531,7 +531,7 @@ class ClubService:
                 "This club cannot be dissolved while a former owner is still protected from removal."
             )
 
-        await self.__club_repo.delete_with_memberships(club_id)
+        await self.__club_repo.delete_with_memberships_and_catalog(club_id)
         log.info("Club dissolved successfully")
 
     async def transfer_ownership(

@@ -31,6 +31,7 @@ from canterlot.models import BookModel, ClubModel, UserModel
 from canterlot.repositories import (
     BookRepository,
     CacheRepository,
+    CatalogRepository,
     ClubMembershipRepository,
     ClubRepository,
     DatabaseRepository,
@@ -44,6 +45,7 @@ from canterlot.repositories import (
 )
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
+    BeanieCatalogRepository,
     BeanieClubMembershipRepository,
     BeanieClubRepository,
     BeanieDatabaseRepository,
@@ -131,6 +133,10 @@ def get_club_repository() -> ClubRepository:
     return BeanieClubRepository()
 
 
+def get_catalog_repository() -> CatalogRepository:
+    return BeanieCatalogRepository()
+
+
 def get_club_membership_repository() -> ClubMembershipRepository:
     return BeanieClubMembershipRepository()
 
@@ -185,6 +191,7 @@ async def get_book_service(
 async def get_catalog_service(
     book_repo: Annotated[BookRepository, Depends(get_book_repository)],
     club_repo: Annotated[ClubRepository, Depends(get_club_repository)],
+    catalog_repo: Annotated[CatalogRepository, Depends(get_catalog_repository)],
     club_membership_repo: Annotated[ClubMembershipRepository, Depends(get_club_membership_repository)],
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
     link_providers: Annotated[list[LinkProvider], Depends(get_link_providers)],
@@ -193,6 +200,7 @@ async def get_catalog_service(
     return CatalogService(
         book_repo=book_repo,
         club_repo=club_repo,
+        catalog_repo=catalog_repo,
         club_membership_repo=club_membership_repo,
         user_repo=user_repo,
         link_providers=link_providers,
@@ -258,8 +266,17 @@ async def get_round_service(
     round_completion_repo: Annotated[RoundCompletionRepository, Depends(get_round_completion_repository)],
     club_membership_repo: Annotated[ClubMembershipRepository, Depends(get_club_membership_repository)],
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    catalog_repo: Annotated[CatalogRepository, Depends(get_catalog_repository)],
 ) -> RoundService:
-    return RoundService(round_repo, book_repo, read_book_repo, round_completion_repo, club_membership_repo, user_repo)
+    return RoundService(
+        round_repo,
+        book_repo,
+        read_book_repo,
+        round_completion_repo,
+        club_membership_repo,
+        user_repo,
+        catalog_repo,
+    )
 
 
 async def get_invite_service(

@@ -11,8 +11,8 @@ from canterlot.exceptions import (
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
+from canterlot.models import CatalogEntryModel
 from canterlot.models.book import LinkCandidate
-from canterlot.models.club import CatalogEntryModel
 from canterlot.models.round import CandidatePoolEntry
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.catalog import CatalogService
@@ -68,6 +68,7 @@ def _existing_book(urls: dict | None = None, **overrides) -> AsyncMock:
 def _service(
     book_repo: AsyncMock,
     club_repo: AsyncMock,
+    catalog_repo: AsyncMock,
     link_provider: AsyncMock,
     user_repo: AsyncMock | None = None,
     round_repo: AsyncMock | None = None,
@@ -79,6 +80,7 @@ def _service(
     return CatalogService(
         book_repo,
         club_repo,
+        catalog_repo,
         club_membership_repo or AsyncMock(),
         user_repo or AsyncMock(),
         [link_provider],
@@ -90,11 +92,12 @@ def describe_membership_and_suggestion_gating():
     async def it_rejects_a_non_member(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = False
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):
             await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
@@ -104,12 +107,13 @@ def describe_membership_and_suggestion_gating():
     async def it_rejects_a_suggestion_when_the_queue_is_closed(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = False
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         with pytest.raises(ClubSuggestionsClosedError):
             await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
@@ -119,6 +123,7 @@ def describe_suggesting_a_new_book():
     async def it_scrapes_all_formats_creates_and_catalogs_a_new_book(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -134,17 +139,20 @@ def describe_suggesting_a_new_book():
             return saved_book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
         assert result.status == SuggestionStatus.SUCCESS
         book_repo.save.assert_awaited_once()
-        club_repo.add_to_catalog.assert_awaited_once()
+        catalog_repo.add.assert_awaited_once()
+        entry = catalog_repo.add.await_args.args[0]
+        assert (entry.club_id, entry.book_id, entry.suggested_by) == (SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
     async def it_persists_the_description_onto_the_new_book(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -161,7 +169,7 @@ def describe_suggesting_a_new_book():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -172,6 +180,7 @@ def describe_suggesting_an_existing_book():
     async def it_returns_already_exists_without_scraping_when_all_formats_are_present_and_linked(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -179,37 +188,39 @@ def describe_suggesting_an_existing_book():
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         book_repo.find_by_external_id.return_value = _existing_book(urls=complete_urls)
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
         assert result.status == SuggestionStatus.ALREADY_EXISTS
+        assert str(result.book_external_id) == "google-books__existing-book"
         link_provider.find_links.assert_not_called()
-        club_repo.add_to_catalog.assert_not_called()
+        catalog_repo.add.assert_awaited_once()
 
     async def it_scrapes_missing_formats_and_supplements_the_existing_book(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
         book_repo.find_by_external_id.return_value = _existing_book(urls={})
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = False
         link_provider.find_links.return_value = [_candidate()]
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
         assert result.status == SuggestionStatus.SUCCESS
         book_repo.add_to_urls.assert_awaited_once()
-        club_repo.add_to_catalog.assert_awaited_once()
+        catalog_repo.add.assert_awaited_once()
 
     async def it_finds_an_existing_book_by_isbn_before_falling_back_to_provider_and_source_id(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -217,8 +228,8 @@ def describe_suggesting_an_existing_book():
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         book_repo.find_by_isbn.return_value = _existing_book(urls=complete_urls)
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(isbn_10="0261102214"))
 
@@ -229,6 +240,7 @@ def describe_suggesting_an_existing_book():
     async def it_falls_back_to_provider_and_source_id_when_no_book_matches_the_isbn(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -237,8 +249,8 @@ def describe_suggesting_an_existing_book():
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         book_repo.find_by_isbn.return_value = None
         book_repo.find_by_external_id.return_value = _existing_book(urls=complete_urls)
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(isbn_10="0261102214"))
 
@@ -249,6 +261,7 @@ def describe_suggesting_an_existing_book():
     async def it_skips_the_isbn_lookup_when_the_suggestion_has_no_isbn(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -256,8 +269,8 @@ def describe_suggesting_an_existing_book():
         club_repo.is_suggestions_allowed.return_value = True
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         book_repo.find_by_external_id.return_value = _existing_book(urls=complete_urls)
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -267,15 +280,15 @@ def describe_suggesting_an_existing_book():
     async def it_does_not_touch_urls_when_scraping_finds_nothing_new(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_repo.is_suggestions_allowed.return_value = True
         book_repo.find_by_external_id.return_value = _existing_book(urls={})
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = False
         link_provider.find_links.return_value = []
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -284,93 +297,100 @@ def describe_suggesting_an_existing_book():
 
 def describe_removing_a_book_from_the_catalog():
     def _entry(suggested_by: PydanticObjectId = OTHER_USER_ID) -> CatalogEntryModel:
-        return CatalogEntryModel(book_id=SOME_BOOK_ID, suggested_by=suggested_by)
+        return CatalogEntryModel(club_id=SOME_CLUB_ID, book_id=SOME_BOOK_ID, suggested_by=suggested_by)
 
     async def it_removes_the_book_when_the_caller_is_an_owner(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+        catalog_repo.delete_by_club_id_and_book_id.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
     async def it_removes_the_book_when_the_caller_is_an_admin(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.ADMIN
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+        catalog_repo.delete_by_club_id_and_book_id.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
     async def it_removes_the_book_when_the_caller_is_the_original_suggester(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry(suggested_by=SOME_USER_ID)
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry(suggested_by=SOME_USER_ID)
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+        catalog_repo.delete_by_club_id_and_book_id.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
     async def it_rejects_a_plain_member_who_did_not_suggest_the_book(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry(suggested_by=OTHER_USER_ID)
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry(suggested_by=OTHER_USER_ID)
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         with pytest.raises(UnauthorizedClubMemberError):
             await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_not_called()
+        catalog_repo.delete_by_club_id_and_book_id.assert_not_called()
 
     async def it_raises_when_the_book_is_not_in_this_clubs_catalog(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = None
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.find_by_club_id_and_book_id.return_value = None
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         with pytest.raises(BookNotFoundError):
             await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
         club_membership_repo.find_member_role_by_club_id_and_user_id.assert_not_called()
-        club_repo.remove_from_catalog.assert_not_called()
+        catalog_repo.delete_by_club_id_and_book_id.assert_not_called()
 
     async def it_rejects_removal_when_the_book_is_the_active_rounds_decided_book(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         round_repo: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(book_id=SOME_BOOK_ID, candidate_pool=[])
         service = _service(
             book_repo,
             club_repo,
+            catalog_repo,
             link_provider,
             round_repo=round_repo,
             club_membership_repo=club_membership_repo,
@@ -379,16 +399,17 @@ def describe_removing_a_book_from_the_catalog():
         with pytest.raises(BookLockedInActiveRoundError):
             await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_not_called()
+        catalog_repo.delete_by_club_id_and_book_id.assert_not_called()
 
     async def it_rejects_removal_when_the_book_is_in_the_active_rounds_candidate_pool(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         round_repo: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
             book_id=None,
@@ -397,6 +418,7 @@ def describe_removing_a_book_from_the_catalog():
         service = _service(
             book_repo,
             club_repo,
+            catalog_repo,
             link_provider,
             round_repo=round_repo,
             club_membership_repo=club_membership_repo,
@@ -405,16 +427,17 @@ def describe_removing_a_book_from_the_catalog():
         with pytest.raises(BookLockedInActiveRoundError):
             await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_not_called()
+        catalog_repo.delete_by_club_id_and_book_id.assert_not_called()
 
     async def it_removes_a_book_not_referenced_by_the_active_round(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         round_repo: AsyncMock,
     ):
-        club_repo.find_catalog_entry_by_club_id_and_book_id.return_value = _entry()
+        catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
             book_id=PydanticObjectId(),
@@ -423,6 +446,7 @@ def describe_removing_a_book_from_the_catalog():
         service = _service(
             book_repo,
             club_repo,
+            catalog_repo,
             link_provider,
             round_repo=round_repo,
             club_membership_repo=club_membership_repo,
@@ -430,7 +454,7 @@ def describe_removing_a_book_from_the_catalog():
 
         await service.remove_book_from_club(SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
 
-        club_repo.remove_from_catalog.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
+        catalog_repo.delete_by_club_id_and_book_id.assert_awaited_once_with(SOME_CLUB_ID, SOME_BOOK_ID)
 
 
 def describe_get_catalog_page():
@@ -441,35 +465,52 @@ def describe_get_catalog_page():
     async def it_rejects_a_non_member(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         user_repo: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = False
-        service = _service(book_repo, club_repo, link_provider, user_repo, club_membership_repo=club_membership_repo)
+        service = _service(
+            book_repo,
+            club_repo,
+            catalog_repo,
+            link_provider,
+            user_repo,
+            club_membership_repo=club_membership_repo,
+        )
 
         with pytest.raises(UnauthorizedClubMemberError):
             await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC)
 
-        club_repo.find_catalog_page_by_club_id.assert_not_called()
+        catalog_repo.find_page_by_club_id.assert_not_called()
 
     async def it_resolves_the_book_and_suggesters_username_for_each_entry(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         user_repo: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         entry = CatalogEntryModel(
+            club_id=SOME_CLUB_ID,
             book_id=SOME_BOOK_ID,
             suggested_by=SOME_USER_ID,
             suggested_at=datetime.now(UTC),
         )
-        club_repo.find_catalog_page_by_club_id.return_value = _page([entry])
+        catalog_repo.find_page_by_club_id.return_value = _page([entry])
         book_repo.find_by_ids.return_value = {SOME_BOOK_ID: BookFactory.build(external_id="google-books__abc123")}
         user_repo.get_usernames_by_ids.return_value = {SOME_USER_ID: "alice_1"}
-        service = _service(book_repo, club_repo, link_provider, user_repo, club_membership_repo=club_membership_repo)
+        service = _service(
+            book_repo,
+            club_repo,
+            catalog_repo,
+            link_provider,
+            user_repo,
+            club_membership_repo=club_membership_repo,
+        )
 
         page = await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC)
 
@@ -481,14 +522,22 @@ def describe_get_catalog_page():
     async def it_resolves_a_suggested_by_username_filter_before_querying_the_catalog(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         user_repo: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         user_repo.find_id_by_username.return_value = SOME_USER_ID
-        club_repo.find_catalog_page_by_club_id.return_value = _page([])
-        service = _service(book_repo, club_repo, link_provider, user_repo, club_membership_repo=club_membership_repo)
+        catalog_repo.find_page_by_club_id.return_value = _page([])
+        service = _service(
+            book_repo,
+            club_repo,
+            catalog_repo,
+            link_provider,
+            user_repo,
+            club_membership_repo=club_membership_repo,
+        )
 
         await service.get_catalog_page(
             SOME_CLUB_ID,
@@ -500,7 +549,7 @@ def describe_get_catalog_page():
             suggested_by="alice_1",
         )
 
-        club_repo.find_catalog_page_by_club_id.assert_awaited_once_with(
+        catalog_repo.find_page_by_club_id.assert_awaited_once_with(
             club_id=SOME_CLUB_ID,
             page=1,
             limit=20,
@@ -513,17 +562,25 @@ def describe_get_catalog_page():
     async def it_passes_the_free_text_query_through_to_the_repository(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         user_repo: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
-        club_repo.find_catalog_page_by_club_id.return_value = _page([])
-        service = _service(book_repo, club_repo, link_provider, user_repo, club_membership_repo=club_membership_repo)
+        catalog_repo.find_page_by_club_id.return_value = _page([])
+        service = _service(
+            book_repo,
+            club_repo,
+            catalog_repo,
+            link_provider,
+            user_repo,
+            club_membership_repo=club_membership_repo,
+        )
 
         await service.get_catalog_page(SOME_CLUB_ID, SOME_USER_ID, 1, 20, None, SortDirection.DESC, q="gatsby")
 
-        club_repo.find_catalog_page_by_club_id.assert_awaited_once_with(
+        catalog_repo.find_page_by_club_id.assert_awaited_once_with(
             club_id=SOME_CLUB_ID,
             page=1,
             limit=20,
@@ -536,13 +593,21 @@ def describe_get_catalog_page():
     async def it_returns_an_empty_page_when_the_suggested_by_filter_does_not_resolve(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
         user_repo: AsyncMock,
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         user_repo.find_id_by_username.return_value = None
-        service = _service(book_repo, club_repo, link_provider, user_repo, club_membership_repo=club_membership_repo)
+        service = _service(
+            book_repo,
+            club_repo,
+            catalog_repo,
+            link_provider,
+            user_repo,
+            club_membership_repo=club_membership_repo,
+        )
 
         page = await service.get_catalog_page(
             SOME_CLUB_ID,
@@ -556,13 +621,14 @@ def describe_get_catalog_page():
 
         assert page.items == []
         assert page.total_items == 0
-        club_repo.find_catalog_page_by_club_id.assert_not_called()
+        catalog_repo.find_page_by_club_id.assert_not_called()
 
 
 def describe_backfilling_missing_metadata():
     async def it_fills_missing_scalar_fields_from_the_suggestion(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -571,8 +637,8 @@ def describe_backfilling_missing_metadata():
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         existing = _existing_book(urls=complete_urls, authors=["Existing Author"], languages=["en"])
         book_repo.find_by_external_id.return_value = existing
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -586,6 +652,7 @@ def describe_backfilling_missing_metadata():
     async def it_fills_an_empty_list_field_from_the_suggestion(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -599,8 +666,8 @@ def describe_backfilling_missing_metadata():
             languages=["en"],
         )
         book_repo.find_by_external_id.return_value = existing
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -609,6 +676,7 @@ def describe_backfilling_missing_metadata():
     async def it_does_not_touch_a_list_field_that_already_has_entries(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -617,8 +685,8 @@ def describe_backfilling_missing_metadata():
         complete_urls = dict.fromkeys(ExtensionType, "https://example.com/x")
         existing = _existing_book(urls=complete_urls, authors=["Existing Author"], languages=["en"])
         book_repo.find_by_external_id.return_value = existing
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(
             SOME_CLUB_ID,
@@ -632,6 +700,7 @@ def describe_backfilling_missing_metadata():
     async def it_does_not_call_fill_missing_fields_when_nothing_is_missing(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -646,8 +715,8 @@ def describe_backfilling_missing_metadata():
             description="Existing description",
         )
         book_repo.find_by_external_id.return_value = existing
-        club_repo.exists_by_club_id_and_catalog_book_id.return_value = True
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        catalog_repo.add.return_value = False
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -658,6 +727,7 @@ def describe_link_candidate_scoring():
     async def it_discards_candidates_below_the_similarity_threshold(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -676,7 +746,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -685,6 +755,7 @@ def describe_link_candidate_scoring():
     async def it_excludes_candidates_whose_language_does_not_match_preferred_languages(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -701,7 +772,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(languages=["en"]))
 
@@ -710,6 +781,7 @@ def describe_link_candidate_scoring():
     async def it_keeps_a_candidate_with_multiple_languages_when_any_of_them_matches(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -726,7 +798,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(languages=["en"]))
 
@@ -735,6 +807,7 @@ def describe_link_candidate_scoring():
     async def it_prefers_an_exact_language_match_over_a_same_base_language_match_for_the_same_extension(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -753,7 +826,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(languages=["pt-BR"]))
 
@@ -762,6 +835,7 @@ def describe_link_candidate_scoring():
     async def it_does_not_filter_by_language_when_no_preferred_languages_are_given(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -778,7 +852,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(languages=[]))
 
@@ -787,6 +861,7 @@ def describe_link_candidate_scoring():
     async def it_redistributes_the_author_weight_when_the_suggestion_has_no_authors(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -803,7 +878,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion(authors=[]))
 
@@ -812,6 +887,7 @@ def describe_link_candidate_scoring():
     async def it_prefers_a_verified_author_match_over_a_candidate_missing_author_data(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -830,7 +906,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -839,6 +915,7 @@ def describe_link_candidate_scoring():
     async def it_ignores_a_link_provider_that_raises(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -855,7 +932,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         result = await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
@@ -865,6 +942,7 @@ def describe_link_candidate_scoring():
     async def it_ignores_a_link_provider_returning_an_unexpected_payload_shape(
         book_repo: AsyncMock,
         club_repo: AsyncMock,
+        catalog_repo: AsyncMock,
         club_membership_repo: AsyncMock,
         link_provider: AsyncMock,
     ):
@@ -881,7 +959,7 @@ def describe_link_candidate_scoring():
             return book
 
         book_repo.save.side_effect = fake_save
-        service = _service(book_repo, club_repo, link_provider, club_membership_repo=club_membership_repo)
+        service = _service(book_repo, club_repo, catalog_repo, link_provider, club_membership_repo=club_membership_repo)
 
         await service.suggest_book_to_club(SOME_CLUB_ID, SOME_USER_ID, _suggestion())
 
