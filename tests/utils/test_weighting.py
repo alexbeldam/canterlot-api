@@ -7,7 +7,6 @@ from beanie import PydanticObjectId
 from canterlot.models.read_book import RatingStats
 from canterlot.utils.weighting import (
     compute_candidate_weights,
-    filter_eligible_catalog,
     select_top_n_pool,
     weighted_random_draw,
 )
@@ -22,41 +21,6 @@ def _entry(book_id: PydanticObjectId, suggested_by: PydanticObjectId, days_ago: 
         suggested_by=suggested_by,
         suggested_at=NOW - timedelta(days=days_ago),
     )
-
-
-def describe_filter_eligible_catalog():
-    def it_keeps_every_entry_when_nothing_is_excluded():
-        entry = _entry(PydanticObjectId(), PydanticObjectId(), 1)
-
-        eligible = filter_eligible_catalog([entry], set())
-
-        assert eligible == [entry]
-
-    def it_drops_an_entry_whose_book_id_is_excluded():
-        book_id = PydanticObjectId()
-        entry = _entry(book_id, PydanticObjectId(), 1)
-
-        eligible = filter_eligible_catalog([entry], {book_id})
-
-        assert eligible == []
-
-    def it_keeps_an_entry_whose_book_id_is_not_excluded():
-        book_id = PydanticObjectId()
-        other_book_id = PydanticObjectId()
-        entry = _entry(book_id, PydanticObjectId(), 1)
-
-        eligible = filter_eligible_catalog([entry], {other_book_id})
-
-        assert eligible == [entry]
-
-    def it_filters_only_the_excluded_entries_out_of_a_mixed_catalog():
-        excluded_book_id = PydanticObjectId()
-        kept_entry = _entry(PydanticObjectId(), PydanticObjectId(), 1)
-        excluded_entry = _entry(excluded_book_id, PydanticObjectId(), 1)
-
-        eligible = filter_eligible_catalog([kept_entry, excluded_entry], {excluded_book_id})
-
-        assert eligible == [kept_entry]
 
 
 def describe_compute_candidate_weights():

@@ -29,17 +29,20 @@ from canterlot.models.user import UserModel
 from canterlot.repositories import (
     BookRepository,
     CacheRepository,
+    CatalogRepository,
     ClubMembershipRepository,
     ClubRepository,
     DatabaseRepository,
     InviteRepository,
     ReadBookRepository,
+    RoundCompletionRepository,
     RoundRepository,
     UserRepository,
     VerificationRepository,
 )
 from canterlot.repositories.beanie import (
     BeanieBookRepository,
+    BeanieCatalogRepository,
     BeanieClubMembershipRepository,
     BeanieClubRepository,
     BeanieDatabaseRepository,
@@ -62,6 +65,7 @@ from canterlot.routers.dependencies.providers import (
     get_book_repository,
     get_book_service,
     get_cache_repository,
+    get_catalog_repository,
     get_catalog_service,
     get_change_member_role_use_case,
     get_change_password_use_case,
@@ -105,6 +109,7 @@ from canterlot.routers.dependencies.providers import (
     get_resend_webhook_handler,
     get_reset_password_use_case,
     get_revoke_auth_provider_use_case,
+    get_round_service,
     get_transfer_club_ownership_use_case,
     get_user_from_reset_cookie,
     get_user_from_username,
@@ -128,6 +133,7 @@ from canterlot.services import (
     EmailDispatchService,
     HealthService,
     InviteService,
+    RoundService,
     UserService,
     VerificationService,
 )
@@ -354,6 +360,7 @@ def describe_service_factories():
     def it_builds_beanie_backed_repositories():
         assert isinstance(get_book_repository(), BeanieBookRepository)
         assert isinstance(get_club_repository(), BeanieClubRepository)
+        assert isinstance(get_catalog_repository(), BeanieCatalogRepository)
         assert isinstance(get_club_membership_repository(), BeanieClubMembershipRepository)
         assert isinstance(get_user_repository(), BeanieUserRepository)
         assert isinstance(get_invite_repository(), BeanieInviteRepository)
@@ -474,12 +481,25 @@ def describe_service_factories_real():
         service = await get_catalog_service(
             book_repo=AsyncMock(spec=BookRepository),
             club_repo=AsyncMock(spec=ClubRepository),
+            catalog_repo=AsyncMock(spec=CatalogRepository),
             club_membership_repo=AsyncMock(spec=ClubMembershipRepository),
             user_repo=AsyncMock(spec=UserRepository),
             link_providers=[AsyncMock(spec=LinkProvider)],
             round_repo=AsyncMock(spec=RoundRepository),
         )
         assert isinstance(service, CatalogService)
+
+    async def it_builds_a_round_service():
+        service = await get_round_service(
+            round_repo=AsyncMock(spec=RoundRepository),
+            book_repo=AsyncMock(spec=BookRepository),
+            read_book_repo=AsyncMock(spec=ReadBookRepository),
+            round_completion_repo=AsyncMock(spec=RoundCompletionRepository),
+            club_membership_repo=AsyncMock(spec=ClubMembershipRepository),
+            user_repo=AsyncMock(spec=UserRepository),
+            catalog_repo=AsyncMock(spec=CatalogRepository),
+        )
+        assert isinstance(service, RoundService)
 
     async def it_builds_an_auth_service():
         service = await get_auth_service(user_repo=AsyncMock(spec=UserRepository), oauth_providers={})

@@ -18,6 +18,7 @@ from canterlot.models import BookModel, CatalogEntryModel, ClubModel, RatingStat
 from canterlot.models.round import CandidatePoolEntry, DeadlineDuration, RoundModel
 from canterlot.repositories import (
     BookRepository,
+    CatalogRepository,
     ClubMembershipRepository,
     ReadBookRepository,
     RoundCompletionRepository,
@@ -36,7 +37,6 @@ from canterlot.types import (
 from canterlot.utils import get_logger
 from canterlot.utils.weighting import (
     compute_candidate_weights,
-    filter_eligible_catalog,
     select_top_n_pool,
     weighted_random_draw,
 )
@@ -74,6 +74,7 @@ class RoundService:
         round_completion_repo: RoundCompletionRepository,
         club_membership_repo: ClubMembershipRepository,
         user_repo: UserRepository,
+        catalog_repo: CatalogRepository,
         rng: random.Random | None = None,
     ):
         self.__round_repo = round_repo
@@ -82,6 +83,7 @@ class RoundService:
         self.__round_completion_repo = round_completion_repo
         self.__club_membership_repo = club_membership_repo
         self.__user_repo = user_repo
+        self.__catalog_repo = catalog_repo
         self.__rng = rng or random.Random()
 
     async def start_round(
@@ -110,7 +112,7 @@ class RoundService:
             club_id,
             current_member_ids,
         )
-        eligible = filter_eligible_catalog(club.catalog, excluded_book_ids)
+        eligible = await self.__catalog_repo.find_by_club_id_excluding_book_ids(club_id, excluded_book_ids)
         if not eligible:
             log.warning("Round creation rejected: no eligible catalog entries remain")
             raise NoEligibleCatalogError("This club has no eligible books to start a round with.")
@@ -205,9 +207,10 @@ class RoundService:
 
     async def __finalize_via_draw(self, club: ClubModel, round_: RoundModel, now: datetime, log) -> RoundModel:
         round_id = PydanticObjectId(round_.id)
+        club_id = PydanticObjectId(club.id)
         pool_book_ids = {entry.book_id for entry in round_.candidate_pool}
-        pool_entries = [entry for entry in club.catalog if entry.book_id in pool_book_ids]
-        member_ids = await self.__club_membership_repo.find_active_member_ids_by_club_id(PydanticObjectId(club.id))
+        pool_entries = await self.__catalog_repo.find_by_club_id_and_book_ids(club_id, pool_book_ids)
+        member_ids = await self.__club_membership_repo.find_active_member_ids_by_club_id(club_id)
         weights = await self.__compute_weights(club, pool_entries, member_ids, now)
         book_id = weighted_random_draw(self.__rng, weights)
         deadline = _add_duration(now, round_.deadline_duration) if round_.deadline_duration else None

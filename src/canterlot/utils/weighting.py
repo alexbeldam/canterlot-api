@@ -18,13 +18,6 @@ FAMILIARITY_FLOOR = 0.2
 POOL_MAX = 5
 
 
-def filter_eligible_catalog(
-    catalog: list[CatalogEntryModel],
-    excluded_book_ids: set[PydanticObjectId],
-) -> list[CatalogEntryModel]:
-    return [entry for entry in catalog if entry.book_id not in excluded_book_ids]
-
-
 def _age_weight(suggested_at: datetime, now: datetime) -> int:
     days_since_suggested = (now - suggested_at).days
     return max(AGE_WEIGHT_FLOOR, days_since_suggested)

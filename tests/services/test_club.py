@@ -1352,7 +1352,7 @@ def describe_dissolve_club():
         with pytest.raises(UnauthorizedClubMemberError):
             await service.dissolve_club(club, SOME_USER_ID)
 
-        club_repo.delete_with_memberships.assert_not_called()
+        club_repo.delete_with_memberships_and_catalog.assert_not_called()
 
     async def it_raises_when_the_caller_is_not_the_owner(
         club_repo: AsyncMock,
@@ -1366,7 +1366,7 @@ def describe_dissolve_club():
         with pytest.raises(UnauthorizedClubMemberError):
             await service.dissolve_club(club, SOME_USER_ID)
 
-        club_repo.delete_with_memberships.assert_not_called()
+        club_repo.delete_with_memberships_and_catalog.assert_not_called()
 
     async def it_raises_when_a_former_owner_is_still_protected(
         club_repo: AsyncMock,
@@ -1383,7 +1383,7 @@ def describe_dissolve_club():
         with pytest.raises(FormerOwnerProtectedError):
             await service.dissolve_club(club, SOME_USER_ID)
 
-        club_repo.delete_with_memberships.assert_not_called()
+        club_repo.delete_with_memberships_and_catalog.assert_not_called()
 
     async def it_allows_dissolution_once_the_former_owner_protection_window_elapses(
         club_repo: AsyncMock,
@@ -1399,7 +1399,7 @@ def describe_dissolve_club():
 
         await service.dissolve_club(club, SOME_USER_ID)
 
-        club_repo.delete_with_memberships.assert_awaited_once_with(SOME_CLUB_ID)
+        club_repo.delete_with_memberships_and_catalog.assert_awaited_once_with(SOME_CLUB_ID)
 
     async def it_dissolves_the_club_when_the_caller_is_the_owner(
         club_repo: AsyncMock,
@@ -1412,4 +1412,4 @@ def describe_dissolve_club():
 
         await service.dissolve_club(club, SOME_USER_ID)
 
-        club_repo.delete_with_memberships.assert_awaited_once_with(SOME_CLUB_ID)
+        club_repo.delete_with_memberships_and_catalog.assert_awaited_once_with(SOME_CLUB_ID)

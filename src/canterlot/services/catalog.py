@@ -17,13 +17,13 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.gateways import LinkProvider
-from canterlot.models import BookModel, LinkCandidate
+from canterlot.models import BookModel, CatalogEntryModel, LinkCandidate
 from canterlot.models.book import SearchParams
-from canterlot.models.club import CatalogEntryModel
 from canterlot.models.round import RoundModel
 from canterlot.pagination import SortDirection
 from canterlot.repositories import (
     BookRepository,
+    CatalogRepository,
     ClubMembershipRepository,
     ClubRepository,
     RoundRepository,
@@ -64,6 +64,7 @@ class CatalogService:
         self,
         book_repo: BookRepository,
         club_repo: ClubRepository,
+        catalog_repo: CatalogRepository,
         club_membership_repo: ClubMembershipRepository,
         user_repo: UserRepository,
         link_providers: list[LinkProvider],
@@ -71,6 +72,7 @@ class CatalogService:
     ):
         self.__book_repo = book_repo
         self.__club_repo = club_repo
+        self.__catalog_repo = catalog_repo
         self.__club_membership_repo = club_membership_repo
         self.__user_repo = user_repo
         self.__link_providers = link_providers
@@ -100,24 +102,23 @@ class CatalogService:
             log = log.bind(book_id=str(book_id))
 
             await self.__supplement_existing_book(book, book_id, suggestion, log)
-
-            if await self.__club_repo.exists_by_club_id_and_catalog_book_id(club_id, book_id):
-                log.info(
-                    "Suggestion processed: book already exists in club catalog",
-                    status=SuggestionStatus.ALREADY_EXISTS,
-                )
-                return SuggestionResponse(status=SuggestionStatus.ALREADY_EXISTS, book_external_id=external_id)
         else:
             book_id = await self.__create_new_book(suggestion, log)
             external_id = suggestion.source_id
             log = log.bind(book_id=str(book_id))
 
         entry = CatalogEntryModel(
+            club_id=club_id,
             book_id=book_id,
             suggested_by=user_id,
         )
 
-        await self.__club_repo.add_to_catalog(club_id=club_id, entry=entry)
+        if not await self.__catalog_repo.add(entry):
+            log.info(
+                "Suggestion processed: book already exists in club catalog",
+                status=SuggestionStatus.ALREADY_EXISTS,
+            )
+            return SuggestionResponse(status=SuggestionStatus.ALREADY_EXISTS, book_external_id=external_id)
 
         log.info("Book suggestion transaction completed successfully", status=SuggestionStatus.SUCCESS)
         return SuggestionResponse(status=SuggestionStatus.SUCCESS, book_external_id=external_id)
@@ -131,7 +132,7 @@ class CatalogService:
         log = logger.bind(club_id=str(club_id), book_id=str(book_id), current_user_id=str(current_user_id))
         log.info("Attempting to remove a book from the club catalog")
 
-        entry = await self.__club_repo.find_catalog_entry_by_club_id_and_book_id(club_id, book_id)
+        entry = await self.__catalog_repo.find_by_club_id_and_book_id(club_id, book_id)
         if entry is None:
             log.warning("Removal rejected: book is not in this club's catalog")
             raise BookNotFoundError("This book is not in this club's catalog.")
@@ -153,7 +154,7 @@ class CatalogService:
                 "This book cannot be removed while it is part of the club's active reading round."
             )
 
-        await self.__club_repo.remove_from_catalog(club_id, book_id)
+        await self.__catalog_repo.delete_by_club_id_and_book_id(club_id, book_id)
         log.info("Book removed from club catalog successfully")
 
     @staticmethod
@@ -186,7 +187,7 @@ class CatalogService:
             if suggested_by_id is None:
                 return PaginatedCatalogResponse(items=[], total_items=0, current_page=page, page_size=limit)
 
-        catalog_page = await self.__club_repo.find_catalog_page_by_club_id(
+        catalog_page = await self.__catalog_repo.find_page_by_club_id(
             club_id=club_id,
             page=page,
             limit=limit,
