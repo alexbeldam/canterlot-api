@@ -69,29 +69,7 @@ class ClubRepository(Protocol):
     async def find_by_slug(self, slug: ClubSlugStr) -> ClubModel | None: ...
     async def find_id_by_slug(self, slug: ClubSlugStr) -> PydanticObjectId | None: ...
     async def exists_by_club_slug(self, slug: ClubSlugStr) -> bool: ...
-    async def exists_by_club_id_and_catalog_book_id(
-        self,
-        club_id: PydanticObjectId,
-        book_id: PydanticObjectId,
-    ) -> bool: ...
-    async def find_catalog_entry_by_club_id_and_book_id(
-        self,
-        club_id: PydanticObjectId,
-        book_id: PydanticObjectId,
-    ) -> CatalogEntryModel | None: ...
-    async def find_catalog_page_by_club_id(
-        self,
-        club_id: PydanticObjectId,
-        page: int,
-        limit: int,
-        sort_by: str | None = None,
-        sort_direction: SortDirection = SortDirection.DESC,
-        suggested_by: PydanticObjectId | None = None,
-        q: str | None = None,
-    ) -> Page[CatalogEntryModel]: ...
     async def is_suggestions_allowed(self, club_id: PydanticObjectId) -> bool: ...
-    async def add_to_catalog(self, club_id: PydanticObjectId, entry: CatalogEntryModel) -> None: ...
-    async def remove_from_catalog(self, club_id: PydanticObjectId, book_id: PydanticObjectId) -> None: ...
     async def save_new_club_with_owner(
         self,
         club: ClubModel,
@@ -112,9 +90,42 @@ class ClubRepository(Protocol):
         preferred_languages: list[LanguageStr] | None = None,
     ) -> bool: ...
     async def save(self, club: ClubModel) -> ClubModel: ...
-    async def delete_with_memberships(self, club_id: PydanticObjectId) -> None:
-        """Deletes the club document and every membership row for it in one transaction."""
+    async def delete_with_memberships_and_catalog(self, club_id: PydanticObjectId) -> None:
+        """Deletes the club document and every membership and catalog row for it in one transaction."""
         ...
+
+
+class CatalogRepository(Protocol):
+    async def find_by_club_id_and_book_id(
+        self,
+        club_id: PydanticObjectId,
+        book_id: PydanticObjectId,
+    ) -> CatalogEntryModel | None: ...
+    async def find_page_by_club_id(
+        self,
+        club_id: PydanticObjectId,
+        page: int,
+        limit: int,
+        sort_by: str | None = None,
+        sort_direction: SortDirection = SortDirection.DESC,
+        suggested_by: PydanticObjectId | None = None,
+        q: str | None = None,
+    ) -> Page[CatalogEntryModel]: ...
+    async def find_by_club_id_excluding_book_ids(
+        self,
+        club_id: PydanticObjectId,
+        excluded_book_ids: set[PydanticObjectId],
+    ) -> list[CatalogEntryModel]: ...
+    async def find_by_club_id_and_book_ids(
+        self,
+        club_id: PydanticObjectId,
+        book_ids: set[PydanticObjectId],
+    ) -> list[CatalogEntryModel]: ...
+    async def add(self, entry: CatalogEntryModel) -> bool:
+        """Inserts the entry, returning False when the book is already in that club's catalog."""
+        ...
+
+    async def delete_by_club_id_and_book_id(self, club_id: PydanticObjectId, book_id: PydanticObjectId) -> None: ...
 
 
 class ClubMembershipRepository(Protocol):
