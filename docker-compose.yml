@@ -1,15 +1,15 @@
 services:
   mongodb:
-    image: mongo:6.0
+    image: mongodb/mongodb-atlas-local:8.0
     container_name: canterlot_mongodb
+    hostname: canterlot_mongodb
     restart: unless-stopped
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
-    environment:
-      - MONGO_INITDB_DATABASE=canterlot_db
     volumes:
       - mongo_data:/data/db
+      - mongo_configdb:/data/configdb
+      - mongo_search:/data/mongot
 
   redis:
     image: redis:7.0-alpine
@@ -22,6 +22,10 @@ services:
 
 volumes:
   mongo_data:
+    driver: local
+  mongo_configdb:
+    driver: local
+  mongo_search:
     driver: local
   redis_data:
     driver: local

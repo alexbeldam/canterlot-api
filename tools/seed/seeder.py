@@ -55,7 +55,7 @@ async def _wipe_database(db: DatabaseManager) -> None:
     for model in BEANIE_DOCUMENT_MODELS:
         await model.get_pymongo_collection().drop()
 
-    await db.reinitialize_beanie()
+    await db.reinitialize()
     log.info("Collections dropped and indexes reinitialized")
 
 

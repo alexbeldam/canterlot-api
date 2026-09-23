@@ -1,16 +1,15 @@
 import pathlib
-import re
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
 import redis.asyncio as aioredis
+from beanie import init_beanie
 from pymongo import AsyncMongoClient
 from testcontainers.community.redis import AsyncRedisContainer
 from testcontainers.core.container import DockerContainer
-from testcontainers.core.wait_strategies import LogMessageWaitStrategy
+from testcontainers.core.wait_strategies import HealthcheckWaitStrategy
 
-from canterlot.config.bootstrap import bootstrap_beanie
 from canterlot.models import BEANIE_DOCUMENT_MODELS
 
 _THIS_DIR = pathlib.Path(__file__).parent
@@ -25,12 +24,12 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session")
 def mongodb_container() -> Iterator[DockerContainer]:
-    # MongoDbContainer forces root auth, which --replSet then needs a keyfile for; a raw container avoids that.
+    # A raw container, not MongoDbContainer, since that helper wraps community mongo's env-var scheme,
+    # not mongodb-atlas-local's.
     container = (
-        DockerContainer("mongo:6.0")
-        .with_command("mongod --replSet rs0 --bind_ip_all")
+        DockerContainer("mongodb/mongodb-atlas-local:8.0")
         .with_exposed_ports(27017)
-        .waiting_for(LogMessageWaitStrategy(re.compile(r"waiting for connections", re.IGNORECASE)))
+        .waiting_for(HealthcheckWaitStrategy())
     )
     with container:
         yield container
@@ -45,12 +44,7 @@ async def _beanie_client(mongodb_container: DockerContainer) -> AsyncIterator[As
 
     client: AsyncMongoClient = AsyncMongoClient(url, tz_aware=True)
     try:
-        await bootstrap_beanie(
-            url,
-            client[_DB_NAME],
-            BEANIE_DOCUMENT_MODELS,
-            replica_set_member_host="localhost:27017",
-        )
+        await init_beanie(database=client[_DB_NAME], document_models=BEANIE_DOCUMENT_MODELS)
         yield client
     finally:
         await client.drop_database(_DB_NAME)

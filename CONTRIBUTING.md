@@ -115,7 +115,7 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 Running `just seed` populates your local environment with enough clubs, users, and data to test endpoints manually without making dozens of upfront requests.
 
-- **Full Wipe, Not Selective Cleanup:** The seeder drops every `BEANIE_DOCUMENT_MODELS` collection (via `DatabaseManager.reinitialize_beanie()` to rebuild indexes afterward) before reseeding, rather than matching and deleting previously seeded rows. This keeps `just seed` idempotent without needing to track durable identifiers across runs.
+- **Full Wipe, Not Selective Cleanup:** The seeder drops every `BEANIE_DOCUMENT_MODELS` collection (via `DatabaseManager.reinitialize()` to rebuild indexes afterward) before reseeding, rather than matching and deleting previously seeded rows. This keeps `just seed` idempotent without needing to track durable identifiers across runs.
 
 - **Builds Documents Directly:** `tools/seed/` saves models directly in whatever state they need through `tools/factories/` (`create_async`/`create_batch_async`), setting fields like `profile_completed_at` or legal-acceptance versions explicitly rather than calling into `services/` or `use_cases/`. Reaching the same state through services would take many separate calls per entity, and could trigger side effects we don't want during seeding, like sending real emails. If you add a new seeded state, set the fields it needs directly rather than reaching for a service call.
 

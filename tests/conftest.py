@@ -52,7 +52,7 @@ _FAKE_SETTINGS_ENV = {
     "ENVIRONMENT": Environment.TEST,
     "AUTH__JWT_SECRET_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     "AUTH__HMAC_SECRET_KEY": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
-    "DB__MONGODB_URL": "mongodb://localhost:27017/",
+    "DB__MONGODB_URL": "mongodb://localhost:27017/?directConnection=true",
     "DB__MONGODB_DB_NAME": "canterlot_test",
     "DB__REDIS_URL": "redis://localhost:6379/0",
 }
