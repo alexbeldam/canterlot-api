@@ -119,7 +119,7 @@ Running `just seed` populates your local environment with enough clubs, users, a
 
 - **Builds Documents Directly:** `tools/seed/` saves models directly in whatever state they need through `tools/factories/` (`create_async`/`create_batch_async`), setting fields like `profile_completed_at` or legal-acceptance versions explicitly rather than calling into `services/` or `use_cases/`. Reaching the same state through services would take many separate calls per entity, and could trigger side effects we don't want during seeding, like sending real emails. If you add a new seeded state, set the fields it needs directly rather than reaching for a service call.
 
-- **No Random Ghost References:** Always pass explicit `members=[...]`, `banned_users=[...]`, `pending_approvals=[...]`, `catalog=[...]`, and similar relational fields into factory calls when a document must reference another seeded entity's real id. Polyfactory will otherwise happily generate a random, unrelated `PydanticObjectId` for any field you don't override.
+- **No Random Ghost References:** Always pass explicit `members=[...]`, `banned_users=[...]`, `pending_approvals=[...]`, a catalog entry's `club_id=...`, and similar relational fields into factory calls when a document must reference another seeded entity's real id. Polyfactory will otherwise happily generate a random, unrelated `PydanticObjectId` for any field you don't override.
 
 - **Production Guard:** The seeder refuses to run when `environment` is `PROD`. Don't remove that guard to make a script more convenient.
 
