@@ -1,5 +1,3 @@
-import re
-
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
 from pymongo.errors import DuplicateKeyError
@@ -45,8 +43,11 @@ class BeanieCatalogRepository(CatalogRepository):
         if suggested_by is not None:
             match["suggested_by"] = suggested_by
 
-        if sort_field in _BOOK_JOINED_SORT_FIELDS or q is not None:
-            return await self.__find_book_joined_page(match, _SORT_FIELD_PATHS[sort_field], direction, page, limit, q)
+        if q is not None:
+            return await self.__find_search_page(match, page, limit, q)
+
+        if sort_field in _BOOK_JOINED_SORT_FIELDS:
+            return await self.__find_book_joined_page(match, _SORT_FIELD_PATHS[sort_field], direction, page, limit)
 
         query = CatalogEntryModel.find(match)
         total_items = await query.count()
@@ -62,7 +63,6 @@ class BeanieCatalogRepository(CatalogRepository):
         direction: int,
         page: int,
         limit: int,
-        q: str | None,
     ) -> Page[CatalogEntryModel]:
         pipeline: list[dict] = [
             {"$match": match},
@@ -75,23 +75,7 @@ class BeanieCatalogRepository(CatalogRepository):
                 }
             },
             {"$unwind": {"path": "$book", "preserveNullAndEmptyArrays": True}},
-        ]
-
-        if q is not None:
-            pattern = re.escape(q)
-            pipeline.append(
-                {
-                    "$match": {
-                        "$or": [
-                            {"book.title": {"$regex": pattern, "$options": "i"}},
-                            {"book.authors": {"$regex": pattern, "$options": "i"}},
-                        ]
-                    }
-                }
-            )
-
-        pipeline.append({"$sort": {sort_path: direction}})
-        pipeline.append(
+            {"$sort": {sort_path: direction}},
             {
                 "$facet": {
                     "items": [
@@ -101,14 +85,56 @@ class BeanieCatalogRepository(CatalogRepository):
                     ],
                     "total": [{"$count": "count"}],
                 }
-            }
-        )
+            },
+        ]
 
         result = await CatalogEntryModel.aggregate(pipeline).to_list()
         facet = result[0]
 
         items = [CatalogEntryModel.model_validate(item) for item in facet["items"]]
         total_items = facet["total"][0]["count"] if facet["total"] else 0
+
+        return Page(items=items, total_items=total_items, current_page=page, page_size=limit)
+
+    async def __find_search_page(
+        self,
+        match: dict[str, object],
+        page: int,
+        limit: int,
+        q: str,
+    ) -> Page[CatalogEntryModel]:
+        entries_by_book_id = {entry.book_id: entry for entry in await CatalogEntryModel.find(match).to_list()}
+        if not entries_by_book_id:
+            return Page(items=[], total_items=0, current_page=page, page_size=limit)
+
+        pipeline: list[dict] = [
+            {
+                "$search": {
+                    "index": "books_search",
+                    "compound": {
+                        "filter": [{"in": {"path": "_id", "value": list(entries_by_book_id)}}],
+                        "must": [{"text": {"query": q, "path": ["title", "authors"], "fuzzy": {}}}],
+                    },
+                    "count": {"type": "total"},
+                }
+            },
+            {
+                "$facet": {
+                    "items": [
+                        {"$skip": (page - 1) * limit},
+                        {"$limit": limit},
+                        {"$project": {"_id": 1, "score": {"$meta": "searchScore"}}},
+                    ],
+                    "meta": [{"$replaceWith": "$$SEARCH_META"}, {"$limit": 1}],
+                }
+            },
+        ]
+
+        result = await BookModel.aggregate(pipeline).to_list()
+        facet = result[0]
+
+        items = [entries_by_book_id[item["_id"]] for item in facet["items"]]
+        total_items = facet["meta"][0]["count"]["total"] if facet["meta"] else 0
 
         return Page(items=items, total_items=total_items, current_page=page, page_size=limit)
 
