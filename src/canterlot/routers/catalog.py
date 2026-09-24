@@ -2,6 +2,7 @@ from typing import Annotated
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Response, status
+from fastapi.exceptions import RequestValidationError
 
 from canterlot.dto.catalog import (
     BookSuggestionRequest,
@@ -26,6 +27,14 @@ from .dependencies.providers import (
 )
 
 router = APIRouter(prefix="/clubs/{club_slug}/catalog", tags=["Club Catalogs"])
+
+
+def get_catalog_filters(filters: Annotated[CatalogFilters, Depends()]) -> CatalogFilters:
+    if filters.sort_by is not None and filters.q is not None:
+        raise RequestValidationError(
+            [{"loc": ("query", "sort_by"), "msg": "sort_by cannot be combined with q.", "type": "value_error"}]
+        )
+    return filters
 
 
 @router.post(
@@ -67,7 +76,7 @@ async def get_club_catalog(
     club_id: Annotated[PydanticObjectId, Depends(get_club_id_from_slug)],
     current_user_id: Annotated[PydanticObjectId, Depends(get_current_user_id)],
     catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
-    filters: Annotated[CatalogFilters, Depends()],
+    filters: Annotated[CatalogFilters, Depends(get_catalog_filters)],
 ):
     return await catalog_service.get_catalog_page(
         club_id=club_id,

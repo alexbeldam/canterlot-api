@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from beanie import PydanticObjectId
@@ -7,6 +8,7 @@ from beanie import PydanticObjectId
 from canterlot.models import BookModel, CatalogEntryModel
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.pagination import SortDirection
+from canterlot.repositories.beanie.book import BeanieBookRepository
 from canterlot.repositories.beanie.catalog import BeanieCatalogRepository
 from canterlot.types import BookProviderName
 from tools.factories import BookFactory, CatalogEntryFactory
@@ -14,10 +16,16 @@ from tools.factories import BookFactory, CatalogEntryFactory
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 repo = BeanieCatalogRepository()
+book_repo = BeanieBookRepository()
 
 
 def _id(document: BookModel | CatalogEntryModel) -> PydanticObjectId:
     return PydanticObjectId(document.id)
+
+
+async def _searchable_book(**kwargs: Any) -> BookModel:
+    """Inserts via the @searchable-decorated repository save, unlike BookFactory.create_async."""
+    return await book_repo.save(BookFactory.build(**kwargs))
 
 
 def describe_find_page_by_club_id():
@@ -135,8 +143,10 @@ def describe_find_page_by_club_id():
     async def it_filters_by_suggested_by_alongside_a_query():
         club_id = PydanticObjectId()
         alice, bob = PydanticObjectId(), PydanticObjectId()
-        alice_book = await BookFactory.create_async(title="Dune")
-        bob_book = await BookFactory.create_async(title="Dune Messiah")
+        alice_book, bob_book = await asyncio.gather(
+            _searchable_book(title="Dune"),
+            _searchable_book(title="Dune Messiah"),
+        )
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(alice_book), suggested_by=alice)
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(bob_book), suggested_by=bob)
 
@@ -147,8 +157,10 @@ def describe_find_page_by_club_id():
 
     async def it_filters_by_free_text_query_matching_title():
         club_id = PydanticObjectId()
-        matching = await BookFactory.create_async(title="The Great Gatsby")
-        other = await BookFactory.create_async(title="Moby Dick")
+        matching, other = await asyncio.gather(
+            _searchable_book(title="The Great Gatsby"),
+            _searchable_book(title="Moby Dick"),
+        )
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
 
@@ -159,11 +171,13 @@ def describe_find_page_by_club_id():
 
     async def it_filters_by_free_text_query_matching_authors():
         club_id = PydanticObjectId()
-        matching = await BookFactory.create_async(
-            external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "q-author-match"),
-            authors=["Jane Austen"],
+        matching, other = await asyncio.gather(
+            _searchable_book(
+                external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "q-author-match"),
+                authors=["Jane Austen"],
+            ),
+            _searchable_book(authors=["Other Author"]),
         )
-        other = await BookFactory.create_async(authors=["Other Author"])
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
 
@@ -172,19 +186,51 @@ def describe_find_page_by_club_id():
         assert page.total_items == 1
         assert page.items[0].book_id == _id(matching)
 
-    async def it_escapes_regex_special_characters_in_the_query():
+    async def it_matches_a_misspelled_title_via_fuzzy_search():
         club_id = PydanticObjectId()
-        book = await BookFactory.create_async(title="C++ Primer")
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
+        matching, other = await asyncio.gather(
+            _searchable_book(title="The Great Gatsby"),
+            _searchable_book(title="Moby Dick"),
+        )
+        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
+        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
 
-        page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="C++")
+        page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="Gret Gatsby")
 
         assert page.total_items == 1
-        assert page.items[0].book_id == _id(book)
+        assert page.items[0].book_id == _id(matching)
+
+    async def it_matches_a_misspelled_author_via_fuzzy_search():
+        club_id = PydanticObjectId()
+        matching, other = await asyncio.gather(
+            _searchable_book(
+                external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "q-fuzzy-author-match"),
+                authors=["Jane Austen"],
+            ),
+            _searchable_book(authors=["Other Author"]),
+        )
+        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
+        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
+
+        page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="Austin")
+
+        assert page.total_items == 1
+        assert page.items[0].book_id == _id(matching)
+
+    async def it_paginates_free_text_query_results_with_skip_and_limit():
+        club_id = PydanticObjectId()
+        books = await asyncio.gather(*[_searchable_book(title=f"Fantasy Book {i}") for i in range(3)])
+        for book in books:
+            await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
+
+        page = await repo.find_page_by_club_id(club_id, page=2, limit=1, q="Fantasy")
+
+        assert page.total_items == 3
+        assert len(page.items) == 1
 
     async def it_returns_no_matches_when_the_query_matches_nothing():
         club_id = PydanticObjectId()
-        book = await BookFactory.create_async()
+        book = await _searchable_book()
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="nonexistent phrase")
@@ -208,7 +254,7 @@ def describe_find_page_by_club_id():
         assert page.items == []
         assert page.total_items == 0
 
-    async def it_returns_an_empty_page_for_a_lookup_join_on_a_club_with_no_catalog():
+    async def it_returns_an_empty_page_for_a_free_text_query_on_a_club_with_no_catalog():
         page = await repo.find_page_by_club_id(PydanticObjectId(), page=1, limit=10, q="anything")
 
         assert page.items == []
@@ -216,7 +262,7 @@ def describe_find_page_by_club_id():
 
     async def it_never_includes_another_clubs_entries():
         club_id, other_club_id = PydanticObjectId(), PydanticObjectId()
-        book = await BookFactory.create_async(title="Shared Title")
+        book = await _searchable_book(title="Shared Title")
         own = await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
         await CatalogEntryFactory.create_async(club_id=other_club_id, book_id=_id(book))
         await CatalogEntryFactory.create_async(club_id=other_club_id)

@@ -183,17 +183,37 @@ def describe_get_club_catalog():
 
         response = client.get(
             f"/v1/clubs/{SOME_CLUB_SLUG}/catalog",
-            params={"sort_by": "title", "suggested_by": "alice_1", "page": 2, "limit": 10, "q": "gatsby"},
+            params={"suggested_by": "alice_1", "page": 2, "limit": 10, "q": "gatsby"},
         )
 
         assert response.status_code == 200
         catalog_service.get_catalog_page.assert_awaited_once()
         _, kwargs = catalog_service.get_catalog_page.call_args
-        assert kwargs["sort_by"] == "title"
         assert kwargs["suggested_by"] == "alice_1"
         assert kwargs["page"] == 2
         assert kwargs["limit"] == 10
         assert kwargs["q"] == "gatsby"
+
+    def it_passes_sort_by_through_when_no_query_is_given(
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
+    ):
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
+        catalog_service.get_catalog_page.return_value = PaginatedCatalogResponse(
+            items=[],
+            total_items=0,
+            current_page=1,
+            page_size=20,
+        )
+
+        response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog", params={"sort_by": "title"})
+
+        assert response.status_code == 200
+        catalog_service.get_catalog_page.assert_awaited_once()
+        _, kwargs = catalog_service.get_catalog_page.call_args
+        assert kwargs["sort_by"] == "title"
+        assert kwargs["q"] is None
 
     def it_returns_422_for_an_invalid_sort_field(
         client: TestClient,
@@ -203,6 +223,21 @@ def describe_get_club_catalog():
         club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
 
         response = client.get(f"/v1/clubs/{SOME_CLUB_SLUG}/catalog", params={"sort_by": "not-a-real-field"})
+
+        assert response.status_code == 422
+        catalog_service.get_catalog_page.assert_not_called()
+
+    def it_returns_422_when_combining_sort_by_with_a_free_text_query(
+        client: TestClient,
+        catalog_service: AsyncMock,
+        club_service: AsyncMock,
+    ):
+        club_service.get_club_id_by_slug.return_value = SOME_CLUB_ID
+
+        response = client.get(
+            f"/v1/clubs/{SOME_CLUB_SLUG}/catalog",
+            params={"sort_by": "title", "q": "dune"},
+        )
 
         assert response.status_code == 422
         catalog_service.get_catalog_page.assert_not_called()
