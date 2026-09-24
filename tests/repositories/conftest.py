@@ -10,6 +10,7 @@ from testcontainers.community.redis import AsyncRedisContainer
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import HealthcheckWaitStrategy
 
+from canterlot.config.search_index import ensure_registered_search_indexes
 from canterlot.models import BEANIE_DOCUMENT_MODELS
 
 _THIS_DIR = pathlib.Path(__file__).parent
@@ -45,6 +46,7 @@ async def _beanie_client(mongodb_container: DockerContainer) -> AsyncIterator[As
     client: AsyncMongoClient = AsyncMongoClient(url, tz_aware=True)
     try:
         await init_beanie(database=client[_DB_NAME], document_models=BEANIE_DOCUMENT_MODELS)
+        await ensure_registered_search_indexes()
         yield client
     finally:
         await client.drop_database(_DB_NAME)

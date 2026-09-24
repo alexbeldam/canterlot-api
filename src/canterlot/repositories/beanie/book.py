@@ -2,6 +2,7 @@ from beanie import PydanticObjectId
 from beanie.operators import In, Or, Set
 from pydantic import BaseModel, ConfigDict, Field
 
+from canterlot.config.search_index import searchable
 from canterlot.models import BookModel
 from canterlot.repositories import BookRepository
 from canterlot.types import BookProviderIdentifier, ISBNStr, UrlList
@@ -72,5 +73,6 @@ class BeanieBookRepository(BookRepository):
     async def fill_missing_fields(self, book_id: PydanticObjectId, fields: dict[str, object]) -> None:
         await BookModel.find_one(BookModel.id == book_id).update_one(Set(fields))
 
+    @searchable
     async def save(self, book: BookModel) -> BookModel:
         return await book.save()
