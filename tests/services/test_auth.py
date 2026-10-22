@@ -216,6 +216,25 @@ def describe_logout():
         await service.logout(SOME_USER_ID, "some-token")
 
 
+def describe_logout_all():
+    async def it_clears_every_refresh_token_when_the_presented_one_is_still_valid(user_repo: AsyncMock):
+        user_repo.clear_all_refresh_tokens.return_value = True
+        service = AuthService(user_repo, {})
+
+        await service.logout_all(SOME_USER_ID, "some-token")
+
+        user_repo.clear_all_refresh_tokens.assert_awaited_once_with(SOME_USER_ID, "some-token")
+
+    async def it_raises_when_the_presented_token_was_already_invalidated(user_repo: AsyncMock):
+        user_repo.clear_all_refresh_tokens.return_value = False
+        service = AuthService(user_repo, {})
+
+        with pytest.raises(InvalidCredentialsError):
+            await service.logout_all(SOME_USER_ID, "stale-token")
+
+        user_repo.clear_all_refresh_tokens.assert_awaited_once_with(SOME_USER_ID, "stale-token")
+
+
 def describe_sign_in_with_provider():
     async def it_raises_when_the_provider_is_not_configured(user_repo: AsyncMock):
         service = AuthService(user_repo, {})

@@ -181,6 +181,13 @@ LOGOUT_RESPONSES: ResponseDict = {
     **RESP_500_INTERNAL,
 }
 
+LOGOUT_ALL_RESPONSES: ResponseDict = {
+    status.HTTP_204_NO_CONTENT: {"description": "Every session on the account revoked and the refresh cookie cleared."},
+    **RESP_400_MALFORMED_TOKEN,
+    **RESP_401_AUTH,
+    **RESP_500_INTERNAL,
+}
+
 REQUEST_PASSWORD_RESET_RESPONSES: ResponseDict = {
     status.HTTP_202_ACCEPTED: {
         "description": (

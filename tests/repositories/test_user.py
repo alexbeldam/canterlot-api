@@ -190,6 +190,44 @@ def describe_pull_refresh_token_by_id():
         assert removed is False
 
 
+def describe_clear_all_refresh_tokens():
+    async def it_removes_every_refresh_token_when_the_presented_one_is_stored():
+        presented = UserFactory.__faker__.uuid4()
+        user = await UserFactory.create_async(
+            refresh_tokens=[presented, UserFactory.__faker__.uuid4()],
+        )
+
+        cleared = await repo.clear_all_refresh_tokens(_id(user), presented)
+
+        found = await repo.find_by_id(_id(user))
+        assert cleared is True
+        assert found is not None
+        assert found.refresh_tokens == []
+
+    async def it_leaves_tokens_untouched_when_the_presented_one_is_not_stored():
+        stored = UserFactory.__faker__.uuid4()
+        user = await UserFactory.create_async(refresh_tokens=[stored])
+
+        cleared = await repo.clear_all_refresh_tokens(_id(user), UserFactory.__faker__.uuid4())
+
+        found = await repo.find_by_id(_id(user))
+        assert cleared is False
+        assert found is not None
+        assert found.refresh_tokens == [stored]
+
+    async def it_leaves_other_users_untouched():
+        presented = UserFactory.__faker__.uuid4()
+        token = UserFactory.__faker__.uuid4()
+        target = await UserFactory.create_async(refresh_tokens=[presented])
+        other = await UserFactory.create_async(refresh_tokens=[token])
+
+        await repo.clear_all_refresh_tokens(_id(target), presented)
+
+        found = await repo.find_by_id(_id(other))
+        assert found is not None
+        assert found.refresh_tokens == [token]
+
+
 def describe_add_linked_provider():
     async def it_appends_a_linked_provider():
         user = await UserFactory.create_async()
