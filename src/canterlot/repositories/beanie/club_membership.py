@@ -4,12 +4,11 @@ from typing import cast
 from beanie import PydanticObjectId
 from beanie.operators import In, Set
 from pydantic import BaseModel
-from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.results import UpdateResult
 
+from canterlot.hoodie import TransactionError, transactional
 from canterlot.models import ClubMembershipModel, ClubModel
 from canterlot.repositories import ClubMembershipRepository
-from canterlot.repositories.beanie.transactions import TransactionError, transactional_or_false
 from canterlot.types import MemberRole, MembershipStatus
 
 _ACTIVE_STATUSES = [MembershipStatus.OWNER, MembershipStatus.ADMIN, MembershipStatus.MEMBER]
@@ -136,21 +135,19 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
 
         return cast(UpdateResult, result).matched_count > 0
 
-    @transactional_or_false
+    @transactional(on_conflict=False)
     async def transfer_ownership(
         self,
-        session: AsyncClientSession,
         club_id: PydanticObjectId,
         current_owner_id: PydanticObjectId,
         new_owner_id: PydanticObjectId,
         transferred_at: datetime,
-    ) -> None:
+    ) -> bool:
         promoted = await ClubMembershipModel.find_one(
             ClubMembershipModel.club_id == club_id,
             ClubMembershipModel.user_id == new_owner_id,
             In(ClubMembershipModel.status, _PROMOTABLE_STATUSES),
-            session=session,
-        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.OWNER}), session=session)
+        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.OWNER}))
         if cast(UpdateResult, promoted).matched_count == 0:
             raise MembershipConflict
 
@@ -158,37 +155,35 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
             ClubMembershipModel.club_id == club_id,
             ClubMembershipModel.user_id == current_owner_id,
             ClubMembershipModel.status == MembershipStatus.OWNER,
-            session=session,
-        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.ADMIN}), session=session)
+        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.ADMIN}))
         if cast(UpdateResult, demoted).matched_count == 0:
             raise MembershipConflict
 
-        club_updated = await ClubModel.find_one(ClubModel.id == club_id, session=session).update_one(
+        club_updated = await ClubModel.find_one(ClubModel.id == club_id).update_one(
             {
                 "$set": {
                     "ownership_transferred_at": transferred_at,
                     "protected_former_owner_id": current_owner_id,
                 }
             },
-            session=session,
         )
         if cast(UpdateResult, club_updated).matched_count == 0:
             raise MembershipConflict
 
-    @transactional_or_false
+        return True
+
+    @transactional(on_conflict=False)
     async def reclaim_ownership(
         self,
-        session: AsyncClientSession,
         club_id: PydanticObjectId,
         former_owner_id: PydanticObjectId,
         current_owner_id: PydanticObjectId,
-    ) -> None:
+    ) -> bool:
         reclaimed = await ClubMembershipModel.find_one(
             ClubMembershipModel.club_id == club_id,
             ClubMembershipModel.user_id == former_owner_id,
             ClubMembershipModel.status == MembershipStatus.ADMIN,
-            session=session,
-        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.OWNER}), session=session)
+        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.OWNER}))
         if cast(UpdateResult, reclaimed).matched_count == 0:
             raise MembershipConflict
 
@@ -196,21 +191,20 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
             ClubMembershipModel.club_id == club_id,
             ClubMembershipModel.user_id == current_owner_id,
             ClubMembershipModel.status == MembershipStatus.OWNER,
-            session=session,
-        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.ADMIN}), session=session)
+        ).update_one(Set({ClubMembershipModel.status: MembershipStatus.ADMIN}))
         if cast(UpdateResult, demoted).matched_count == 0:
             raise MembershipConflict
 
         club_updated = await ClubModel.find_one(
             ClubModel.id == club_id,
             ClubModel.protected_former_owner_id == former_owner_id,
-            session=session,
         ).update_one(
             {"$set": {"ownership_transferred_at": None, "protected_former_owner_id": None}},
-            session=session,
         )
         if cast(UpdateResult, club_updated).matched_count == 0:
             raise MembershipConflict
+
+        return True
 
     async def find_active_by_club_id(self, club_id: PydanticObjectId) -> list[ClubMembershipModel]:
         return await ClubMembershipModel.find(
