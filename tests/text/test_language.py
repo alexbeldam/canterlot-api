@@ -1,4 +1,4 @@
-from canterlot.utils.language import (
+from canterlot.text import (
     LANGUAGE_MATCH_SUBSCORES,
     LanguageMatchLevel,
     best_language_match,

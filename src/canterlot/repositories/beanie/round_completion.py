@@ -4,12 +4,11 @@ from typing import cast
 from beanie import PydanticObjectId
 from beanie.operators import In
 from pydantic import BaseModel
-from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.results import UpdateResult
 
+from canterlot.hoodie import transactional
 from canterlot.models import RoundCompletionModel, RoundModel
 from canterlot.repositories import CompletionResult, RoundCompletionRepository
-from canterlot.repositories.beanie.transactions import transactional
 from canterlot.types import RoundStatus
 
 
@@ -30,7 +29,6 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
     @transactional
     async def record_completion(
         self,
-        session: AsyncClientSession,
         club_id: PydanticObjectId,
         round_id: PydanticObjectId,
         book_id: PydanticObjectId,
@@ -41,7 +39,6 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
         insert_result = await RoundCompletionModel.find_one(
             RoundCompletionModel.round_id == round_id,
             RoundCompletionModel.user_id == user_id,
-            session=session,
         ).update_one(
             {
                 "$setOnInsert": {
@@ -53,7 +50,6 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
                 }
             },
             upsert=True,
-            session=session,
         )
         is_new = cast(UpdateResult, insert_result).upserted_id is not None
         if not is_new:
@@ -64,10 +60,8 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
         lock_result = await RoundModel.find_one(
             RoundModel.id == round_id,
             RoundModel.status == RoundStatus.DECIDED,
-            session=session,
         ).update_one(
             {"$set": {"last_completed_by": user_id, "last_completed_at": completed_at}},
-            session=session,
         )
         if cast(UpdateResult, lock_result).matched_count == 0:
             return CompletionResult(is_new=True, round_concluded=False)
@@ -75,7 +69,6 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
         finisher_count = await RoundCompletionModel.find(
             RoundCompletionModel.round_id == round_id,
             In(RoundCompletionModel.user_id, list(current_member_ids)),
-            session=session,
         ).count()
         if finisher_count < len(current_member_ids):
             return CompletionResult(is_new=True, round_concluded=False)
@@ -83,8 +76,7 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
         conclude_result = await RoundModel.find_one(
             RoundModel.id == round_id,
             RoundModel.status == RoundStatus.DECIDED,
-            session=session,
-        ).update_one({"$set": {"status": RoundStatus.CONCLUDED}}, session=session)
+        ).update_one({"$set": {"status": RoundStatus.CONCLUDED}})
 
         return CompletionResult(is_new=True, round_concluded=cast(UpdateResult, conclude_result).matched_count > 0)
 

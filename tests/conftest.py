@@ -8,15 +8,13 @@ import bcrypt
 import mongomock.database
 import pytest
 import pytest_asyncio
-from beanie import init_beanie
 from mongomock_motor import AsyncMongoMockClient
 from polyfactory.factories.base import BaseFactory
 from saq import Queue
 
 from canterlot.config import get_settings
-from canterlot.config.enums import Environment
 from canterlot.emails import EmailTemplate
-from canterlot.models import BEANIE_DOCUMENT_MODELS
+from canterlot.hoodie.lifecycle import delete_all_entities, init_hoodie
 from canterlot.models.read_book import RatingStats
 from canterlot.repositories import (
     BookRepository,
@@ -43,6 +41,20 @@ from canterlot.services import (
     UserService,
     VerificationService,
 )
+from canterlot.types import Environment
+from tests.mongo_integration import (  # noqa: F401
+    cleanup_shared_mongo_container,
+    hoodie_client,
+    mongodb_container,
+    pytest_collection_modifyitems,
+)
+
+
+def pytest_sessionfinish() -> None:
+    # Controller only: a worker finishing early must not kill the container other workers still use.
+    if not os.environ.get("PYTEST_XDIST_WORKER"):
+        cleanup_shared_mongo_container()
+
 
 _original_list_collection_names = mongomock.database.Database.list_collection_names
 _original_gensalt = bcrypt.gensalt
@@ -87,10 +99,7 @@ async def _beanie_client() -> AsyncIterator[AsyncMongoMockClient]:
     client: AsyncMongoMockClient = AsyncMongoMockClient()
 
     try:
-        await init_beanie(
-            database=client["test"],  # type: ignore[arg-type]
-            document_models=BEANIE_DOCUMENT_MODELS,
-        )
+        await init_hoodie(client["test"], search=False)  # type: ignore[arg-type]
         yield client
     finally:
         client.close()
@@ -98,10 +107,9 @@ async def _beanie_client() -> AsyncIterator[AsyncMongoMockClient]:
 
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="session")
-async def _initialized_beanie(_beanie_client: AsyncMongoMockClient) -> AsyncIterator[None]:
+async def init_hoodied_beanie(_beanie_client: AsyncMongoMockClient) -> AsyncIterator[None]:
     yield
-    for model in BEANIE_DOCUMENT_MODELS:
-        await model.delete_all()
+    await delete_all_entities()
 
 
 # ========================================================

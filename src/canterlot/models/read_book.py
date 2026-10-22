@@ -1,9 +1,11 @@
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
+
+from canterlot.hoodie import Entity
 
 
 class RatingStats(BaseModel):
@@ -11,7 +13,7 @@ class RatingStats(BaseModel):
     rating_count: int = 0
 
 
-class ReadBookModel(Document):
+class ReadBookModel(Entity):
     user_id: PydanticObjectId
     book_id: PydanticObjectId
     rating: float | None = Field(default=None, ge=0.5, le=5.0, multiple_of=0.5)

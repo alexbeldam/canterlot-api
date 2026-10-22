@@ -2,14 +2,15 @@ from datetime import UTC, datetime
 from typing import ClassVar
 
 import shortuuid
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
 
+from canterlot.hoodie import Entity
 from canterlot.types import InviteType, NormalizedEmailStr
 
 
-class InviteModel(Document):
+class InviteModel(Entity):
     id: str = Field(default_factory=lambda: shortuuid.random(length=10), alias="_id")  # type: ignore[assignment]
     club_id: PydanticObjectId
     created_by: PydanticObjectId | None = None
@@ -23,7 +24,6 @@ class InviteModel(Document):
 
     class Settings:
         name = "invites"
-        is_root = True
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel(
                 [

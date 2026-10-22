@@ -4,8 +4,6 @@ import sys
 import structlog
 from structlog.typing import Processor
 
-from canterlot.config.enums import Environment
-
 _UVICORN_ACCESS_ARGS_MIN_LEN = 3
 _UVICORN_ACCESS_PATH_ARG_INDEX = 2
 
@@ -40,8 +38,7 @@ class UvicornAccessPathFilter(logging.Filter):
         return not any(path == prefix or path.startswith(f"{prefix}/") for prefix in _NOISY_ACCESS_PATH_PREFIXES)
 
 
-def setup_logging(environment: Environment) -> None:
-    is_local = environment in (Environment.LOCAL, Environment.TEST)
+def setup_logging(*, is_local: bool) -> None:
     base_log_level = logging.DEBUG if is_local else logging.INFO
 
     shared_processors: list[Processor] = [

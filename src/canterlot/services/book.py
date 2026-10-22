@@ -16,6 +16,7 @@ from canterlot.gateways.books import BookProvider, ProviderSearchResponse
 from canterlot.models.book import BookModel, SearchParams
 from canterlot.models.read_book import RatingStats
 from canterlot.repositories import BookRepository, CacheRepository, ReadBookRepository
+from canterlot.text import LANGUAGE_MATCH_SUBSCORES, best_language_match, similarity_ratio
 from canterlot.types import (
     BookExternalId,
     BookProviderIdentifier,
@@ -24,13 +25,7 @@ from canterlot.types import (
     LanguageStr,
     TitleStr,
 )
-from canterlot.utils import (
-    LANGUAGE_MATCH_SUBSCORES,
-    best_language_match,
-    get_logger,
-    redistribute_weights,
-    similarity_ratio,
-)
+from canterlot.utils import get_logger, redistribute_weights
 
 logger = get_logger(__name__)
 

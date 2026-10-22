@@ -29,6 +29,7 @@ from canterlot.repositories import (
     RoundRepository,
     UserRepository,
 )
+from canterlot.text import LANGUAGE_MATCH_SUBSCORES, LanguageMatchLevel, best_language_match, similarity_ratio
 from canterlot.types import (
     AuthorList,
     ExtensionType,
@@ -38,14 +39,7 @@ from canterlot.types import (
     UrlList,
     UsernameStr,
 )
-from canterlot.utils import (
-    LANGUAGE_MATCH_SUBSCORES,
-    LanguageMatchLevel,
-    best_language_match,
-    get_logger,
-    redistribute_weights,
-    similarity_ratio,
-)
+from canterlot.utils import get_logger, redistribute_weights
 
 logger = get_logger(__name__)
 

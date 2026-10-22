@@ -5,6 +5,8 @@ from enum import StrEnum
 from fastapi import Query
 from pydantic import BaseModel, Field, computed_field
 
+from canterlot.hoodie import SearchPage
+
 
 class SortDirection(StrEnum):
     ASC = "ASC"
@@ -31,6 +33,15 @@ class Page[ItemT](BaseModel):
         end = start + limit
 
         return cls(items=items[start:end], total_items=len(items), current_page=page, page_size=limit)
+
+    @classmethod
+    def from_search(cls, result: SearchPage[ItemT], page: int, limit: int) -> "Page[ItemT]":
+        return cls(
+            items=result["items"],
+            total_items=result["total_items"],
+            current_page=page,
+            page_size=limit,
+        )
 
     def map[U](self, fn: Callable[[ItemT], U]) -> "Page[U]":
         return Page(

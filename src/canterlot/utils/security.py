@@ -16,10 +16,10 @@ from pydantic import SecretStr
 
 from canterlot.config import get_settings
 from canterlot.exceptions import TokenExpiredError, TokenMalformedError
+from canterlot.types import SecretVerificationCode, TokenType, secret_code_adapter
 
 if TYPE_CHECKING:
     from canterlot.emails import EmailCategory
-    from canterlot.types import SecretVerificationCode
 
 _UNSUBSCRIBE_SALT = "email-unsubscribe"
 _ACTION_LINK_SALT = "email-action-link"
@@ -42,7 +42,7 @@ class UnsubscribeTokenData:
 @dataclass(frozen=True)
 class ActionLinkTokenData:
     user_id: PydanticObjectId
-    code: "SecretVerificationCode"
+    code: SecretVerificationCode
 
 
 def hash_password(password: SecretStr | str) -> str:
@@ -72,22 +72,16 @@ def create_jwt_token(data: dict, expires_delta: timedelta) -> str:
 
 
 def create_access_token(user_id: PydanticObjectId) -> str:
-    from canterlot.types import TokenType
-
     expiry = timedelta(minutes=get_settings().auth.access_token_expiry_minutes)
     return create_jwt_token({"sub": str(user_id), "type": TokenType.ACCESS}, expiry)
 
 
 def create_refresh_token(user_id: PydanticObjectId) -> str:
-    from canterlot.types import TokenType
-
     expiry = timedelta(days=get_settings().auth.refresh_token_expiry_days)
     return create_jwt_token({"sub": str(user_id), "type": TokenType.REFRESH}, expiry)
 
 
 def create_reset_token(user_id: PydanticObjectId) -> str:
-    from canterlot.types import TokenType
-
     expiry = timedelta(minutes=get_settings().auth.reset_token_expiry_minutes)
     return create_jwt_token({"sub": str(user_id), "type": TokenType.RESET}, expiry)
 
@@ -102,14 +96,12 @@ def decode_jwt_payload(token: str) -> dict[str, Any]:
         raise TokenMalformedError("The token is corrupt, malformed, or altered.") from None
 
 
-def generate_secure_code() -> "SecretVerificationCode":
+def generate_secure_code() -> SecretVerificationCode:
     """
     Generates a cryptographically secure numeric verification code.
     """
     length = 6
     raw_code = f"{secrets.randbelow(10**length):0{length}d}"
-
-    from canterlot.types import secret_code_adapter
 
     return secret_code_adapter.validate_python(raw_code)
 
@@ -166,13 +158,11 @@ def decode_unsubscribe_token(token: str) -> UnsubscribeTokenData:
         raise TokenMalformedError("The token is corrupt, malformed, or altered.") from None
 
 
-def encode_action_link_token(user_id: PydanticObjectId, code: "SecretVerificationCode") -> str:
+def encode_action_link_token(user_id: PydanticObjectId, code: SecretVerificationCode) -> str:
     return _action_link_serializer().dumps(f"{_pack_id(user_id)}:{code.get_secret_value()}")
 
 
 def decode_action_link_token(token: str) -> ActionLinkTokenData:
-    from canterlot.types import secret_code_adapter
-
     try:
         user_id, raw_code = _action_link_serializer().loads(token).split(":")
         return ActionLinkTokenData(

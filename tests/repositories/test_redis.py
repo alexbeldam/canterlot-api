@@ -61,15 +61,21 @@ def describe_expiry():
         assert 0 < ttl <= 60
 
 
-def describe_ping():
-    async def it_returns_true_when_redis_is_reachable(redis_repo: RedisRepository):
-        assert await redis_repo.ping() is True
+def describe_name():
+    async def it_identifies_the_dependency_as_redis(redis_repo: RedisRepository):
+        assert redis_repo.name == "redis"
 
-    async def it_returns_false_when_redis_is_unreachable():
+
+def describe_ping():
+    async def it_succeeds_when_redis_is_reachable(redis_repo: RedisRepository):
+        await redis_repo.ping()
+
+    async def it_raises_when_redis_is_unreachable():
         unreachable_client = AsyncMock(spec=aioredis.Redis)
         unreachable_client.ping.side_effect = RedisError("connection refused")
 
-        assert await RedisRepository(unreachable_client).ping() is False
+        with pytest.raises(RedisError, match="connection refused"):
+            await RedisRepository(unreachable_client).ping()
 
 
 def describe_rate_limiter_evaluate():

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from curl_cffi.requests import AsyncSession
 from pydantic import SecretStr
 
-from canterlot.config.settings import get_settings
+from canterlot.config import get_settings
 from canterlot.gateways.books.factories import get_all_book_providers
 from canterlot.gateways.books.google import GoogleBookProvider
 

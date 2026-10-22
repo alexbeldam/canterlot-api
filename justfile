@@ -97,14 +97,14 @@ pyright:
     @echo "{{ info }}Running Pyright type checks...{{ reset }}"
     @uv run pyright
 
-test:
+test *pytest_args:
     @echo "{{ info }}Executing test suites via Pytest...{{ reset }}"
-    @uv run pytest -m "not integration"
+    @uv run pytest -m "not integration" {{ if pytest_args == "" { "-n auto" } else { pytest_args } }}
 
 # Runs tests that need a real MongoDB (via testcontainers/Docker) in isolation.
-test-integration:
+test-integration *pytest_args:
     @echo "{{ info }}Executing integration test suites against a real MongoDB (Docker required)...{{ reset }}"
-    @uv run pytest -m integration
+    @uv run pytest -m integration {{ if pytest_args == "" { "-n auto" } else { pytest_args } }}
 
 deptry flags="":
     @echo "{{ info }}Running dependency analysis...{{ reset }}"
@@ -124,9 +124,12 @@ check-imports:
     @echo "{{ info }}Verifying imports and exported symbols...{{ reset }}"
     @uv run python -m tools.check_imports
 
-coverage:
+# With no args, runs the full suite with full-repo coverage. Pass test path(s) and your own
+# --cov=<path> flag(s) (repeatable) to scope both what runs and what's measured, instead of
+# the full suite - e.g. `just coverage tests/hoodie/test_query.py --cov=src/canterlot/hoodie/query.py`.
+coverage *pytest_args:
     @echo "{{ info }}Evaluating test suite metrics and coverage...{{ reset }}"
-    @uv run pytest --cov=src --cov-report=term-missing --cov-report=html --cov-report=json
+    @uv run pytest {{ if pytest_args == "" { "--cov=src -n auto" } else { pytest_args } }} --cov-report=term-missing --cov-report=html --cov-report=json
     @uv run python -m tools.coverage
 
 # --- Unified Multi-Stage Pipeline ---

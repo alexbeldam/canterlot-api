@@ -3,13 +3,12 @@ from typing import cast
 
 from beanie import PydanticObjectId
 from pydantic import BaseModel, ConfigDict, Field
-from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
+from canterlot.hoodie import transactional
 from canterlot.models import CatalogEntryModel, ClubMembershipModel, ClubModel
 from canterlot.repositories import ClubRepository
-from canterlot.repositories.beanie.transactions import transactional
 from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr, MembershipStatus
 
 
@@ -75,18 +74,17 @@ class BeanieClubRepository(ClubRepository):
     @transactional
     async def save_new_club_with_owner(
         self,
-        session: AsyncClientSession,
         club: ClubModel,
         owner_id: PydanticObjectId,
         joined_at: datetime,
     ) -> ClubModel:
-        await club.insert(session=session)
+        await club.insert()
         await ClubMembershipModel(
             club_id=PydanticObjectId(club.id),
             user_id=owner_id,
             status=MembershipStatus.OWNER,
             joined_at=joined_at,
-        ).insert(session=session)
+        ).insert()
 
         return club
 
@@ -124,15 +122,12 @@ class BeanieClubRepository(ClubRepository):
     @transactional
     async def delete_with_memberships_and_catalog(
         self,
-        session: AsyncClientSession,
         club_id: PydanticObjectId,
     ) -> None:
-        await ClubModel.find_one(ClubModel.id == club_id, session=session).delete(session=session)
+        await ClubModel.find_one(ClubModel.id == club_id).delete()
         await ClubMembershipModel.find(
             ClubMembershipModel.club_id == club_id,
-            session=session,
-        ).delete(session=session)
+        ).delete()
         await CatalogEntryModel.find(
             CatalogEntryModel.club_id == club_id,
-            session=session,
-        ).delete(session=session)
+        ).delete()

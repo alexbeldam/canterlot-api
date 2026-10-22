@@ -1,5 +1,6 @@
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
+from pydantic import BaseModel, ConfigDict, Field
 from pymongo.errors import DuplicateKeyError
 
 from canterlot.models import BookModel, CatalogEntryModel
@@ -13,6 +14,12 @@ _SORT_FIELD_PATHS = {
     "year": "book.year",
 }
 _BOOK_JOINED_SORT_FIELDS = {"title", "author", "year"}
+
+
+class BookIdProjection(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: PydanticObjectId = Field(alias="_id")
 
 
 class BeanieCatalogRepository(CatalogRepository):
@@ -107,36 +114,17 @@ class BeanieCatalogRepository(CatalogRepository):
         if not entries_by_book_id:
             return Page(items=[], total_items=0, current_page=page, page_size=limit)
 
-        pipeline: list[dict] = [
-            {
-                "$search": {
-                    "index": "books_search",
-                    "compound": {
-                        "filter": [{"in": {"path": "_id", "value": list(entries_by_book_id)}}],
-                        "must": [{"text": {"query": q, "path": ["title", "authors"], "fuzzy": {}}}],
-                    },
-                    "count": {"type": "total"},
-                }
-            },
-            {
-                "$facet": {
-                    "items": [
-                        {"$skip": (page - 1) * limit},
-                        {"$limit": limit},
-                        {"$project": {"_id": 1, "score": {"$meta": "searchScore"}}},
-                    ],
-                    "meta": [{"$replaceWith": "$$SEARCH_META"}, {"$limit": 1}],
-                }
-            },
-        ]
+        result = await (
+            BookModel.search()
+            .filter_in("_id", list(entries_by_book_id))
+            .text(["title", "authors"], q, fuzzy=True)
+            .project(BookIdProjection)
+            .paginate(page, limit)
+        )
 
-        result = await BookModel.aggregate(pipeline).to_list()
-        facet = result[0]
+        items = [entries_by_book_id[book.id] for book in result["items"]]
 
-        items = [entries_by_book_id[item["_id"]] for item in facet["items"]]
-        total_items = facet["meta"][0]["count"]["total"] if facet["meta"] else 0
-
-        return Page(items=items, total_items=total_items, current_page=page, page_size=limit)
+        return Page(items=items, total_items=result["total_items"], current_page=page, page_size=limit)
 
     async def find_by_club_id_excluding_book_ids(
         self,

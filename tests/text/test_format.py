@@ -1,6 +1,6 @@
 import pytest
 
-from canterlot.utils.format import similarity_ratio
+from canterlot.text import similarity_ratio
 
 
 def describe_similarity_ratio():

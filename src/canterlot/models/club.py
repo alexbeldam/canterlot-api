@@ -1,16 +1,17 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from beanie import Document, Indexed, PydanticObjectId
+from beanie import Indexed, PydanticObjectId
 from pydantic import Field
 
+from canterlot.hoodie import Entity, searchable
 from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr
 
 
-class ClubModel(Document):
-    name: ClubNameStr
+class ClubModel(Entity):
+    name: ClubNameStr = searchable()
     description: str | None = None
-    slug: Annotated[ClubSlugStr, Indexed(unique=True)]
+    slug: Annotated[ClubSlugStr, Indexed(unique=True)] = searchable()
     join_policy: JoinPolicy = JoinPolicy.PUBLIC
     allow_suggestions: bool = True
     preferred_languages: list[LanguageStr] = Field(default_factory=list)
@@ -20,3 +21,4 @@ class ClubModel(Document):
 
     class Settings:
         name = "clubs"
+        search_index = "clubs_search"

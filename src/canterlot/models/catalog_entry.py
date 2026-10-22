@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
+from canterlot.hoodie import Entity
 
-class CatalogEntryModel(Document):
+
+class CatalogEntryModel(Entity):
     club_id: PydanticObjectId
     book_id: PydanticObjectId
     suggested_by: PydanticObjectId

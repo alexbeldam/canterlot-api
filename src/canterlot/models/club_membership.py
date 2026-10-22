@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import ClassVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pymongo import ASCENDING, IndexModel
 
+from canterlot.hoodie import Entity
 from canterlot.types import MembershipStatus
 
 
-class ClubMembershipModel(Document):
+class ClubMembershipModel(Entity):
     club_id: PydanticObjectId
     user_id: PydanticObjectId
     status: MembershipStatus
