@@ -10,14 +10,15 @@ from saq.queue.redis import RedisQueue
 from saq.types import Context
 
 from canterlot.config import get_settings
-from canterlot.config.database import DatabaseManager
 from canterlot.constants import DEAD_LETTER_QUEUE_NAME, EMAIL_TASKS_QUEUE_NAME, QUOTA_LOCK_KEY
 from canterlot.emails import EmailClient, EmailPriority, EmailTaskPayload, get_email_client, render_email_template
 from canterlot.emails.core.policy import EmailPolicyEngine
+from canterlot.hoodie import DatabaseManager
 from canterlot.repositories import CacheRepository
 from canterlot.repositories.beanie import BeanieBookRepository, BeanieReadBookRepository, BeanieUserRepository
 from canterlot.repositories.redis import RedisRepository
 from canterlot.services import UserService
+from canterlot.types import Environment
 from canterlot.utils import get_logger, setup_logging
 
 logger = get_logger(__name__)
@@ -260,9 +261,13 @@ def build_worker(redis_client: Redis) -> Worker:
 
 async def run_worker() -> None:
     settings = get_settings()
-    setup_logging(settings.environment)
+    setup_logging(is_local=settings.environment in (Environment.LOCAL, Environment.TEST))
 
-    async with DatabaseManager():
+    async with DatabaseManager(
+        settings.db.mongodb_url.get_secret_value(),
+        settings.db.mongodb_db_name,
+        polling=settings.hoodie,
+    ):
         redis_client = Redis.from_url(
             settings.db.redis_url.get_secret_value(),
             socket_timeout=15.0,

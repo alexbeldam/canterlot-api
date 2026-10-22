@@ -5,7 +5,7 @@ import sys
 import structlog
 
 from canterlot.config import get_settings
-from canterlot.config.enums import Environment
+from canterlot.types import Environment
 from canterlot.utils import get_logger
 
 from .seeder import run_seed

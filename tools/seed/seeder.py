@@ -5,9 +5,9 @@ from faker import Faker
 from pydantic import HttpUrl
 
 from canterlot.config import get_settings
-from canterlot.config.database import DatabaseManager
 from canterlot.emails import EmailCategory
-from canterlot.models import BEANIE_DOCUMENT_MODELS, BookModel, CatalogEntryModel, ClubModel, UserModel
+from canterlot.hoodie import DatabaseManager
+from canterlot.models import BookModel, CatalogEntryModel, ClubModel, UserModel
 from canterlot.models.round import CandidatePoolEntry
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.types import (
@@ -46,17 +46,6 @@ def _get_id(doc: Document) -> PydanticObjectId:
 
 async def _slug_exists(slug: str) -> bool:
     return await ClubModel.find(ClubModel.slug == slug).exists()
-
-
-async def _wipe_database(db: DatabaseManager) -> None:
-    log = logger.bind(phase="wipe")
-    log.info("Dropping all collections")
-
-    for model in BEANIE_DOCUMENT_MODELS:
-        await model.get_pymongo_collection().drop()
-
-    await db.reinitialize()
-    log.info("Collections dropped and indexes reinitialized")
 
 
 async def _seed_books() -> tuple[BookModel, BookModel, list[BookModel]]:
@@ -386,8 +375,13 @@ async def run_seed() -> None:
     Faker.seed(SEED_FAKER_SEED)
     now = datetime.now(UTC)
 
-    async with DatabaseManager() as db:
-        await _wipe_database(db)
+    settings = get_settings()
+    async with DatabaseManager(
+        settings.db.mongodb_url.get_secret_value(),
+        settings.db.mongodb_db_name,
+        polling=settings.hoodie,
+    ) as db:
+        await db.reset()
 
         flawless_book, sparse_book, batch_books = await _seed_books()
         users = await _seed_users(now)

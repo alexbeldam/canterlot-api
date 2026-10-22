@@ -18,13 +18,14 @@ from saq.web.starlette import saq_web
 from starlette.middleware.authentication import AuthenticationMiddleware
 
 from canterlot.config import get_settings
-from canterlot.config.database import DatabaseManager
 from canterlot.constants import DEAD_LETTER_QUEUE_NAME, EMAIL_TASKS_QUEUE_NAME
+from canterlot.hoodie import DatabaseManager
 from canterlot.middlewares import AdminAuthBackend, LastSeenMiddleware, on_auth_error
 from canterlot.routers import router
 from canterlot.routers.errors import register_error_handlers
 from canterlot.routers.health import health_router
 from canterlot.routers.webhooks import webhooks_router
+from canterlot.types import Environment
 from canterlot.utils import setup_logging
 from canterlot.worker import build_worker
 
@@ -35,9 +36,13 @@ FAVICON_URL = "/static/favicon.svg"
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # pragma: no cover
     settings = get_settings()
-    setup_logging(settings.environment)
+    setup_logging(is_local=settings.environment in (Environment.LOCAL, Environment.TEST))
 
-    async with DatabaseManager():
+    async with DatabaseManager(
+        settings.db.mongodb_url.get_secret_value(),
+        settings.db.mongodb_db_name,
+        polling=settings.hoodie,
+    ):
         worker = build_worker(app.state.redis_client)
         worker_task = asyncio.create_task(worker.start())
 
