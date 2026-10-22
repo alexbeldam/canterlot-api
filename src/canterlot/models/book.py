@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar
 
-from beanie import Document, Indexed
+from beanie import Indexed
 from pydantic import BaseModel, Field, model_validator
 from pymongo import ASCENDING, IndexModel
 
+from canterlot.hoodie import Entity, searchable
 from canterlot.types import (
     AuthorList,
     BookExternalId,
@@ -32,14 +33,14 @@ class LinkCandidate(BaseModel):
     url: HttpsUrl
 
 
-class BookModel(Document):
+class BookModel(Entity):
     external_id: Annotated[BookExternalId, Indexed(unique=True)]
-    title: TitleStr
-    authors: AuthorList = Field(default_factory=list)
+    title: TitleStr = searchable()
+    authors: AuthorList = searchable(default_factory=list)
     year: PublishedYear | None = None
     page_count: PageCount | None = None
-    isbn_10: ISBN10Str | None = None
-    isbn_13: ISBN13Str | None = None
+    isbn_10: ISBN10Str | None = searchable(default=None)
+    isbn_13: ISBN13Str | None = searchable(default=None)
     languages: list[LanguageStr] = Field(default_factory=list)
     description: NonEmptyStr | None = None
     categories: list[NonEmptyStr] = Field(default_factory=list)
@@ -49,6 +50,7 @@ class BookModel(Document):
 
     class Settings:
         name = "books"
+        search_index = "books_search"
         bson_encoders: ClassVar[dict[type, Any]] = {BookProviderIdentifier: str}
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel(

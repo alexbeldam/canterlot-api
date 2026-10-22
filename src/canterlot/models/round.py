@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
 
+from canterlot.hoodie import Entity
 from canterlot.types import DeadlineUnit, RoundResolutionMethod, RoundSelectionMode, RoundStatus
 
 ACTIVE_ROUND_STATUSES = (RoundStatus.SETUP, RoundStatus.VOTING, RoundStatus.DECIDED)
@@ -19,7 +20,7 @@ class CandidatePoolEntry(BaseModel):
     book_id: PydanticObjectId
 
 
-class RoundModel(Document):
+class RoundModel(Entity):
     club_id: PydanticObjectId
     selection_mode: RoundSelectionMode
     status: RoundStatus

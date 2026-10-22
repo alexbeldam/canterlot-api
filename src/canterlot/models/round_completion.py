@@ -2,9 +2,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
+
+from canterlot.hoodie import Entity
 
 
 @dataclass
@@ -13,7 +15,7 @@ class CompletionResult:
     round_concluded: bool
 
 
-class RoundCompletionModel(Document):
+class RoundCompletionModel(Entity):
     club_id: PydanticObjectId
     round_id: PydanticObjectId
     book_id: PydanticObjectId

@@ -2,11 +2,12 @@ from datetime import UTC, datetime
 from typing import Annotated, ClassVar
 
 import shortuuid
-from beanie import Document, Indexed, PydanticObjectId
+from beanie import Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo import ASCENDING, IndexModel
 
 from canterlot.emails import EmailCategory
+from canterlot.hoodie import Entity, searchable
 from canterlot.types import (
     AuthProviderName,
     AvatarSchema,
@@ -34,9 +35,9 @@ class EmailPreferencesSchema(BaseModel):
     clubs_opt_out: dict[PydanticObjectId, datetime] = Field(default_factory=dict)
 
 
-class UserModel(Document):
-    name: PersonNameStr
-    username: Annotated[UsernameStr, Indexed(unique=True)]
+class UserModel(Entity):
+    name: PersonNameStr = searchable()
+    username: Annotated[UsernameStr, Indexed(unique=True)] = searchable()
     email: Annotated[NormalizedEmailStr, Indexed(unique=True)]
     hashed_password: str | None = None
     linked_providers: list[LinkedProviderSchema] = Field(default_factory=list)
@@ -56,6 +57,7 @@ class UserModel(Document):
 
     class Settings:
         name = "users"
+        search_index = "users_search"
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel(
                 [("linked_providers.provider", ASCENDING), ("linked_providers.external_id", ASCENDING)],

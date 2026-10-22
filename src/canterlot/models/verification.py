@@ -2,14 +2,15 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 from pydantic import Field, validate_call
 from pymongo import ASCENDING, IndexModel
 
+from canterlot.hoodie import Entity
 from canterlot.types import SecretVerificationCode, VerificationScope
 
 
-class VerificationCodeModel(Document):
+class VerificationCodeModel(Entity):
     code_hash: str
     user_id: PydanticObjectId
     scope: VerificationScope

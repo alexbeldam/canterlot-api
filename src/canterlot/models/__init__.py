@@ -1,5 +1,3 @@
-from beanie import Document
-
 from .book import BookModel, LinkCandidate
 from .catalog_entry import CatalogEntryModel
 from .club import ClubModel
@@ -9,30 +7,10 @@ from .invite import InviteModel
 from .read_book import RatingStats, ReadBookModel
 from .round import CandidatePoolEntry, DeadlineDuration, RoundModel
 from .round_completion import CompletionResult, RoundCompletionModel
-from .search_index import SearchIndexSpec
 from .user import LinkedProviderSchema, UserModel
 from .verification import VerificationCodeModel
 
-BEANIE_DOCUMENT_MODELS: list[type[Document]] = [
-    BookModel,
-    CatalogEntryModel,
-    ClubMembershipModel,
-    ClubModel,
-    InviteModel,
-    ReadBookModel,
-    RoundModel,
-    RoundCompletionModel,
-    UserModel,
-    VerificationCodeModel,
-]
-
-SEARCH_INDEX_MAP: dict[str, SearchIndexSpec] = {
-    "books_search": SearchIndexSpec(model=BookModel, definition={"mappings": {"dynamic": True}}),
-}
-
 __all__ = [
-    "BEANIE_DOCUMENT_MODELS",
-    "SEARCH_INDEX_MAP",
     "BookModel",
     "CandidatePoolEntry",
     "CatalogEntryModel",
@@ -50,7 +28,6 @@ __all__ = [
     "ReadBookModel",
     "RoundCompletionModel",
     "RoundModel",
-    "SearchIndexSpec",
     "UserModel",
     "VerificationCodeModel",
 ]
