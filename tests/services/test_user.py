@@ -10,6 +10,7 @@ from canterlot.emails.core.enums import EmailCategory
 from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     InvalidCredentialsError,
+    ReadBookNotFoundError,
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
@@ -64,18 +65,23 @@ def describe_marking_a_book_as_read():
         read_book_repo.upsert.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=4.5)
 
 
-def describe_remove_read_book():
-    async def removes_book(service: UserService, read_book_repo: AsyncMock):
+def describe_removing_a_read_book():
+    async def it_deletes_the_read_book_entry(service: UserService, read_book_repo: AsyncMock):
         read_book_repo.delete.return_value = True
-        await service.remove_read_book(SOME_USER_ID, SOME_BOOK_ID)
+
+        await service.remove_read_book(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID)
+
         read_book_repo.delete.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID)
-        
-    async def raises_not_found_if_not_deleted(service: UserService, read_book_repo: AsyncMock):
+
+    async def it_raises_read_book_not_found_when_the_book_was_not_in_the_history(
+        service: UserService,
+        read_book_repo: AsyncMock,
+    ):
         read_book_repo.delete.return_value = False
-        import pytest
-        from canterlot.exceptions.book import ReadBookNotFoundError
+
         with pytest.raises(ReadBookNotFoundError):
-            await service.remove_read_book(SOME_USER_ID, SOME_BOOK_ID)
+            await service.remove_read_book(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID)
+
 
 def describe_get_read_books():
     async def it_returns_an_empty_page_when_nothing_has_been_read(service: UserService, read_book_repo: AsyncMock):

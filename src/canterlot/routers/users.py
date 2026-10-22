@@ -37,6 +37,7 @@ from canterlot.routers.responses import (
     MARK_BOOK_READ_RESPONSES,
     REGENERATE_AVATAR_SEED_RESPONSES,
     REGISTER_RESPONSES,
+    REMOVE_READ_BOOK_RESPONSES,
     SET_AVATAR_RESPONSES,
     UPDATE_PROFILE_RESPONSES,
 )
@@ -312,14 +313,11 @@ async def mark_book_read(
     await user_service.mark_book_read(user_id=current_user_id, book_id=book_id, rating=rating)
 
 
-_profile.include_router(_oauth)
-_profile.include_router(_read_books)
-router.include_router(_profile)
-
 @_read_books.delete(
     "/{identifier}",
     operation_id="removeBookFromReadHistory",
     status_code=status.HTTP_204_NO_CONTENT,
+    responses=REMOVE_READ_BOOK_RESPONSES,
 )
 async def remove_book_from_read_history(
     book_id: Annotated[PydanticObjectId, Depends(get_book_id_from_identifier)],
@@ -327,3 +325,8 @@ async def remove_book_from_read_history(
     user_service: Annotated[UserService, Depends(get_user_service)],
 ) -> None:
     await user_service.remove_read_book(user_id=current_user_id, book_id=book_id)
+
+
+_profile.include_router(_oauth)
+_profile.include_router(_read_books)
+router.include_router(_profile)
