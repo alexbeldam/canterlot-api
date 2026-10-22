@@ -190,6 +190,30 @@ def describe_pull_refresh_token_by_id():
         assert removed is False
 
 
+def describe_clear_all_refresh_tokens():
+    async def it_removes_every_refresh_token():
+        user = await UserFactory.create_async(
+            refresh_tokens=[UserFactory.__faker__.uuid4(), UserFactory.__faker__.uuid4()],
+        )
+
+        await repo.clear_all_refresh_tokens(_id(user))
+
+        found = await repo.find_by_id(_id(user))
+        assert found is not None
+        assert found.refresh_tokens == []
+
+    async def it_leaves_other_users_untouched():
+        token = UserFactory.__faker__.uuid4()
+        target = await UserFactory.create_async(refresh_tokens=[UserFactory.__faker__.uuid4()])
+        other = await UserFactory.create_async(refresh_tokens=[token])
+
+        await repo.clear_all_refresh_tokens(_id(target))
+
+        found = await repo.find_by_id(_id(other))
+        assert found is not None
+        assert found.refresh_tokens == [token]
+
+
 def describe_add_linked_provider():
     async def it_appends_a_linked_provider():
         user = await UserFactory.create_async()

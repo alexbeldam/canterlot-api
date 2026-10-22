@@ -58,6 +58,7 @@ from .responses import (
     CONFIRM_EMAIL_VERIFICATION_RESPONSES,
     CREATE_SESSION_RESPONSES,
     GET_RESET_SESSION_STATUS_RESPONSES,
+    LOGOUT_ALL_RESPONSES,
     LOGOUT_RESPONSES,
     REQUEST_EMAIL_VERIFICATION_RESPONSES,
     REQUEST_PASSWORD_RESET_RESPONSES,
@@ -148,12 +149,13 @@ async def logout(
     await auth_service.logout(token_data.user_id, token_data.token)
 
 
-@router.post(
-    "/logout-all",
+@router.delete(
+    "/sessions",
     operation_id="logoutAll",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Log out of all devices",
     description="Revokes every session on the caller's account, including the current one.",
+    responses=LOGOUT_ALL_RESPONSES,
 )
 async def logout_all(
     token_data: Annotated[RefreshTokenContext | None, Depends(get_optional_refresh_token_context)],

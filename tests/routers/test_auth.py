@@ -253,19 +253,23 @@ def describe_logout():
 
 
 def describe_logout_all():
-    async def revokes_all_sessions_and_clears_cookie(client: AsyncClient, auth_service: AsyncMock):
-        client.cookies.set("refresh_token", "old-refresh-token")
-        response = await client.post("/auth/logout-all")
+    def it_revokes_every_session_and_clears_the_cookie(client: TestClient, auth_service: AsyncMock):
+        response = client.delete("/v1/auth/sessions")
 
         assert response.status_code == 204
-        assert response.cookies.get("refresh_token") == '""'
         auth_service.logout_all.assert_awaited_once_with(SOME_USER_ID)
+        set_cookie = response.headers.get("set-cookie", "")
+        assert 'refresh_token=""' in set_cookie
+        assert "Max-Age=0" in set_cookie
 
-    async def ignores_unauthenticated(client: AsyncClient, auth_service: AsyncMock):
-        response = await client.post("/auth/logout-all")
+    def it_is_a_no_op_when_there_is_no_session_cookie(client: TestClient, auth_service: AsyncMock):
+        cast(FastAPI, client.app).dependency_overrides[get_optional_refresh_token_context] = lambda: None
+
+        response = client.delete("/v1/auth/sessions")
 
         assert response.status_code == 204
         auth_service.logout_all.assert_not_called()
+
 
 def describe_request_password_reset():
     def it_accepts_the_request_and_delegates_to_the_use_case(

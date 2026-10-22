@@ -181,6 +181,16 @@ LOGOUT_RESPONSES: ResponseDict = {
     **RESP_500_INTERNAL,
 }
 
+LOGOUT_ALL_RESPONSES: ResponseDict = {
+    status.HTTP_204_NO_CONTENT: {
+        "description": (
+            "Every session on the account revoked and the refresh cookie cleared. Also returned, as a no-op, "
+            "when there was no active session to identify the account."
+        )
+    },
+    **RESP_500_INTERNAL,
+}
+
 REQUEST_PASSWORD_RESET_RESPONSES: ResponseDict = {
     status.HTTP_202_ACCEPTED: {
         "description": (

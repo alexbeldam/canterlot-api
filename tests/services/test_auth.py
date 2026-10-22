@@ -216,6 +216,15 @@ def describe_logout():
         await service.logout(SOME_USER_ID, "some-token")
 
 
+def describe_logout_all():
+    async def it_clears_every_refresh_token_for_the_user(user_repo: AsyncMock):
+        service = AuthService(user_repo, {})
+
+        await service.logout_all(SOME_USER_ID)
+
+        user_repo.clear_all_refresh_tokens.assert_awaited_once_with(SOME_USER_ID)
+
+
 def describe_sign_in_with_provider():
     async def it_raises_when_the_provider_is_not_configured(user_repo: AsyncMock):
         service = AuthService(user_repo, {})

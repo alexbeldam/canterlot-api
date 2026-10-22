@@ -176,6 +176,14 @@ class AuthService:
 
         log.info("Session logged out successfully")
 
+    async def logout_all(self, user_id: PydanticObjectId) -> None:
+        log = logger.bind(user_id=str(user_id))
+        log.info("Revoking every session on the account")
+
+        await self.__user_repo.clear_all_refresh_tokens(user_id)
+
+        log.info("All sessions revoked successfully")
+
     def __create_tokens(self, user_id: PydanticObjectId) -> TokenPair:
         return TokenPair(
             access_token=create_access_token(user_id),
