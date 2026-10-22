@@ -2,7 +2,6 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 import redis.asyncio as aioredis
-from redis.exceptions import RedisError
 
 from canterlot.repositories import CacheRepository, DatabaseRepository, RateLimiter
 from canterlot.utils import get_logger
@@ -49,11 +48,12 @@ class RedisRepository(CacheRepository, DatabaseRepository, RateLimiter):
     async def invalidate(self, key: str) -> None:
         await self.__redis.delete(key)
 
-    async def ping(self) -> bool:
-        try:
-            return bool(await self.__redis.ping())
-        except RedisError:
-            return False
+    @property
+    def name(self) -> str:
+        return "redis"
+
+    async def ping(self) -> None:
+        await self.__redis.ping()
 
     async def evaluate(self, key: str, limit: int, window_seconds: int) -> int | None:
         async with self.__redis.pipeline(transaction=True) as pipe:

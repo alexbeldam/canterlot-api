@@ -1,3 +1,5 @@
+import asyncio
+
 from canterlot.repositories import DatabaseRepository
 from canterlot.utils import get_logger
 
@@ -9,9 +11,22 @@ class HealthService:
         self.__database_repos = database_repos
 
     async def check(self) -> bool:
-        healthy = all([await repo.ping() for repo in self.__database_repos])
+        outcomes = await asyncio.gather(
+            *(repo.ping() for repo in self.__database_repos),
+            return_exceptions=True,
+        )
+        failures = {
+            repo.name: f"{type(outcome).__name__}: {outcome}"
+            for repo, outcome in zip(self.__database_repos, outcomes, strict=True)
+            if isinstance(outcome, BaseException)
+        }
+        healthy = not failures
 
-        log = logger.bind(dependency_count=len(self.__database_repos), healthy=healthy)
+        log = logger.bind(
+            dependency_count=len(self.__database_repos),
+            failures=failures,
+            healthy=healthy,
+        )
         if healthy:
             log.debug("Health check passed")
         else:

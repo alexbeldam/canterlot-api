@@ -7,11 +7,16 @@ from canterlot.repositories.beanie import BeanieDatabaseRepository
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
-def describe_ping():
-    async def it_returns_true_when_mongo_is_reachable():
-        assert await BeanieDatabaseRepository().ping() is True
+def describe_name():
+    async def it_identifies_the_dependency_as_mongodb():
+        assert BeanieDatabaseRepository().name == "mongodb"
 
-    async def it_returns_false_when_mongo_is_unreachable(monkeypatch: pytest.MonkeyPatch):
+
+def describe_ping():
+    async def it_succeeds_when_mongo_is_reachable():
+        await BeanieDatabaseRepository().ping()
+
+    async def it_raises_when_mongo_is_unreachable(monkeypatch: pytest.MonkeyPatch):
         class _UnreachableDatabase:
             async def command(self, *_args, **_kwargs):
                 raise PyMongoError("no route to host")
@@ -21,4 +26,5 @@ def describe_ping():
 
         monkeypatch.setattr(UserModel, "get_pymongo_collection", classmethod(lambda _cls: _UnreachableCollection()))
 
-        assert await BeanieDatabaseRepository().ping() is False
+        with pytest.raises(PyMongoError, match="no route to host"):
+            await BeanieDatabaseRepository().ping()

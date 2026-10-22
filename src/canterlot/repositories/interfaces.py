@@ -202,7 +202,10 @@ class CacheRepository(Protocol):
 
 
 class DatabaseRepository(Protocol):
-    async def ping(self) -> bool: ...
+    @property
+    def name(self) -> str: ...
+
+    async def ping(self) -> None: ...
 
 
 class UserRepository(Protocol):
