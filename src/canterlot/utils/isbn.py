@@ -1,7 +1,7 @@
 from pydantic import validate_call
 
+from canterlot.text import ISBN10_LEN
 from canterlot.types import ISBN10Str, ISBN13Str, ISBNStr
-from canterlot.utils.format import ISBN10_LEN
 
 
 @validate_call

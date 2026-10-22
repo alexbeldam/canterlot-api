@@ -18,8 +18,7 @@ from pydantic import (
 from pydantic.main import BaseModel
 from pydantic_core import CoreSchema, PydanticCustomError, core_schema
 
-from canterlot.utils.format import ISBN10_LEN, ISBN13_LEN, normalize_email, normalize_isbn
-from canterlot.utils.language import normalize_language
+from canterlot.text import ISBN10_LEN, ISBN13_LEN, normalize_email, normalize_isbn, normalize_language
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 64
@@ -28,6 +27,13 @@ MAX_YEAR_OFFSET = 2
 
 
 # === 1. Enums ===
+class Environment(StrEnum):
+    DEV = "dev"
+    PROD = "prod"
+    LOCAL = "local"
+    TEST = "test"
+
+
 class JoinPolicy(StrEnum):
     PUBLIC = "PUBLIC"
     RESTRICTED = "RESTRICTED"
