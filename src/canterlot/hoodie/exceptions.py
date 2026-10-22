@@ -250,6 +250,19 @@ class SearchIndexError(HoodieError):
     """Base exception for runtime search index failures."""
 
 
+class SearchIndexNeverDroppedError(SearchIndexError, RuntimeError):
+    """Raised when a search index is still listed after being dropped, within the polling
+    window (see `reset_hoodie`).
+
+    :param index_name: the Atlas Search index that was never removed.
+    :type index_name: str
+    """
+
+    def __init__(self, index_name: str) -> None:
+        super().__init__(f"Search index {index_name!r} was never dropped.")
+        self.index_name = index_name
+
+
 class SearchIndexNeverQueryableError(SearchIndexError, RuntimeError):
     """Raised when a search index never becomes queryable within the polling window (see
     `init_hoodie`).

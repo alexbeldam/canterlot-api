@@ -10,7 +10,7 @@ from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import CollectionInvalid
 from pymongo.operations import SearchIndexModel
 
-from .exceptions import SearchIndexNeverQueryableError
+from .exceptions import SearchIndexNeverDroppedError, SearchIndexNeverQueryableError
 from .fields import SearchableField
 from .polling import PollCoalescer, poll_until
 from .registry import _ENTITY_SEARCH_META, SearchMeta, get_polling_config
@@ -73,6 +73,35 @@ async def ensure_registered_search_indexes() -> None:
             await _ensure_search_index(collection=cls.get_pymongo_collection(), name=meta.index, fields=meta.fields)
 
     await asyncio.gather(*(_bounded(cls, meta) for cls, meta in _ENTITY_SEARCH_META.items()))
+
+
+async def drop_registered_search_indexes() -> None:
+    await asyncio.gather(
+        *(_drop_search_index(cls.get_pymongo_collection(), meta.index) for cls, meta in _ENTITY_SEARCH_META.items())
+    )
+
+
+async def _drop_search_index(collection: AsyncCollection[Mapping[str, Any]], name: str) -> None:
+    log = logger.bind(index_name=name, collection=collection.name)
+
+    async def listed() -> bool:
+        return bool(await (await collection.list_search_indexes(name)).to_list())
+
+    if not await listed():
+        return
+
+    log.info("Dropping search index.")
+    await collection.drop_search_index(name)
+
+    async def gone() -> bool:
+        return not await listed()
+
+    def on_retry(attempt: int) -> None:
+        log.debug("Search index still listed after drop, retrying.", attempt=attempt)
+
+    if not await poll_until(gone, policy=get_polling_config().index_build, on_retry=on_retry):  # pragma: no cover
+        log.error("Search index never dropped.")  # only reachable with a broken Atlas deployment
+        raise SearchIndexNeverDroppedError(name)
 
 
 async def _ensure_search_index(

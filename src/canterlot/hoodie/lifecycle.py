@@ -3,7 +3,7 @@ import asyncio
 from beanie import init_beanie
 from pymongo.asynchronous.database import AsyncDatabase
 
-from .indexes import ensure_registered_search_indexes
+from .indexes import drop_registered_search_indexes, ensure_registered_search_indexes
 from .polling import HoodiePollingConfig
 from .registry import _ALL_ENTITIES, is_search_enabled, set_polling_config, set_search_enabled
 
@@ -69,9 +69,16 @@ async def reset_hoodie(database: AsyncDatabase) -> None:
 
     :param database: the Mongo database to reinitialize Beanie against.
     :type database: AsyncDatabase
+    :raises SearchIndexNeverDroppedError: if search is currently enabled and an index is
+        still listed after being dropped, within the polling window.
     :raises SearchIndexNeverQueryableError: if search is currently enabled and a rebuilt
         index never becomes queryable within the polling window.
     """
+    # mongot keeps a dropped collection's index under the same name, so a recreated
+    # collection would adopt a ghost index that never indexes its documents.
+    if is_search_enabled():
+        await drop_registered_search_indexes()
+
     # Each entity owns its own collection, so these drops are independent of each other.
     await asyncio.gather(*(cls.get_pymongo_collection().drop() for cls in _ALL_ENTITIES))
 
