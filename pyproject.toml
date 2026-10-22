@@ -43,7 +43,6 @@ dependencies = [
     "saq[hiredis,web]>=0.26.4",
     "itsdangerous>=2.2.0",
     "python-dateutil>=2.9.0.post0",
-    "tenacity>=9.1.4",
 ]
 
 [dependency-groups]
@@ -66,6 +65,8 @@ dev = [
     "polyfactory>=3.3.0",
     "faker>=40.35.0",
     "types-python-dateutil>=2.9.0.20260807",
+    "pytest-xdist>=3.8.0",
+    "filelock>=4.0.9",
 ]
 
 [project.scripts]
