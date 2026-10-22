@@ -43,6 +43,7 @@ from canterlot.exceptions import (
     PasswordNotSetError,
     PendingRequestNotFoundError,
     RateLimitExceededError,
+    ReadBookNotFoundError,
     RoundAlreadyFinalizedError,
     RoundNotFoundError,
     SamePasswordError,
@@ -1034,6 +1035,22 @@ MARK_BOOK_READ_RESPONSES: ResponseDict = {
         "model": ErrorResponseModel,
         "description": "BookNotFoundError: Identifier doesn't match any known book.",
         "content": error_example(BookNotFoundError),
+    },
+    status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error on identifier."},
+    **RESP_500_INTERNAL,
+}
+
+REMOVE_READ_BOOK_RESPONSES: ResponseDict = {
+    status.HTTP_204_NO_CONTENT: {"description": "Book removed from reading history."},
+    **RESP_400_MALFORMED_TOKEN,
+    **RESP_401_AUTH,
+    status.HTTP_404_NOT_FOUND: {
+        "model": ErrorResponseModel,
+        "description": (
+            "BookNotFoundError: Identifier doesn't match any known book. "
+            "ReadBookNotFoundError: The book is not in the caller's reading history."
+        ),
+        "content": error_example(BookNotFoundError, ReadBookNotFoundError),
     },
     status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Validation error on identifier."},
     **RESP_500_INTERNAL,

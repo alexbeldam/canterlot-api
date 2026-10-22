@@ -18,6 +18,7 @@ from canterlot.exceptions import (
     IncorrectPasswordError,
     InvalidOAuthCredentialError,
     LastAuthenticationMethodError,
+    ReadBookNotFoundError,
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
@@ -517,3 +518,39 @@ def describe_mark_book_read():
         assert response.status_code == 404
         assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
         user_service.mark_book_read.assert_not_called()
+
+
+def describe_remove_book_from_read_history():
+    def it_returns_204_on_success_with_no_body(client: TestClient, user_service: AsyncMock, book_service: AsyncMock):
+        book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
+
+        response = client.delete("/v1/users/me/read-books/google-books__ext-1")
+
+        assert response.status_code == 204
+        user_service.remove_read_book.assert_awaited_once_with(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID)
+
+    def it_returns_404_when_the_identifier_does_not_resolve_to_any_book(
+        client: TestClient,
+        user_service: AsyncMock,
+        book_service: AsyncMock,
+    ):
+        book_service.get_book_id_by_identifier.side_effect = BookNotFoundError("missing")
+
+        response = client.delete("/v1/users/me/read-books/google-books__missing")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "BOOK_NOT_FOUND"
+        user_service.remove_read_book.assert_not_called()
+
+    def it_returns_404_when_the_book_is_not_in_the_reading_history(
+        client: TestClient,
+        user_service: AsyncMock,
+        book_service: AsyncMock,
+    ):
+        book_service.get_book_id_by_identifier.return_value = SOME_BOOK_ID
+        user_service.remove_read_book.side_effect = ReadBookNotFoundError()
+
+        response = client.delete("/v1/users/me/read-books/google-books__ext-1")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["error_code"] == "READ_BOOK_NOT_FOUND"

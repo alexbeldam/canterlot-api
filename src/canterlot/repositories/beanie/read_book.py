@@ -114,3 +114,14 @@ class BeanieReadBookRepository(ReadBookRepository):
             current_page=page,
             page_size=limit,
         )
+
+    async def delete(
+        self,
+        user_id: PydanticObjectId,
+        book_id: PydanticObjectId,
+    ) -> bool:
+        result = await ReadBookModel.find_one(
+            ReadBookModel.user_id == user_id,
+            ReadBookModel.book_id == book_id,
+        ).delete()
+        return result is not None and result.deleted_count > 0

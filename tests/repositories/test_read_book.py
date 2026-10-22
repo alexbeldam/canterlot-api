@@ -70,6 +70,40 @@ def describe_upsert():
         assert rows[0].rating is None
 
 
+def describe_delete():
+    async def it_removes_the_entry_and_reports_true():
+        user = await UserFactory.create_async()
+        book = await BookFactory.create_async()
+        await ReadBookFactory.create_async(user_id=_id(user), book_id=_id(book), rating=3.0)
+
+        deleted = await repo.delete(_id(user), _id(book))
+
+        assert deleted is True
+        assert await ReadBookModel.find(ReadBookModel.user_id == _id(user)).count() == 0
+
+    async def it_reports_false_when_the_book_was_not_in_the_history():
+        user = await UserFactory.create_async()
+        book = await BookFactory.create_async()
+
+        deleted = await repo.delete(_id(user), _id(book))
+
+        assert deleted is False
+
+    async def it_leaves_other_entries_untouched():
+        user = await UserFactory.create_async()
+        other_user = await UserFactory.create_async()
+        book = await BookFactory.create_async()
+        other_book = await BookFactory.create_async()
+        await ReadBookFactory.create_async(user_id=_id(user), book_id=_id(book))
+        await ReadBookFactory.create_async(user_id=_id(user), book_id=_id(other_book))
+        await ReadBookFactory.create_async(user_id=_id(other_user), book_id=_id(book))
+
+        await repo.delete(_id(user), _id(book))
+
+        assert await ReadBookModel.find(ReadBookModel.user_id == _id(user)).count() == 1
+        assert await ReadBookModel.find(ReadBookModel.user_id == _id(other_user)).count() == 1
+
+
 def describe_find_rating_stats_by_book_id():
     async def it_returns_none_average_and_zero_count_when_nobody_has_rated_it():
         book = await BookFactory.create_async()

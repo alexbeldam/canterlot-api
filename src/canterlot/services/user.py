@@ -10,6 +10,7 @@ from canterlot.dto.book import RatedBook
 from canterlot.exceptions import (
     AuthProviderNotLinkedError,
     InvalidCredentialsError,
+    ReadBookNotFoundError,
     StaleLegalVersionError,
     UsernameAlreadyExistsError,
 )
@@ -73,6 +74,19 @@ class UserService:
         await self.__read_book_repo.upsert(user_id=user_id, book_id=book_id, rating=rating)
 
         log.info("Book marked as read successfully")
+
+    async def remove_read_book(
+        self,
+        user_id: PydanticObjectId,
+        book_id: PydanticObjectId,
+    ) -> None:
+        log = logger.bind(user_id=str(user_id), book_id=str(book_id))
+        log.info("Removing book from read history")
+        deleted = await self.__read_book_repo.delete(user_id=user_id, book_id=book_id)
+        if not deleted:
+            log.warning("Book not found in user's read history")
+            raise ReadBookNotFoundError()
+        log.info("Book removed from read history successfully")
 
     async def get_read_books(
         self,

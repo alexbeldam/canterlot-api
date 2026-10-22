@@ -26,6 +26,7 @@ from .book import (
     BookNotFoundError,
     BookProviderUnavailableError,
     BookSearchCriteriaMissingError,
+    ReadBookNotFoundError,
 )
 from .club import (
     BookLockedInActiveRoundError,
@@ -106,6 +107,7 @@ __all__ = [
     "PasswordNotSetError",
     "PendingRequestNotFoundError",
     "RateLimitExceededError",
+    "ReadBookNotFoundError",
     "RoundAlreadyFinalizedError",
     "RoundDomainError",
     "RoundNotFoundError",
