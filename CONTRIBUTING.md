@@ -18,7 +18,7 @@ Once those are in place:
 
 ```bash
 uv sync --dev
-just setup    # creates a .env from .env.example, and spins up the MongoDB 6.0 and Redis 7.0 containers
+just setup    # creates a .env from .env.example, and spins up the mongodb-atlas-local 8.0 (for Atlas Search) and Redis 7.0 containers
 just verify   # full lint/type/test/coverage gate
 just dev      # runs the API locally with live reload, on http://localhost:8080
 ```
@@ -41,7 +41,9 @@ The codebase follows a strict layered convention: `routers/` -> `use_cases/` -> 
 
 - **Repositories own the queries:** This is the only layer that should talk to Beanie or Mongo query machinery. Services and routers shouldn't construct database queries. If you find yourself adding a repository or another service as a router's dependency, it's a great indicator that the data-shaping or orchestration belongs one layer down, into a `use_cases/` class or a repository method.
 
-- **Single-document write vs. multi-document write:** A repository method whose write only ever needs to guard one document stays a plain CAS-style conditional filter (no session, no transaction). Once an operation has to keep more than one document consistent with each other, use a real Mongo transaction instead, via `repositories/beanie/transactions.py`'s `transactional`/`transactional_or_false`/`transactional_or_none` decorators (see `BeanieClubMembershipRepository`'s `transfer_ownership`/`reclaim_ownership` for the reference implementation). See the wiki's [Transactional Writes vs. CAS](https://github.com/alexbeldam/canterlot-api/wiki/Transactional-Writes-vs-CAS) page for the full reasoning.
+- **Single-document write vs. multi-document write:** A repository method whose write only ever needs to guard one document stays a plain CAS-style conditional filter (no session, no transaction). Once an operation has to keep more than one document consistent with each other, use a real Mongo transaction instead, via `canterlot.hoodie`'s `transactional` decorator: bare `@transactional` propagates any exception after rolling back; `@transactional(on_conflict=<fallback>)` catches a raised `TransactionError` and returns `<fallback>` instead (see `BeanieClubMembershipRepository`'s `transfer_ownership`/`reclaim_ownership` for the reference implementation). See the wiki's [Transactional Writes vs. CAS](https://github.com/alexbeldam/canterlot-api/wiki/Transactional-Writes-vs-CAS) page for the full reasoning.
+
+- **Search-indexed entities:** A Beanie model that needs a synced Atlas Search index subclasses `canterlot.hoodie`'s `Entity` (not `beanie.Document` directly) and marks fields with `searchable(...)`; write-through sync and multi-document transactions for these models happen automatically through `Entity`'s own methods and the `transactional` decorator above. See the wiki's [Hoodie ODM Extension](https://github.com/alexbeldam/canterlot-api/wiki/Hoodie-ODM-Extension) page for the full mechanics.
 
 ### Data Boundary & Public Identifiers
 
@@ -115,7 +117,7 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 Running `just seed` populates your local environment with enough clubs, users, and data to test endpoints manually without making dozens of upfront requests.
 
-- **Full Wipe, Not Selective Cleanup:** The seeder drops every `BEANIE_DOCUMENT_MODELS` collection (via `DatabaseManager.reinitialize()` to rebuild indexes afterward) before reseeding, rather than matching and deleting previously seeded rows. This keeps `just seed` idempotent without needing to track durable identifiers across runs.
+- **Full Wipe, Not Selective Cleanup:** The seeder drops every registered entity's collection (via `DatabaseManager.reset()` to rebuild indexes afterward) before reseeding, rather than matching and deleting previously seeded rows. This keeps `just seed` idempotent without needing to track durable identifiers across runs.
 
 - **Builds Documents Directly:** `tools/seed/` saves models directly in whatever state they need through `tools/factories/` (`create_async`/`create_batch_async`), setting fields like `profile_completed_at` or legal-acceptance versions explicitly rather than calling into `services/` or `use_cases/`. Reaching the same state through services would take many separate calls per entity, and could trigger side effects we don't want during seeding, like sending real emails. If you add a new seeded state, set the fields it needs directly rather than reaching for a service call.
 
