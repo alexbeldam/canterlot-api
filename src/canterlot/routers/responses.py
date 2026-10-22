@@ -182,12 +182,9 @@ LOGOUT_RESPONSES: ResponseDict = {
 }
 
 LOGOUT_ALL_RESPONSES: ResponseDict = {
-    status.HTTP_204_NO_CONTENT: {
-        "description": (
-            "Every session on the account revoked and the refresh cookie cleared. Also returned, as a no-op, "
-            "when there was no active session to identify the account."
-        )
-    },
+    status.HTTP_204_NO_CONTENT: {"description": "Every session on the account revoked and the refresh cookie cleared."},
+    **RESP_400_MALFORMED_TOKEN,
+    **RESP_401_AUTH,
     **RESP_500_INTERNAL,
 }
 

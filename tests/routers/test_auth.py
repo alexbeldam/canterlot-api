@@ -13,7 +13,10 @@ from canterlot.exceptions import (
     InvalidOAuthCredentialError,
     OAuthLinkRequiredError,
 )
-from canterlot.routers.dependencies.providers import get_optional_refresh_token_context
+from canterlot.routers.dependencies.providers import (
+    get_optional_refresh_token_context,
+    get_user_id_from_valid_refresh_token,
+)
 from canterlot.use_cases.create_session import CreateSessionResult
 from tools.factories import TokenResponseFactory, UserFactory
 
@@ -257,17 +260,28 @@ def describe_logout_all():
         response = client.delete("/v1/auth/sessions")
 
         assert response.status_code == 204
-        auth_service.logout_all.assert_awaited_once_with(SOME_USER_ID)
+        auth_service.logout_all.assert_awaited_once_with(SOME_USER_ID, "old-refresh-token")
         set_cookie = response.headers.get("set-cookie", "")
         assert 'refresh_token=""' in set_cookie
         assert "Max-Age=0" in set_cookie
 
-    def it_is_a_no_op_when_there_is_no_session_cookie(client: TestClient, auth_service: AsyncMock):
-        cast(FastAPI, client.app).dependency_overrides[get_optional_refresh_token_context] = lambda: None
+    def it_returns_401_when_the_service_rejects_the_refresh_token(client: TestClient, auth_service: AsyncMock):
+        auth_service.logout_all.side_effect = InvalidCredentialsError("revoked")
 
         response = client.delete("/v1/auth/sessions")
 
-        assert response.status_code == 204
+        assert response.status_code == 401
+        assert response.json()["error"]["error_code"] == "INVALID_CREDENTIALS"
+
+    def it_returns_401_when_there_is_no_session_cookie(client: TestClient, auth_service: AsyncMock):
+        def _missing_cookie():
+            raise InvalidCredentialsError("missing")
+
+        cast(FastAPI, client.app).dependency_overrides[get_user_id_from_valid_refresh_token] = _missing_cookie
+
+        response = client.delete("/v1/auth/sessions")
+
+        assert response.status_code == 401
         auth_service.logout_all.assert_not_called()
 
 

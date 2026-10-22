@@ -158,14 +158,12 @@ async def logout(
     responses=LOGOUT_ALL_RESPONSES,
 )
 async def logout_all(
-    token_data: Annotated[RefreshTokenContext | None, Depends(get_optional_refresh_token_context)],
+    token_data: Annotated[RefreshTokenContext, Depends(get_user_id_from_valid_refresh_token)],
     response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> None:
+    await auth_service.logout_all(token_data.user_id, token_data.token)
     clear_refresh_token_cookie(response)
-    if token_data is None:
-        return
-    await auth_service.logout_all(token_data.user_id)
 
 
 @router.post(

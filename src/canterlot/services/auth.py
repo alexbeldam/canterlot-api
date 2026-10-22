@@ -176,11 +176,14 @@ class AuthService:
 
         log.info("Session logged out successfully")
 
-    async def logout_all(self, user_id: PydanticObjectId) -> None:
+    async def logout_all(self, user_id: PydanticObjectId, token: str) -> None:
         log = logger.bind(user_id=str(user_id))
         log.info("Revoking every session on the account")
 
-        await self.__user_repo.clear_all_refresh_tokens(user_id)
+        cleared = await self.__user_repo.clear_all_refresh_tokens(user_id, token)
+        if not cleared:
+            log.warning("Logout-all rejected: refresh token already invalidated")
+            raise InvalidCredentialsError("This refresh token has been revoked or invalidated.")
 
         log.info("All sessions revoked successfully")
 
