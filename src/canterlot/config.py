@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field, SecretBytes, SecretStr, field_validator
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-from .enums import Environment
+from canterlot.hoodie import HoodiePollingConfig
+from canterlot.types import Environment
 
 # ==============================================================================
 # --- NESTED CONFIGURATION DOMAINS ---
@@ -132,6 +133,7 @@ class Settings(BaseSettings):
     db: DatabaseSettings
     ratelimit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     gateways: GatewaySettings = Field(default_factory=GatewaySettings)
+    hoodie: HoodiePollingConfig = Field(default_factory=HoodiePollingConfig)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -160,19 +162,16 @@ def get_settings() -> Settings:
 
 
 def _parse_secret_key(v: Any, field_name: str) -> bytes:
-    """Parses a Base64 or 64-char Hex string into exactly 32 raw bytes."""
     if isinstance(v, bytes):
         raw_bytes = v
     elif isinstance(v, str):
         val = v.strip()
         raw_bytes = None
 
-        # 1. Try Hex (64 hex characters = 32 bytes)
         if len(val) == 64:  # noqa: PLR2004
             with contextlib.suppress(ValueError):
                 raw_bytes = bytes.fromhex(val)
 
-        # 2. Try Base64
         if raw_bytes is None:
             try:
                 raw_bytes = base64.b64decode(val, validate=True)
@@ -196,7 +195,7 @@ def _parse_secret_key(v: Any, field_name: str) -> bytes:
             {"field_name": field_name},
         )
 
-    # 3. Enforce 32-byte (256-bit) cryptographic strength
+    # Key material must be exactly 256 bits.
     if len(raw_bytes) != 32:  # noqa: PLR2004
         raise PydanticCustomError(
             "invalid_secret_length",

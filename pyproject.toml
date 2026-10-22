@@ -97,8 +97,7 @@ filterwarnings = [
 source = ["canterlot"]
 omit = [
     "*/__init__.py",
-    "*/canterlot/config/settings.py",
-    "*/canterlot/config/database.py",
+    "*/canterlot/config.py",
     "*/canterlot/utils/logger.py",
     "*/canterlot/exceptions/*",
 ]

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Self
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field, HttpUrl, computed_field
 
-from canterlot.config.settings import get_settings
+from canterlot.config import get_settings
 from canterlot.emails.core.enums import EmailCategory
 from canterlot.types import (
     NonEmptyStr,
