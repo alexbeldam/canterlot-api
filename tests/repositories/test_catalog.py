@@ -23,8 +23,8 @@ def _id(document: BookModel | CatalogEntryModel) -> PydanticObjectId:
 def describe_find_page_by_club_id():
     async def it_sorts_by_title_via_a_lookup_join():
         club_id = PydanticObjectId()
-        zebra = await BookFactory.create_async()
-        alpha = await BookFactory.create_async()
+        zebra = await BookFactory.create_async(title="Zebra")
+        alpha = await BookFactory.create_async(title="Alpha")
         books_by_title = sorted([zebra, alpha], key=lambda b: b.title)
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(zebra))
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(alpha))
@@ -168,9 +168,10 @@ def describe_find_page_by_club_id():
         matching, other = await asyncio.gather(
             BookFactory.create_async(
                 external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "q-author-match"),
+                title="Emma",
                 authors=["Jane Austen"],
             ),
-            BookFactory.create_async(authors=["Other Author"]),
+            BookFactory.create_async(title="Moby Dick", authors=["Other Author"]),
         )
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
@@ -201,9 +202,10 @@ def describe_find_page_by_club_id():
         matching, other = await asyncio.gather(
             BookFactory.create_async(
                 external_id=BookProviderIdentifier(BookProviderName.GOOGLE, "q-fuzzy-author-match"),
+                title="Emma",
                 authors=["Jane Austen"],
             ),
-            BookFactory.create_async(authors=["Other Author"]),
+            BookFactory.create_async(title="Moby Dick", authors=["Other Author"]),
         )
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
@@ -226,7 +228,7 @@ def describe_find_page_by_club_id():
 
     async def it_returns_no_matches_when_the_query_matches_nothing():
         club_id = PydanticObjectId()
-        book = await BookFactory.create_async()
+        book = await BookFactory.create_async(title="Moby Dick", authors=["Herman Melville"])
         await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="nonexistent phrase")
