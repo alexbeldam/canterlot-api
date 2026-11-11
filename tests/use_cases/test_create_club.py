@@ -5,6 +5,7 @@ import pytest
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubResponse
+from canterlot.models import ClubModel, UserModel
 from canterlot.types import JoinPolicy, MemberRole, MembershipStatus
 from canterlot.use_cases.create_club import CreateClubUseCase
 from tools.factories import ClubCreateRequestFactory, ClubFactory, ClubMembershipFactory
@@ -38,8 +39,8 @@ def describe_create_club_use_case():
 
         club = ClubFactory.build(id=CLUB_ID, name="The Canterlot Archives", slug="the-canterlot-archives")
         owner_membership = ClubMembershipFactory.build(
-            club_id=CLUB_ID,
-            user_id=CREATOR_ID,
+            club=ClubModel.link_from_id(CLUB_ID),
+            user=UserModel.link_from_id(CREATOR_ID),
             status=MembershipStatus.OWNER,
             joined_at=datetime.now(UTC),
         )

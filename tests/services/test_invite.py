@@ -12,6 +12,7 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     UnauthorizedClubMemberError,
 )
+from canterlot.models import UserModel
 from canterlot.services.invite import InviteService
 from canterlot.types import InviteType, MemberRole
 from tools.factories import ClubFactory, InviteFactory
@@ -99,7 +100,7 @@ def describe_get_preview_metadata():
         invite_repo.find_by_id.return_value = InviteFactory.build(
             is_active=True,
             expires_at=None,
-            created_by=SOME_INVITER_ID,
+            created_by=UserModel.link_from_id(SOME_INVITER_ID),
         )
         club_repo.find_by_id.return_value = ClubFactory.build(id=SOME_CLUB_ID)
         user_repo.find_username_by_id.return_value = "inviter_1"
@@ -260,7 +261,7 @@ def describe_validate_incoming_invite():
             expires_at=None,
             type=InviteType.DIRECT,
             target_email=None,
-            target_user_id=SOME_TARGET_USER_ID,
+            target_user=UserModel.link_from_id(SOME_TARGET_USER_ID),
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, club_membership_repo, user_repo)
@@ -280,7 +281,7 @@ def describe_validate_incoming_invite():
             expires_at=None,
             type=InviteType.DIRECT,
             target_email=None,
-            target_user_id=SOME_TARGET_USER_ID,
+            target_user=UserModel.link_from_id(SOME_TARGET_USER_ID),
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, club_membership_repo, user_repo)
@@ -299,7 +300,7 @@ def describe_validate_incoming_invite():
             expires_at=None,
             type=InviteType.DIRECT,
             target_email=None,
-            target_user_id=SOME_TARGET_USER_ID,
+            target_user=UserModel.link_from_id(SOME_TARGET_USER_ID),
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         service = InviteService(invite_repo, club_repo, club_membership_repo, user_repo)
@@ -335,7 +336,7 @@ def describe_validate_incoming_invite():
             type=InviteType.PUBLIC,
             is_active=True,
             expires_at=None,
-            created_by=SOME_INVITER_ID,
+            created_by=UserModel.link_from_id(SOME_INVITER_ID),
         )
         club_repo.find_club_name_by_id.return_value = "Book Club"
         user_repo.find_username_by_id.return_value = "inviter_1"

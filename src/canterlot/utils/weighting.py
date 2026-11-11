@@ -4,6 +4,7 @@ from datetime import datetime
 
 from beanie import PydanticObjectId
 
+from canterlot.hoodie import link_id
 from canterlot.models import BookModel, CatalogEntryModel, RatingStats
 from canterlot.types import LanguageStr
 
@@ -26,17 +27,18 @@ def _age_weight(suggested_at: datetime, now: datetime) -> int:
 def _base_weights(entries: list[CatalogEntryModel], now: datetime) -> dict[PydanticObjectId, float]:
     groups: dict[PydanticObjectId, list[CatalogEntryModel]] = defaultdict(list)
     for entry in entries:
-        groups[entry.suggested_by].append(entry)
+        groups[link_id(entry.suggested_by)].append(entry)
 
     share_per_suggester = 1 / len(groups) if groups else 0.0
     weights: dict[PydanticObjectId, float] = {}
 
     for group_entries in groups.values():
-        age_weights = {entry.book_id: _age_weight(entry.suggested_at, now) for entry in group_entries}
+        age_weights = {link_id(entry.book): _age_weight(entry.suggested_at, now) for entry in group_entries}
         group_total = sum(age_weights.values())
 
         for entry in group_entries:
-            weights[entry.book_id] = share_per_suggester * (age_weights[entry.book_id] / group_total)
+            book_id = link_id(entry.book)
+            weights[book_id] = share_per_suggester * (age_weights[book_id] / group_total)
 
     return weights
 
@@ -79,13 +81,14 @@ def compute_candidate_weights(
     weights = _base_weights(entries, now)
 
     for entry in entries:
-        book = books_by_id[entry.book_id]
-        weights[entry.book_id] *= _language_boost(book, preferred_languages)
-        weights[entry.book_id] *= _familiarity_multiplier(
-            familiarity_counts.get(entry.book_id, 0),
+        book_id = link_id(entry.book)
+        book = books_by_id[book_id]
+        weights[book_id] *= _language_boost(book, preferred_languages)
+        weights[book_id] *= _familiarity_multiplier(
+            familiarity_counts.get(book_id, 0),
             current_member_count,
         )
-        weights[entry.book_id] *= _rating_boost(rating_stats_by_book.get(entry.book_id))
+        weights[book_id] *= _rating_boost(rating_stats_by_book.get(book_id))
 
     return weights
 
@@ -95,8 +98,8 @@ def select_top_n_pool(
     weights: dict[PydanticObjectId, float],
     n: int = POOL_MAX,
 ) -> list[PydanticObjectId]:
-    ordered = sorted(entries, key=lambda entry: (-weights[entry.book_id], entry.suggested_at))
-    return [entry.book_id for entry in ordered[:n]]
+    ordered = sorted(entries, key=lambda entry: (-weights[link_id(entry.book)], entry.suggested_at))
+    return [link_id(entry.book) for entry in ordered[:n]]
 
 
 def weighted_random_draw(rng: random.Random, weights: dict[PydanticObjectId, float]) -> PydanticObjectId:

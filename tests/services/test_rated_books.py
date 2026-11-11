@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 from beanie import PydanticObjectId
 
+from canterlot.models import UserModel
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.rated_books import resolve_rated_books_page
 from tools.factories import BookFactory, ReadBookFactory
@@ -26,7 +27,12 @@ def describe_resolve_rated_books_page():
     ):
         book = BookFactory.build(id=PydanticObjectId())
         read_at = datetime(2025, 6, 1, tzinfo=UTC)
-        entry = ReadBookFactory.build(user_id=SOME_USER_ID, book_id=book.id, rating=4.5, read_at=read_at)
+        entry = ReadBookFactory.build(
+            user=UserModel.link_from_id(SOME_USER_ID),
+            book=book.to_link(),
+            rating=4.5,
+            read_at=read_at,
+        )
         read_book_repo.find_page_by_user_id.return_value = Page(
             items=[entry],
             total_items=1,

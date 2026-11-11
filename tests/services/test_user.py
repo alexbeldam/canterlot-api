@@ -15,6 +15,7 @@ from canterlot.exceptions import (
     UsernameAlreadyExistsError,
 )
 from canterlot.exceptions.user import UserNotFoundError
+from canterlot.models import BookModel, UserModel
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.user import UserService
@@ -98,7 +99,11 @@ def describe_get_read_books():
         book_repo: AsyncMock,
     ):
         book = BookFactory.build(id=SOME_BOOK_ID)
-        entry = ReadBookFactory.build(user_id=SOME_USER_ID, book_id=SOME_BOOK_ID, rating=3.5)
+        entry = ReadBookFactory.build(
+            user=UserModel.link_from_id(SOME_USER_ID),
+            book=BookModel.link_from_id(SOME_BOOK_ID),
+            rating=3.5,
+        )
         read_book_repo.find_page_by_user_id.return_value = Page(
             items=[entry],
             total_items=1,

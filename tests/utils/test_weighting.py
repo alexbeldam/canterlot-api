@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from beanie import PydanticObjectId
 
+from canterlot.hoodie import link_id
+from canterlot.models import BookModel, UserModel
 from canterlot.models.read_book import RatingStats
 from canterlot.utils.weighting import (
     compute_candidate_weights,
@@ -17,8 +19,8 @@ NOW = datetime(2026, 1, 15, tzinfo=UTC)
 
 def _entry(book_id: PydanticObjectId, suggested_by: PydanticObjectId, days_ago: int):
     return CatalogEntryFactory.build(
-        book_id=book_id,
-        suggested_by=suggested_by,
+        book=BookModel.link_from_id(book_id),
+        suggested_by=UserModel.link_from_id(suggested_by),
         suggested_at=NOW - timedelta(days=days_ago),
     )
 
@@ -33,7 +35,7 @@ def describe_compute_candidate_weights():
             _entry(book_b1, suggester_b, 1),
             _entry(book_b2, suggester_b, 9),
         ]
-        books_by_id = {e.book_id: BookFactory.build(languages=[]) for e in entries}
+        books_by_id = {link_id(e.book): BookFactory.build(languages=[]) for e in entries}
 
         weights = compute_candidate_weights(
             entries=entries,
@@ -56,7 +58,7 @@ def describe_compute_candidate_weights():
             _entry(fresh_book, suggester, 0),
             _entry(older_book, suggester, 3),
         ]
-        books_by_id = {e.book_id: BookFactory.build(languages=[]) for e in entries}
+        books_by_id = {link_id(e.book): BookFactory.build(languages=[]) for e in entries}
 
         weights = compute_candidate_weights(
             entries=entries,
@@ -103,7 +105,7 @@ def describe_compute_candidate_weights():
             _entry(familiar_book, suggester_a, 5),
             _entry(unknown_book, suggester_b, 5),
         ]
-        books_by_id = {e.book_id: BookFactory.build(languages=[]) for e in entries}
+        books_by_id = {link_id(e.book): BookFactory.build(languages=[]) for e in entries}
 
         weights = compute_candidate_weights(
             entries=entries,
@@ -125,7 +127,7 @@ def describe_compute_candidate_weights():
             _entry(well_rated_book, suggester_a, 5),
             _entry(under_rated_book, suggester_b, 5),
         ]
-        books_by_id = {e.book_id: BookFactory.build(languages=[]) for e in entries}
+        books_by_id = {link_id(e.book): BookFactory.build(languages=[]) for e in entries}
 
         weights = compute_candidate_weights(
             entries=entries,
@@ -165,11 +167,11 @@ def describe_compute_candidate_weights():
 def describe_select_top_n_pool():
     def it_selects_the_top_n_entries_by_weight():
         entries = [_entry(PydanticObjectId(), PydanticObjectId(), 1) for _ in range(6)]
-        weights = {entry.book_id: float(i) for i, entry in enumerate(entries)}
+        weights = {link_id(entry.book): float(i) for i, entry in enumerate(entries)}
 
         pool = select_top_n_pool(entries, weights, n=5)
 
-        expected = [entry.book_id for entry in sorted(entries, key=lambda e: -weights[e.book_id])][:5]
+        expected = [link_id(entry.book) for entry in sorted(entries, key=lambda e: -weights[link_id(e.book)])][:5]
         assert pool == expected
         assert len(pool) == 5
 
@@ -177,11 +179,11 @@ def describe_select_top_n_pool():
         suggester = PydanticObjectId()
         earlier = _entry(PydanticObjectId(), suggester, 10)
         later = _entry(PydanticObjectId(), suggester, 1)
-        weights = {earlier.book_id: 1.0, later.book_id: 1.0}
+        weights = {link_id(earlier.book): 1.0, link_id(later.book): 1.0}
 
         pool = select_top_n_pool([earlier, later], weights, n=1)
 
-        assert pool == [earlier.book_id]
+        assert pool == [link_id(earlier.book)]
 
 
 def describe_weighted_random_draw():

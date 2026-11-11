@@ -12,6 +12,8 @@ from canterlot.exceptions import (
     InviteLinkDeactivatedError,
     UnauthorizedClubMemberError,
 )
+from canterlot.hoodie import link_id
+from canterlot.models import ClubModel, UserModel
 from canterlot.models.invite import InviteModel
 from canterlot.repositories import ClubMembershipRepository, ClubRepository, InviteRepository, UserRepository
 from canterlot.types import ClubNameStr, InviteType, MemberRole, NormalizedEmailStr, UsernameStr
@@ -54,7 +56,7 @@ class InviteService:
             log.warning("Preview aborted: metadata fetch failed because token does not exist")
             raise InvalidInviteTokenError("Invalid or unrecognized invitation link.")
 
-        log = log.bind(club_id=str(invite.club_id), invite_type=str(invite.type))
+        log = log.bind(club_id=str(link_id(invite.club)), invite_type=str(invite.type))
 
         if not invite.is_active:
             log.warning("Preview aborted: invitation token is soft-deactivated")
@@ -64,7 +66,7 @@ class InviteService:
             log.warning("Preview aborted: token validity window has closed")
             raise InviteLinkDeactivatedError("This invitation link has expired.")
 
-        club = await self.__club_repo.find_by_id(invite.club_id)
+        club = await self.__club_repo.find_by_id(link_id(invite.club))
         if not club or not club.id:
             log.warning("Preview aborted: relational parent club record is missing from database")
             raise ClubNotFoundError("The club associated with this invitation does not exist.")
@@ -98,10 +100,10 @@ class InviteService:
             log.warning("Validation failed: token is deactivated")
             raise InviteLinkDeactivatedError("This invitation link is invalid or deactivated.")
 
-        log = log.bind(club_id=str(invite.club_id), invite_type=str(invite.type))
+        log = log.bind(club_id=str(link_id(invite.club)), invite_type=str(invite.type))
         self.__assert_not_expired(invite, log)
 
-        club_name = await self.__club_repo.find_club_name_by_id(invite.club_id)
+        club_name = await self.__club_repo.find_club_name_by_id(link_id(invite.club))
         if not club_name:
             log.warning("Validation failed: destination club no longer exists")
             raise ClubNotFoundError("Target club does not exist.")
@@ -112,7 +114,7 @@ class InviteService:
 
         log.info("Entry ticket criteria passed, staging domain context results metadata")
         return InviteValidationResult(
-            club_id=invite.club_id,
+            club_id=link_id(invite.club),
             club_name=club_name,
             invited_by=inviter_username,
             is_direct=is_direct,
@@ -137,13 +139,13 @@ class InviteService:
         if invite.target_email is not None:
             matches = bool(user_email) and invite.target_email == user_email
         else:
-            matches = bool(user_id) and invite.target_user_id == user_id
+            matches = bool(user_id) and link_id(invite.target_user) == user_id
 
         if not matches:
             log.warning(
                 "Security Alert: Identity mismatch during direct admission attempt",
                 expected_email=invite.target_email,
-                expected_user_id=str(invite.target_user_id) if invite.target_user_id else None,
+                expected_user_id=str(link_id(invite.target_user)) if invite.target_user else None,
             )
             raise DirectInviteIdentityMismatchError("This invite belongs to another user.")
 
@@ -152,8 +154,8 @@ class InviteService:
         invite: InviteModel,
         invited_by: UsernameStr | None,
     ) -> UsernameStr | None:
-        if invite.created_by:
-            return await self.__user_repo.find_username_by_id(invite.created_by)
+        if invite.created_by is not None:
+            return await self.__user_repo.find_username_by_id(link_id(invite.created_by))
         if invited_by and await self.__user_repo.exists_by_username(invited_by.lower()):
             return invited_by
         return None
@@ -165,7 +167,7 @@ class InviteService:
         await self.__verify_privileged_role(club_id=club_id, user_id=user_id)
         await self.__invite_repo.deactivate_all_public_by_club_id(club_id)
 
-        new_invite = InviteModel(club_id=club_id)
+        new_invite = InviteModel(club=ClubModel.link_from_id(club_id))
         saved = await self.__invite_repo.save(new_invite)
 
         log.info("New public shortUUID access link deployed successfully", new_invite_id=str(saved.id))
@@ -206,8 +208,8 @@ class InviteService:
         expires_at = now + timedelta(weeks=1)
 
         invite = InviteModel(
-            club_id=club_id,
-            created_by=issuer_id,
+            club=ClubModel.link_from_id(club_id),
+            created_by=UserModel.link_from_id(issuer_id),
             target_email=target_email,
             type=InviteType.DIRECT,
             created_at=now,
@@ -235,9 +237,9 @@ class InviteService:
         expires_at = now + timedelta(weeks=1)
 
         invite = InviteModel(
-            club_id=club_id,
-            created_by=issuer_id,
-            target_user_id=target_user_id,
+            club=ClubModel.link_from_id(club_id),
+            created_by=UserModel.link_from_id(issuer_id),
+            target_user=UserModel.link_from_id(target_user_id),
             type=InviteType.DIRECT,
             created_at=now,
             expires_at=expires_at,

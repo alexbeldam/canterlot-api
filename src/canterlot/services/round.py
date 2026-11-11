@@ -14,8 +14,9 @@ from canterlot.exceptions import (
     RoundNotFoundError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models import BookModel, CatalogEntryModel, ClubModel, RatingStats
-from canterlot.models.round import CandidatePoolEntry, DeadlineDuration, RoundModel
+from canterlot.hoodie import link_id
+from canterlot.models import BookModel, CatalogEntryModel, ClubModel, RatingStats, UserModel
+from canterlot.models.round import DeadlineDuration, RoundModel
 from canterlot.repositories import (
     BookRepository,
     CatalogRepository,
@@ -118,15 +119,15 @@ class RoundService:
             raise NoEligibleCatalogError("This club has no eligible books to start a round with.")
 
         if len(eligible) == 1:
-            book_id = eligible[0].book_id
+            book_id = link_id(eligible[0].book)
             _, deadline = _resolve_deadline_at_creation(payload.deadline, decided_immediately=True, now=now)
             round_ = RoundModel(
-                club_id=club_id,
+                club=ClubModel.link_from_id(club_id),
                 selection_mode=payload.selection_mode,
                 status=RoundStatus.DECIDED,
-                book_id=book_id,
+                book=BookModel.link_from_id(book_id),
                 deadline=deadline,
-                started_by=caller_id,
+                started_by=UserModel.link_from_id(caller_id),
                 decided_at=now,
             )
             log.info(
@@ -140,12 +141,12 @@ class RoundService:
             book_id = weighted_random_draw(self.__rng, weights)
             _, deadline = _resolve_deadline_at_creation(payload.deadline, decided_immediately=True, now=now)
             round_ = RoundModel(
-                club_id=club_id,
+                club=ClubModel.link_from_id(club_id),
                 selection_mode=RoundSelectionMode.RANDOM,
                 status=RoundStatus.DECIDED,
-                book_id=book_id,
+                book=BookModel.link_from_id(book_id),
                 deadline=deadline,
-                started_by=caller_id,
+                started_by=UserModel.link_from_id(caller_id),
                 decided_at=now,
             )
             log.info("Random round decided immediately", book_id=str(book_id))
@@ -159,13 +160,13 @@ class RoundService:
             now=now,
         )
         round_ = RoundModel(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             selection_mode=RoundSelectionMode.CURATED,
             status=RoundStatus.SETUP,
-            candidate_pool=[CandidatePoolEntry(book_id=book_id) for book_id in pool_book_ids],
+            candidate_pool=[BookModel.link_from_id(book_id) for book_id in pool_book_ids],
             deadline_duration=deadline_duration,
             deadline=deadline,
-            started_by=caller_id,
+            started_by=UserModel.link_from_id(caller_id),
         )
         log.info("Curated round created in setup phase", pool_size=len(pool_book_ids))
         return await self.__round_repo.save(round_)
@@ -208,7 +209,7 @@ class RoundService:
     async def __finalize_via_draw(self, club: ClubModel, round_: RoundModel, now: datetime, log) -> RoundModel:
         round_id = PydanticObjectId(round_.id)
         club_id = PydanticObjectId(club.id)
-        pool_book_ids = {entry.book_id for entry in round_.candidate_pool}
+        pool_book_ids = {link_id(entry) for entry in round_.candidate_pool}
         pool_entries = await self.__catalog_repo.find_by_club_id_and_book_ids(club_id, pool_book_ids)
         member_ids = await self.__club_membership_repo.find_active_member_ids_by_club_id(club_id)
         weights = await self.__compute_weights(club, pool_entries, member_ids, now)
@@ -222,7 +223,7 @@ class RoundService:
 
         round_.status = RoundStatus.DECIDED
         round_.resolution_method = RoundResolutionMethod.DRAW
-        round_.book_id = book_id
+        round_.book = BookModel.link_from_id(book_id)
         round_.decided_at = now
         if deadline is not None:
             round_.deadline = deadline
@@ -243,9 +244,9 @@ class RoundService:
         return round_
 
     async def resolve_display(self, round_: RoundModel) -> RoundDisplay:
-        book_ids = {entry.book_id for entry in round_.candidate_pool}
-        if round_.book_id is not None:
-            book_ids.add(round_.book_id)
+        book_ids = {link_id(entry) for entry in round_.candidate_pool}
+        if round_.book is not None:
+            book_ids.add(link_id(round_.book))
 
         if not book_ids:
             return RoundDisplay(book=None, pool_books=[], rating_stats={})
@@ -254,8 +255,8 @@ class RoundService:
         books_by_id = await self.__book_repo.find_by_ids(book_id_list)
         rating_stats = await self.__read_book_repo.find_rating_stats_by_book_ids(book_id_list)
 
-        book = books_by_id.get(round_.book_id) if round_.book_id is not None else None
-        pool_books = [books_by_id[entry.book_id] for entry in round_.candidate_pool]
+        book = books_by_id.get(link_id(round_.book)) if round_.book is not None else None
+        pool_books = [books_by_id[link_id(entry)] for entry in round_.candidate_pool]
 
         return RoundDisplay(book=book, pool_books=pool_books, rating_stats=rating_stats)
 
@@ -289,7 +290,7 @@ class RoundService:
 
         await self.__ensure_caller_is_member(club_id, caller_id, log, action="mark a book finished")
         round_ = await self.__get_decided_round(club_id, log)
-        book_id = cast(PydanticObjectId, round_.book_id)
+        book_id = cast(PydanticObjectId, link_id(round_.book))
 
         current_member_ids = set(await self.__club_membership_repo.find_active_member_ids_by_club_id(club_id))
         result = await self.__round_completion_repo.record_completion(
@@ -344,7 +345,7 @@ class RoundService:
         member_ids: list[PydanticObjectId],
         now: datetime,
     ) -> dict[PydanticObjectId, float]:
-        book_ids = [entry.book_id for entry in entries]
+        book_ids = [link_id(entry.book) for entry in entries]
 
         books_by_id = await self.__book_repo.find_by_ids(book_ids)
         rating_stats = await self.__read_book_repo.find_rating_stats_by_book_ids(book_ids)

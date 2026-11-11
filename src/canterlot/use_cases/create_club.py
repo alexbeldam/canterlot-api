@@ -1,6 +1,7 @@
 from beanie import PydanticObjectId
 
 from canterlot.dto.club import ClubCreateRequest, ClubResponse
+from canterlot.hoodie import link_id
 from canterlot.services.club import ClubService
 from canterlot.services.invite import InviteService
 
@@ -40,7 +41,7 @@ class CreateClubUseCase:
         # ---------------------------------------------------------
         active_members = await self.__club_service.get_active_members(PydanticObjectId(club.id))
         member_usernames = await self.__club_service.resolve_member_usernames(
-            [member.user_id for member in active_members]
+            [link_id(member.user) for member in active_members]
         )
 
         return ClubResponse.from_model(club, active_members, user_usernames=member_usernames)

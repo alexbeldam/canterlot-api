@@ -11,9 +11,9 @@ from canterlot.exceptions import (
     ClubSuggestionsClosedError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models import CatalogEntryModel
+from canterlot.hoodie import link_id
+from canterlot.models import BookModel, CatalogEntryModel, ClubModel, UserModel
 from canterlot.models.book import LinkCandidate
-from canterlot.models.round import CandidatePoolEntry
 from canterlot.pagination import Page, SortDirection
 from canterlot.services.catalog import CatalogService
 from canterlot.types import ExtensionType, MemberRole
@@ -147,7 +147,11 @@ def describe_suggesting_a_new_book():
         book_repo.save.assert_awaited_once()
         catalog_repo.add.assert_awaited_once()
         entry = catalog_repo.add.await_args.args[0]
-        assert (entry.club_id, entry.book_id, entry.suggested_by) == (SOME_CLUB_ID, SOME_BOOK_ID, SOME_USER_ID)
+        assert (link_id(entry.club), link_id(entry.book), link_id(entry.suggested_by)) == (
+            SOME_CLUB_ID,
+            SOME_BOOK_ID,
+            SOME_USER_ID,
+        )
 
     async def it_persists_the_description_onto_the_new_book(
         book_repo: AsyncMock,
@@ -297,7 +301,11 @@ def describe_suggesting_an_existing_book():
 
 def describe_removing_a_book_from_the_catalog():
     def _entry(suggested_by: PydanticObjectId = OTHER_USER_ID) -> CatalogEntryModel:
-        return CatalogEntryModel(club_id=SOME_CLUB_ID, book_id=SOME_BOOK_ID, suggested_by=suggested_by)
+        return CatalogEntryModel(
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
+            book=BookModel.link_from_id(SOME_BOOK_ID),
+            suggested_by=UserModel.link_from_id(suggested_by),
+        )
 
     async def it_removes_the_book_when_the_caller_is_an_owner(
         book_repo: AsyncMock,
@@ -386,7 +394,10 @@ def describe_removing_a_book_from_the_catalog():
     ):
         catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
-        round_repo.find_active_by_club_id.return_value = RoundFactory.build(book_id=SOME_BOOK_ID, candidate_pool=[])
+        round_repo.find_active_by_club_id.return_value = RoundFactory.build(
+            book=BookModel.link_from_id(SOME_BOOK_ID),
+            candidate_pool=[],
+        )
         service = _service(
             book_repo,
             club_repo,
@@ -412,8 +423,8 @@ def describe_removing_a_book_from_the_catalog():
         catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
-            book_id=None,
-            candidate_pool=[CandidatePoolEntry(book_id=SOME_BOOK_ID)],
+            book=None,
+            candidate_pool=[BookModel.link_from_id(SOME_BOOK_ID)],
         )
         service = _service(
             book_repo,
@@ -440,8 +451,8 @@ def describe_removing_a_book_from_the_catalog():
         catalog_repo.find_by_club_id_and_book_id.return_value = _entry()
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
-            book_id=PydanticObjectId(),
-            candidate_pool=[CandidatePoolEntry(book_id=PydanticObjectId())],
+            book=BookModel.link_from_id(PydanticObjectId()),
+            candidate_pool=[BookModel.link_from_id(PydanticObjectId())],
         )
         service = _service(
             book_repo,
@@ -495,9 +506,9 @@ def describe_get_catalog_page():
     ):
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         entry = CatalogEntryModel(
-            club_id=SOME_CLUB_ID,
-            book_id=SOME_BOOK_ID,
-            suggested_by=SOME_USER_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
+            book=BookModel.link_from_id(SOME_BOOK_ID),
+            suggested_by=UserModel.link_from_id(SOME_USER_ID),
             suggested_at=datetime.now(UTC),
         )
         catalog_repo.find_page_by_club_id.return_value = _page([entry])

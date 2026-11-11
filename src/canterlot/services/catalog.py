@@ -17,7 +17,8 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.gateways import LinkProvider
-from canterlot.models import BookModel, CatalogEntryModel, LinkCandidate
+from canterlot.hoodie import link_id
+from canterlot.models import BookModel, CatalogEntryModel, ClubModel, LinkCandidate, UserModel
 from canterlot.models.book import SearchParams
 from canterlot.models.round import RoundModel
 from canterlot.pagination import SortDirection
@@ -102,9 +103,9 @@ class CatalogService:
             log = log.bind(book_id=str(book_id))
 
         entry = CatalogEntryModel(
-            club_id=club_id,
-            book_id=book_id,
-            suggested_by=user_id,
+            club=ClubModel.link_from_id(club_id),
+            book=BookModel.link_from_id(book_id),
+            suggested_by=UserModel.link_from_id(user_id),
         )
 
         if not await self.__catalog_repo.add(entry):
@@ -133,7 +134,7 @@ class CatalogService:
 
         role = await self.__club_membership_repo.find_member_role_by_club_id_and_user_id(club_id, current_user_id)
         is_privileged = role in (MemberRole.ADMIN, MemberRole.OWNER)
-        is_original_suggester = entry.suggested_by == current_user_id
+        is_original_suggester = link_id(entry.suggested_by) == current_user_id
 
         if not is_privileged and not is_original_suggester:
             log.warning("Removal rejected: caller is neither privileged nor the original suggester")
@@ -153,9 +154,9 @@ class CatalogService:
 
     @staticmethod
     def __is_locked_by_round(round_: RoundModel, book_id: PydanticObjectId) -> bool:
-        if round_.book_id == book_id:
+        if round_.book is not None and link_id(round_.book) == book_id:
             return True
-        return any(entry.book_id == book_id for entry in round_.candidate_pool)
+        return any(link_id(entry) == book_id for entry in round_.candidate_pool)
 
     async def get_catalog_page(
         self,
@@ -191,13 +192,15 @@ class CatalogService:
             q=q,
         )
 
-        books = await self.__book_repo.find_by_ids([entry.book_id for entry in catalog_page.items])
-        usernames = await self.__user_repo.get_usernames_by_ids([entry.suggested_by for entry in catalog_page.items])
+        books = await self.__book_repo.find_by_ids([link_id(entry.book) for entry in catalog_page.items])
+        usernames = await self.__user_repo.get_usernames_by_ids(
+            [link_id(entry.suggested_by) for entry in catalog_page.items]
+        )
 
         return catalog_page.map(
             lambda entry: CatalogEntryResponse.from_model(
-                books[entry.book_id],
-                usernames[entry.suggested_by],
+                books[link_id(entry.book)],
+                usernames[link_id(entry.suggested_by)],
                 entry.suggested_at,
             )
         )

@@ -14,7 +14,9 @@ from canterlot.exceptions import (
     RoundNotFoundError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.round import CandidatePoolEntry, DeadlineDuration
+from canterlot.hoodie import link_id
+from canterlot.models import BookModel, ClubModel, UserModel
+from canterlot.models.round import DeadlineDuration
 from canterlot.repositories import CompletionResult
 from canterlot.services.round import RoundService
 from canterlot.types import (
@@ -70,9 +72,9 @@ def _club():
 
 def _catalog_entry(book_id, suggested_by, days_ago=1):
     return CatalogEntryFactory.build(
-        club_id=SOME_CLUB_ID,
-        book_id=book_id,
-        suggested_by=suggested_by,
+        club=ClubModel.link_from_id(SOME_CLUB_ID),
+        book=BookModel.link_from_id(book_id),
+        suggested_by=UserModel.link_from_id(suggested_by),
         suggested_at=NOW - timedelta(days=days_ago),
     )
 
@@ -211,7 +213,7 @@ def describe_start_round():
         result = await service.start_round(club, OWNER_ID, payload, NOW)
 
         assert result.status == RoundStatus.DECIDED
-        assert result.book_id == book_id
+        assert link_id(result.book) == book_id
         assert result.candidate_pool == []
         assert result.decided_at == NOW
         book_repo.find_by_ids.assert_not_called()
@@ -250,7 +252,7 @@ def describe_start_round():
         result = await service.start_round(club, OWNER_ID, payload, NOW)
 
         assert result.status == RoundStatus.DECIDED
-        assert result.book_id in {book_a, book_b}
+        assert link_id(result.book) in {book_a, book_b}
         assert result.decided_at == NOW
         assert result.candidate_pool == []
         club_membership_repo.find_active_member_ids_by_club_id.assert_awaited_once()
@@ -289,8 +291,8 @@ def describe_start_round():
         result = await service.start_round(club, OWNER_ID, payload, NOW)
 
         assert result.status == RoundStatus.SETUP
-        assert result.book_id is None
-        assert {entry.book_id for entry in result.candidate_pool} == {book_a, book_b}
+        assert result.book is None
+        assert {link_id(entry) for entry in result.candidate_pool} == {book_a, book_b}
 
     async def it_resolves_a_preset_deadline_immediately_when_the_book_is_decided_at_creation(
         round_repo: AsyncMock,
@@ -545,7 +547,7 @@ def describe_finalize_round():
             book_a: BookFactory.build(languages=[]),
             book_b: BookFactory.build(languages=[]),
         }
-        round_ = _active_round(candidate_pool=[CandidatePoolEntry(book_id=book_a), CandidatePoolEntry(book_id=book_b)])
+        round_ = _active_round(candidate_pool=[BookModel.link_from_id(book_a), BookModel.link_from_id(book_b)])
         round_repo.find_active_by_club_id.return_value = round_
         round_repo.finalize_with_draw.return_value = True
         catalog_repo.find_by_club_id_and_book_ids.return_value = [
@@ -558,7 +560,7 @@ def describe_finalize_round():
 
         assert result.status == RoundStatus.DECIDED
         assert result.resolution_method == RoundResolutionMethod.DRAW
-        assert result.book_id in {book_a, book_b}
+        assert link_id(result.book) in {book_a, book_b}
         assert result.decided_at == NOW
         round_repo.finalize_with_draw.assert_awaited_once()
         catalog_repo.find_by_club_id_and_book_ids.assert_awaited_once_with(SOME_CLUB_ID, {book_a, book_b})
@@ -590,7 +592,7 @@ def describe_finalize_round():
 
         assert result.status == RoundStatus.VOTING
         assert result.resolution_method == RoundResolutionMethod.VOTE
-        assert result.book_id is None
+        assert result.book is None
         round_repo.finalize_with_vote.assert_awaited_once()
 
     async def it_rejects_finalizing_an_already_finalized_round_on_a_racing_draw(
@@ -613,7 +615,7 @@ def describe_finalize_round():
         )
         book_id = PydanticObjectId()
         book_repo.find_by_ids.return_value = {book_id: BookFactory.build(languages=[])}
-        round_ = _active_round(candidate_pool=[CandidatePoolEntry(book_id=book_id)])
+        round_ = _active_round(candidate_pool=[BookModel.link_from_id(book_id)])
         round_repo.find_active_by_club_id.return_value = round_
         round_repo.finalize_with_draw.return_value = False
         catalog_repo.find_by_club_id_and_book_ids.return_value = [_catalog_entry(book_id, OWNER_ID)]
@@ -643,7 +645,7 @@ def describe_finalize_round():
         book_id = PydanticObjectId()
         book_repo.find_by_ids.return_value = {book_id: BookFactory.build(languages=[])}
         round_ = _active_round(
-            candidate_pool=[CandidatePoolEntry(book_id=book_id)],
+            candidate_pool=[BookModel.link_from_id(book_id)],
             deadline_duration=DeadlineDuration(value=1, unit=DeadlineUnit.MONTHS),
         )
         round_repo.find_active_by_club_id.return_value = round_
@@ -678,7 +680,7 @@ def describe_finalize_round():
         book_repo.find_by_ids.return_value = {book_id: BookFactory.build(languages=[])}
         started_at = datetime(2026, 1, 31, tzinfo=UTC)
         round_ = _active_round(
-            candidate_pool=[CandidatePoolEntry(book_id=book_id)],
+            candidate_pool=[BookModel.link_from_id(book_id)],
             deadline_duration=DeadlineDuration(value=1, unit=DeadlineUnit.MONTHS),
         )
         round_repo.find_active_by_club_id.return_value = round_
@@ -712,7 +714,7 @@ def describe_finalize_round():
         book_repo.find_by_ids.return_value = {book_id: BookFactory.build(languages=[])}
         started_at = datetime(2026, 1, 31, tzinfo=UTC)
         round_ = _active_round(
-            candidate_pool=[CandidatePoolEntry(book_id=book_id)],
+            candidate_pool=[BookModel.link_from_id(book_id)],
             deadline_duration=DeadlineDuration(value=3, unit=DeadlineUnit.MONTHS),
         )
         round_repo.find_active_by_club_id.return_value = round_
@@ -745,7 +747,7 @@ def describe_finalize_round():
         book_id = PydanticObjectId()
         book_repo.find_by_ids.return_value = {book_id: BookFactory.build(languages=[])}
         round_ = _active_round(
-            candidate_pool=[CandidatePoolEntry(book_id=book_id)],
+            candidate_pool=[BookModel.link_from_id(book_id)],
             deadline_duration=DeadlineDuration(value=3, unit=DeadlineUnit.DAYS),
         )
         round_repo.find_active_by_club_id.return_value = round_
@@ -830,7 +832,7 @@ def describe_resolve_display():
             user_repo,
             catalog_repo,
         )
-        round_ = RoundFactory.build(book_id=None, candidate_pool=[])
+        round_ = RoundFactory.build(book=None, candidate_pool=[])
 
         display = await service.resolve_display(round_)
 
@@ -860,7 +862,7 @@ def describe_resolve_display():
         book_id = PydanticObjectId()
         book = BookFactory.build(id=book_id)
         book_repo.find_by_ids.return_value = {book_id: book}
-        round_ = RoundFactory.build(book_id=book_id, candidate_pool=[])
+        round_ = RoundFactory.build(book=BookModel.link_from_id(book_id), candidate_pool=[])
 
         display = await service.resolve_display(round_)
 
@@ -889,8 +891,8 @@ def describe_resolve_display():
         books = {book_a: BookFactory.build(id=book_a), book_b: BookFactory.build(id=book_b)}
         book_repo.find_by_ids.return_value = books
         round_ = RoundFactory.build(
-            book_id=None,
-            candidate_pool=[CandidatePoolEntry(book_id=book_a), CandidatePoolEntry(book_id=book_b)],
+            book=None,
+            candidate_pool=[BookModel.link_from_id(book_a), BookModel.link_from_id(book_b)],
         )
 
         display = await service.resolve_display(round_)
@@ -923,9 +925,9 @@ def describe_get_progress():
         finished_member, unfinished_member = PydanticObjectId(), PydanticObjectId()
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
             id=round_id,
-            club_id=SOME_CLUB_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
             status=RoundStatus.DECIDED,
-            book_id=book_id,
+            book=BookModel.link_from_id(book_id),
             candidate_pool=[],
         )
         club_membership_repo.find_active_member_ids_by_club_id.return_value = [finished_member, unfinished_member]
@@ -978,9 +980,9 @@ def describe_get_progress():
             catalog_repo,
         )
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
-            club_id=SOME_CLUB_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
             status=RoundStatus.SETUP,
-            book_id=None,
+            book=None,
             candidate_pool=[],
         )
 
@@ -1035,9 +1037,9 @@ def describe_mark_finished():
         club_membership_repo.find_active_member_ids_by_club_id.return_value = [MEMBER_ID]
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
             id=round_id,
-            club_id=SOME_CLUB_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
             status=RoundStatus.DECIDED,
-            book_id=book_id,
+            book=BookModel.link_from_id(book_id),
             candidate_pool=[],
         )
         round_completion_repo.record_completion.return_value = CompletionResult(is_new=True, round_concluded=False)
@@ -1075,9 +1077,9 @@ def describe_mark_finished():
         book_id = PydanticObjectId()
         club_membership_repo.find_active_member_ids_by_club_id.return_value = [MEMBER_ID]
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
-            club_id=SOME_CLUB_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
             status=RoundStatus.DECIDED,
-            book_id=book_id,
+            book=BookModel.link_from_id(book_id),
             candidate_pool=[],
         )
         round_completion_repo.record_completion.return_value = CompletionResult(is_new=False, round_concluded=False)
@@ -1107,9 +1109,9 @@ def describe_mark_finished():
         book_id = PydanticObjectId()
         club_membership_repo.find_active_member_ids_by_club_id.return_value = [MEMBER_ID]
         round_repo.find_active_by_club_id.return_value = RoundFactory.build(
-            club_id=SOME_CLUB_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
             status=RoundStatus.DECIDED,
-            book_id=book_id,
+            book=BookModel.link_from_id(book_id),
             candidate_pool=[],
         )
         round_completion_repo.record_completion.return_value = CompletionResult(is_new=True, round_concluded=True)

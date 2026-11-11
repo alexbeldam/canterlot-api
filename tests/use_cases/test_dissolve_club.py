@@ -5,6 +5,7 @@ from beanie import PydanticObjectId
 
 from canterlot.emails.core.definitions import EmailTaskPayload
 from canterlot.emails.core.schemas import SpikeActionContext
+from canterlot.models import ClubModel, UserModel
 from canterlot.services.dispatch import BatchEmailDispatchItem
 from canterlot.types import MembershipStatus
 from canterlot.use_cases.dissolve_club import DissolveClubUseCase
@@ -37,7 +38,11 @@ def describe_dissolve_club_use_case():
         owner = UserFactory.build(id=SOME_USER_ID)
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_service.get_active_members.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=owner.id, status=MembershipStatus.OWNER),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=owner.to_link(),
+                status=MembershipStatus.OWNER,
+            ),
         ]
 
         await use_case.execute(club, owner)
@@ -75,9 +80,21 @@ def describe_dissolve_club_use_case():
 
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_service.get_active_members.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=uid, status=MembershipStatus.OWNER),
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=uid1, status=MembershipStatus.MEMBER),
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=uid2, status=MembershipStatus.MEMBER),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(uid),
+                status=MembershipStatus.OWNER,
+            ),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(uid1),
+                status=MembershipStatus.MEMBER,
+            ),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(uid2),
+                status=MembershipStatus.MEMBER,
+            ),
         ]
 
         user_service.get_by_ids.return_value = [other_user_1, other_user_2]
