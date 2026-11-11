@@ -1,3 +1,4 @@
+import itertools
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -34,6 +35,8 @@ from canterlot.types import (
 )
 
 from .base import BaseDocumentFactory, BaseModelFactory
+
+_unique_suffix = itertools.count(1)
 
 
 class BaseLinkCadidateFactory[T: LinkCandidate](BaseModelFactory[T]):
@@ -95,7 +98,7 @@ class ClubFactory(BaseDocumentFactory[ClubModel]):
 
     name = Use(lambda: ClubFactory.__faker__.company())
     description = Use(lambda: ClubFactory.__faker__.paragraph(nb_sentences=3))
-    slug = Use(lambda: ClubFactory.__faker__.slug())
+    slug = Use(lambda: f"{ClubFactory.__faker__.slug()}-{next(_unique_suffix)}")
     allow_suggestions = Use(lambda: ClubFactory.__faker__.boolean())
     preferred_languages = Use(lambda: [ClubFactory.__faker__.language_code() for _ in range(2)])
     ownership_transferred_at = None
@@ -173,8 +176,8 @@ class UserFactory(BaseDocumentFactory[UserModel]):
     __model__ = UserModel
 
     name = Use(lambda: UserFactory.__faker__.name())
-    username = Use(lambda: UserFactory.__faker__.user_name().replace(".", "_"))
-    email = Use(lambda: UserFactory.__faker__.email())
+    username = Use(lambda: f"{UserFactory.__faker__.user_name().replace('.', '_')}_{next(_unique_suffix)}")
+    email = Use(lambda: f"u{next(_unique_suffix)}.{UserFactory.__faker__.email()}")
     hashed_password = Use(lambda: UserFactory.__faker__.sha256())
     linked_providers = Use(lambda: cast(list[LinkedProviderSchema], []))
     avatar = None
