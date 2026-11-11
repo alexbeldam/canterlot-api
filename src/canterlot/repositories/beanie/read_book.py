@@ -1,7 +1,7 @@
 from beanie import PydanticObjectId
 from beanie.operators import In, Set
 
-from canterlot.models import RatingStats, ReadBookModel
+from canterlot.models import BookModel, RatingStats, ReadBookModel, UserModel
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import ReadBookRepository
 
@@ -19,13 +19,13 @@ class BeanieReadBookRepository(ReadBookRepository):
             update_fields["rating"] = rating
 
         await ReadBookModel.find_one(
-            ReadBookModel.user_id == user_id,
-            ReadBookModel.book_id == book_id,
+            ReadBookModel.user.id == user_id,
+            ReadBookModel.book.id == book_id,
         ).upsert(
             Set(update_fields),
             on_insert=ReadBookModel(
-                user_id=user_id,
-                book_id=book_id,
+                user=UserModel.link_from_id(user_id),
+                book=BookModel.link_from_id(book_id),
                 rating=rating,
             ),
         )
@@ -50,14 +50,14 @@ class BeanieReadBookRepository(ReadBookRepository):
 
         results = (
             await ReadBookModel.find(
-                In(ReadBookModel.book_id, book_ids),
+                In(ReadBookModel.book.id, book_ids),
                 ReadBookModel.rating != None,  # noqa: E711
             )
             .aggregate(
                 [
                     {
                         "$group": {
-                            "_id": "$book_id",
+                            "_id": "$book.$id",
                             "average_rating": {"$avg": "$rating"},
                             "rating_count": {"$sum": 1},
                         }
@@ -85,10 +85,10 @@ class BeanieReadBookRepository(ReadBookRepository):
 
         results = (
             await ReadBookModel.find(
-                In(ReadBookModel.book_id, book_ids),
-                In(ReadBookModel.user_id, user_ids),
+                In(ReadBookModel.book.id, book_ids),
+                In(ReadBookModel.user.id, user_ids),
             )
-            .aggregate([{"$group": {"_id": "$book_id", "count": {"$sum": 1}}}])
+            .aggregate([{"$group": {"_id": "$book.$id", "count": {"$sum": 1}}}])
             .to_list()
         )
 
@@ -101,7 +101,7 @@ class BeanieReadBookRepository(ReadBookRepository):
         limit: int,
         sort_direction: SortDirection = SortDirection.DESC,
     ) -> Page[ReadBookModel]:
-        query = ReadBookModel.find(ReadBookModel.user_id == user_id)
+        query = ReadBookModel.find(ReadBookModel.user.id == user_id)
         total_items = await query.count()
 
         sort_field = "-read_at" if sort_direction == SortDirection.DESC else "+read_at"
@@ -121,7 +121,7 @@ class BeanieReadBookRepository(ReadBookRepository):
         book_id: PydanticObjectId,
     ) -> bool:
         result = await ReadBookModel.find_one(
-            ReadBookModel.user_id == user_id,
-            ReadBookModel.book_id == book_id,
+            ReadBookModel.user.id == user_id,
+            ReadBookModel.book.id == book_id,
         ).delete()
         return result is not None and result.deleted_count > 0

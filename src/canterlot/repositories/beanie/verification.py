@@ -1,6 +1,7 @@
 from beanie import PydanticObjectId
 from beanie.operators import Set
 
+from canterlot.hoodie import link_id
 from canterlot.models import VerificationCodeModel
 from canterlot.repositories import VerificationRepository
 from canterlot.types import VerificationScope
@@ -9,7 +10,7 @@ from canterlot.types import VerificationScope
 class BeanieVerificationRepository(VerificationRepository):
     async def create_and_invalidate_previous(self, verification_code: VerificationCodeModel) -> VerificationCodeModel:
         await VerificationCodeModel.find(
-            VerificationCodeModel.user_id == verification_code.user_id,
+            VerificationCodeModel.user.id == link_id(verification_code.user),
             VerificationCodeModel.scope == verification_code.scope,
             VerificationCodeModel.is_active == True,
         ).update_many(Set({VerificationCodeModel.is_active: False}))
@@ -23,7 +24,7 @@ class BeanieVerificationRepository(VerificationRepository):
         scope: VerificationScope,
     ) -> VerificationCodeModel | None:
         return await VerificationCodeModel.find_one(
-            VerificationCodeModel.user_id == user_id,
+            VerificationCodeModel.user.id == user_id,
             VerificationCodeModel.code_hash == code_hash,
             VerificationCodeModel.scope == scope,
             VerificationCodeModel.is_active == True,
@@ -44,7 +45,7 @@ class BeanieVerificationRepository(VerificationRepository):
 
         await raw_collection.update_one(
             {
-                "user_id": user_id,
+                "user.$id": user_id,
                 "scope": scope,
                 "is_active": True,
             },

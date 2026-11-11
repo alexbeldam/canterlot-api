@@ -13,7 +13,8 @@ from pymongo import AsyncMongoClient
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import HealthcheckWaitStrategy
 
-from canterlot.hoodie import HoodiePollingConfig, PollingPolicy, delete_all_entities, init_hoodie
+from canterlot.hoodie import HoodiePollingConfig, PollingPolicy, init_hoodie
+from canterlot.hoodie.testing import delete_all_entities, registered_entities
 
 
 def current_worker_id() -> str:
@@ -130,6 +131,10 @@ async def hoodie_client(mongodb_container: tuple[str, int]) -> AsyncIterator[Asy
 
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="session")
-async def init_hoodied_beanie(hoodie_client: AsyncMongoClient) -> AsyncIterator[None]:  # noqa: ARG001
+async def init_hoodied_beanie(hoodie_client: AsyncMongoClient) -> AsyncIterator[None]:
+    # Entities stay bound to whichever tier initialized last on this worker.
+    bound_database = next(iter(registered_entities())).get_pymongo_collection().database.name
+    if bound_database != DB_NAME:
+        await init_hoodie(hoodie_client[DB_NAME], polling=FAST_HOODIE_POLLING)
     yield
     await delete_all_entities()

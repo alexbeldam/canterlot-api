@@ -112,8 +112,8 @@ def describe_save_new_club_with_owner():
         assert found is not None
 
         membership = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == _id(saved),
-            ClubMembershipModel.user_id == owner_id,
+            {"club.$id": _id(saved)},
+            {"user.$id": owner_id},
         )
         assert membership is not None
         assert membership.status == MembershipStatus.OWNER
@@ -184,24 +184,24 @@ def describe_delete_with_memberships_and_catalog():
     async def it_removes_the_club_document_and_all_its_membership_rows():
         club = await ClubFactory.create_async()
         club_id = _id(club)
-        await ClubMembershipFactory.create_async(club_id=club_id, status=MembershipStatus.OWNER)
-        await ClubMembershipFactory.create_async(club_id=club_id, status=MembershipStatus.MEMBER)
+        await ClubMembershipFactory.create_async(club=ClubModel.link_from_id(club_id), status=MembershipStatus.OWNER)
+        await ClubMembershipFactory.create_async(club=ClubModel.link_from_id(club_id), status=MembershipStatus.MEMBER)
 
         await repo.delete_with_memberships_and_catalog(club_id)
 
         assert await repo.find_by_id(club_id) is None
-        remaining = await ClubMembershipModel.find(ClubMembershipModel.club_id == club_id).to_list()
+        remaining = await ClubMembershipModel.find({"club.$id": club_id}).to_list()
         assert remaining == []
 
     async def it_removes_every_catalog_entry_for_the_club():
         club = await ClubFactory.create_async()
         club_id = _id(club)
-        await CatalogEntryFactory.create_async(club_id=club_id)
-        await CatalogEntryFactory.create_async(club_id=club_id)
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
 
         await repo.delete_with_memberships_and_catalog(club_id)
 
-        assert await CatalogEntryModel.find(CatalogEntryModel.club_id == club_id).count() == 0
+        assert await CatalogEntryModel.find({"club.$id": club_id}).count() == 0
 
     async def it_leaves_other_clubs_catalog_entries_untouched():
         club = await ClubFactory.create_async()

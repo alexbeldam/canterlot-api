@@ -7,7 +7,7 @@ from pymongo.results import UpdateResult
 
 from canterlot.exceptions import ClubNotFoundError
 from canterlot.hoodie import transactional
-from canterlot.models import CatalogEntryModel, ClubMembershipModel, ClubModel
+from canterlot.models import CatalogEntryModel, ClubMembershipModel, ClubModel, UserModel
 from canterlot.repositories import ClubRepository
 from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr, MembershipStatus
 
@@ -80,8 +80,8 @@ class BeanieClubRepository(ClubRepository):
     ) -> ClubModel:
         await club.insert()
         await ClubMembershipModel(
-            club_id=PydanticObjectId(club.id),
-            user_id=owner_id,
+            club=club.to_link(),
+            user=UserModel.link_from_id(owner_id),
             status=MembershipStatus.OWNER,
             joined_at=joined_at,
         ).insert()
@@ -126,8 +126,8 @@ class BeanieClubRepository(ClubRepository):
     ) -> None:
         await ClubModel.find_one(ClubModel.id == club_id).delete()
         await ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
+            ClubMembershipModel.club.id == club_id,
         ).delete()
         await CatalogEntryModel.find(
-            CatalogEntryModel.club_id == club_id,
+            CatalogEntryModel.club.id == club_id,
         ).delete()

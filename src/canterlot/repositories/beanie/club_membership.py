@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import cast
 
-from beanie import PydanticObjectId
+from beanie import Link, PydanticObjectId
 from beanie.operators import In, Set
 from pydantic import BaseModel
 from pymongo.results import UpdateResult
 
-from canterlot.hoodie import TransactionError, transactional
-from canterlot.models import ClubMembershipModel, ClubModel
+from canterlot.hoodie import TransactionError, link_id, transactional
+from canterlot.models import ClubMembershipModel, ClubModel, UserModel
 from canterlot.repositories import ClubMembershipRepository
 from canterlot.types import MemberRole, MembershipStatus
 
@@ -15,8 +15,8 @@ _ACTIVE_STATUSES = [MembershipStatus.OWNER, MembershipStatus.ADMIN, MembershipSt
 _PROMOTABLE_STATUSES = [MembershipStatus.ADMIN, MembershipStatus.MEMBER]
 
 
-class UserIdProjection(BaseModel):
-    user_id: PydanticObjectId
+class UserLinkProjection(BaseModel):
+    user: Link[UserModel]
 
 
 class StatusProjection(BaseModel):
@@ -34,8 +34,8 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         user_id: PydanticObjectId,
     ) -> MemberRole | None:
         projection = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
             In(ClubMembershipModel.status, _ACTIVE_STATUSES),
         ).project(StatusProjection)
 
@@ -47,8 +47,8 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         user_id: PydanticObjectId,
     ) -> bool:
         return await ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
             In(ClubMembershipModel.status, _ACTIVE_STATUSES),
         ).exists()
 
@@ -58,8 +58,8 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         user_id: PydanticObjectId,
     ) -> bool:
         return await ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
             ClubMembershipModel.status == MembershipStatus.PENDING,
         ).exists()
 
@@ -69,8 +69,8 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         user_id: PydanticObjectId,
     ) -> bool:
         return await ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
             ClubMembershipModel.status == MembershipStatus.BANNED,
         ).exists()
 
@@ -83,8 +83,8 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
     ) -> None:
         status = MembershipStatus(role.value)
         await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
         ).upsert(
             Set(
                 {
@@ -93,7 +93,12 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
                     ClubMembershipModel.requested_at: None,
                 }
             ),
-            on_insert=ClubMembershipModel(club_id=club_id, user_id=user_id, status=status, joined_at=joined_at),
+            on_insert=ClubMembershipModel(
+                club=ClubModel.link_from_id(club_id),
+                user=UserModel.link_from_id(user_id),
+                status=status,
+                joined_at=joined_at,
+            ),
         )
 
     async def create_pending_request(
@@ -103,22 +108,22 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         requested_at: datetime,
     ) -> None:
         await ClubMembershipModel(
-            club_id=club_id,
-            user_id=user_id,
+            club=ClubModel.link_from_id(club_id),
+            user=UserModel.link_from_id(user_id),
             status=MembershipStatus.PENDING,
             requested_at=requested_at,
         ).insert()
 
     async def delete_membership(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
         await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
         ).delete()
 
     async def ban_member(self, club_id: PydanticObjectId, user_id: PydanticObjectId) -> None:
         await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
         ).update_one(Set({ClubMembershipModel.status: MembershipStatus.BANNED}))
 
     async def change_member_role(
@@ -128,8 +133,8 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         new_role: MemberRole,
     ) -> bool:
         result = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == member_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == member_id,
             In(ClubMembershipModel.status, _PROMOTABLE_STATUSES),
         ).update_one(Set({ClubMembershipModel.status: MembershipStatus(new_role.value)}))
 
@@ -144,16 +149,16 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         transferred_at: datetime,
     ) -> bool:
         promoted = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == new_owner_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == new_owner_id,
             In(ClubMembershipModel.status, _PROMOTABLE_STATUSES),
         ).update_one(Set({ClubMembershipModel.status: MembershipStatus.OWNER}))
         if cast(UpdateResult, promoted).matched_count == 0:
             raise MembershipConflict
 
         demoted = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == current_owner_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == current_owner_id,
             ClubMembershipModel.status == MembershipStatus.OWNER,
         ).update_one(Set({ClubMembershipModel.status: MembershipStatus.ADMIN}))
         if cast(UpdateResult, demoted).matched_count == 0:
@@ -180,16 +185,16 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         current_owner_id: PydanticObjectId,
     ) -> bool:
         reclaimed = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == former_owner_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == former_owner_id,
             ClubMembershipModel.status == MembershipStatus.ADMIN,
         ).update_one(Set({ClubMembershipModel.status: MembershipStatus.OWNER}))
         if cast(UpdateResult, reclaimed).matched_count == 0:
             raise MembershipConflict
 
         demoted = await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == current_owner_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == current_owner_id,
             ClubMembershipModel.status == MembershipStatus.OWNER,
         ).update_one(Set({ClubMembershipModel.status: MembershipStatus.ADMIN}))
         if cast(UpdateResult, demoted).matched_count == 0:
@@ -208,7 +213,7 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
 
     async def find_active_by_club_id(self, club_id: PydanticObjectId) -> list[ClubMembershipModel]:
         return await ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
+            ClubMembershipModel.club.id == club_id,
             In(ClubMembershipModel.status, _ACTIVE_STATUSES),
         ).to_list()
 
@@ -218,31 +223,31 @@ class BeanieClubMembershipRepository(ClubMembershipRepository):
         user_id: PydanticObjectId,
     ) -> ClubMembershipModel | None:
         return await ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
-            ClubMembershipModel.user_id == user_id,
+            ClubMembershipModel.club.id == club_id,
+            ClubMembershipModel.user.id == user_id,
             In(ClubMembershipModel.status, _ACTIVE_STATUSES),
         )
 
     async def find_pending_by_club_id(self, club_id: PydanticObjectId) -> list[ClubMembershipModel]:
         return await ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
+            ClubMembershipModel.club.id == club_id,
             ClubMembershipModel.status == MembershipStatus.PENDING,
         ).to_list()
 
     async def find_active_member_ids_by_club_id(self, club_id: PydanticObjectId) -> list[PydanticObjectId]:
         query = ClubMembershipModel.find(
-            ClubMembershipModel.club_id == club_id,
+            ClubMembershipModel.club.id == club_id,
             In(ClubMembershipModel.status, _ACTIVE_STATUSES),
         )
-        projections = await query.project(UserIdProjection).to_list()
+        projections = await query.project(UserLinkProjection).to_list()
 
-        return [projection.user_id for projection in projections]
+        return [link_id(projection.user) for projection in projections]
 
     async def find_owner_id_by_club_id(self, club_id: PydanticObjectId) -> PydanticObjectId | None:
         query = ClubMembershipModel.find_one(
-            ClubMembershipModel.club_id == club_id,
+            ClubMembershipModel.club.id == club_id,
             ClubMembershipModel.status == MembershipStatus.OWNER,
         )
-        projection = await query.project(UserIdProjection)
+        projection = await query.project(UserLinkProjection)
 
-        return projection.user_id if projection else None
+        return link_id(projection.user) if projection else None

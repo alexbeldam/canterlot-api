@@ -1,9 +1,8 @@
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
-from pydantic import BaseModel, ConfigDict, Field
 from pymongo.errors import DuplicateKeyError
 
-from canterlot.models import BookModel, CatalogEntryModel
+from canterlot.models import CatalogEntryModel
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import CatalogRepository
 
@@ -16,12 +15,6 @@ _SORT_FIELD_PATHS = {
 _BOOK_JOINED_SORT_FIELDS = {"title", "author", "year"}
 
 
-class BookIdProjection(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: PydanticObjectId = Field(alias="_id")
-
-
 class BeanieCatalogRepository(CatalogRepository):
     async def find_by_club_id_and_book_id(
         self,
@@ -29,8 +22,8 @@ class BeanieCatalogRepository(CatalogRepository):
         book_id: PydanticObjectId,
     ) -> CatalogEntryModel | None:
         return await CatalogEntryModel.find_one(
-            CatalogEntryModel.club_id == club_id,
-            CatalogEntryModel.book_id == book_id,
+            CatalogEntryModel.club.id == club_id,
+            CatalogEntryModel.book.id == book_id,
         )
 
     async def find_page_by_club_id(
@@ -46,9 +39,9 @@ class BeanieCatalogRepository(CatalogRepository):
         sort_field = sort_by if sort_by in _SORT_FIELD_PATHS else "suggested_at"
         direction = 1 if sort_direction == SortDirection.ASC else -1
 
-        match: dict[str, object] = {"club_id": club_id}
+        match: dict[str, object] = {"club.$id": club_id}
         if suggested_by is not None:
-            match["suggested_by"] = suggested_by
+            match["suggested_by.$id"] = suggested_by
 
         if q is not None:
             return await self.__find_search_page(match, page, limit, q)
@@ -71,35 +64,15 @@ class BeanieCatalogRepository(CatalogRepository):
         page: int,
         limit: int,
     ) -> Page[CatalogEntryModel]:
-        pipeline: list[dict] = [
-            {"$match": match},
-            {
-                "$lookup": {
-                    "from": BookModel.get_settings().name,
-                    "localField": "book_id",
-                    "foreignField": "_id",
-                    "as": "book",
-                }
-            },
-            {"$unwind": {"path": "$book", "preserveNullAndEmptyArrays": True}},
-            {"$sort": {sort_path: direction}},
-            {
-                "$facet": {
-                    "items": [
-                        {"$skip": (page - 1) * limit},
-                        {"$limit": limit},
-                        {"$project": {"book": 0}},
-                    ],
-                    "total": [{"$count": "count"}],
-                }
-            },
-        ]
-
-        result = await CatalogEntryModel.aggregate(pipeline).to_list()
-        facet = result[0]
-
-        items = [CatalogEntryModel.model_validate(item) for item in facet["items"]]
-        total_items = facet["total"][0]["count"] if facet["total"] else 0
+        query = CatalogEntryModel.find(
+            match,
+            fetch_links=True,
+            nesting_depth=0,
+            nesting_depths_per_field={"book": 1},
+        )
+        total_items = await query.count()
+        sort_key = f"{'+' if direction == 1 else '-'}{sort_path}"
+        items = await query.sort(sort_key).skip((page - 1) * limit).limit(limit).to_list()
 
         return Page(items=items, total_items=total_items, current_page=page, page_size=limit)
 
@@ -110,21 +83,14 @@ class BeanieCatalogRepository(CatalogRepository):
         limit: int,
         q: str,
     ) -> Page[CatalogEntryModel]:
-        entries_by_book_id = {entry.book_id: entry for entry in await CatalogEntryModel.find(match).to_list()}
-        if not entries_by_book_id:
-            return Page(items=[], total_items=0, current_page=page, page_size=limit)
-
         result = await (
-            BookModel.search()
-            .filter_in("_id", list(entries_by_book_id))
+            CatalogEntryModel.find(match)
+            .search(CatalogEntryModel.book)
             .text(["title", "authors"], q, fuzzy=True)
-            .project(BookIdProjection)
             .paginate(page, limit)
         )
 
-        items = [entries_by_book_id[book.id] for book in result["items"]]
-
-        return Page(items=items, total_items=result["total_items"], current_page=page, page_size=limit)
+        return Page.from_search(result, page, limit)
 
     async def find_by_club_id_excluding_book_ids(
         self,
@@ -132,8 +98,8 @@ class BeanieCatalogRepository(CatalogRepository):
         excluded_book_ids: set[PydanticObjectId],
     ) -> list[CatalogEntryModel]:
         return await CatalogEntryModel.find(
-            CatalogEntryModel.club_id == club_id,
-            NotIn(CatalogEntryModel.book_id, list(excluded_book_ids)),
+            CatalogEntryModel.club.id == club_id,
+            NotIn(CatalogEntryModel.book.id, list(excluded_book_ids)),
         ).to_list()
 
     async def find_by_club_id_and_book_ids(
@@ -142,8 +108,8 @@ class BeanieCatalogRepository(CatalogRepository):
         book_ids: set[PydanticObjectId],
     ) -> list[CatalogEntryModel]:
         return await CatalogEntryModel.find(
-            CatalogEntryModel.club_id == club_id,
-            In(CatalogEntryModel.book_id, list(book_ids)),
+            CatalogEntryModel.club.id == club_id,
+            In(CatalogEntryModel.book.id, list(book_ids)),
         ).to_list()
 
     async def add(self, entry: CatalogEntryModel) -> bool:
@@ -155,6 +121,6 @@ class BeanieCatalogRepository(CatalogRepository):
 
     async def delete_by_club_id_and_book_id(self, club_id: PydanticObjectId, book_id: PydanticObjectId) -> None:
         await CatalogEntryModel.find_one(
-            CatalogEntryModel.club_id == club_id,
-            CatalogEntryModel.book_id == book_id,
+            CatalogEntryModel.club.id == club_id,
+            CatalogEntryModel.book.id == book_id,
         ).delete()

@@ -2,6 +2,7 @@ import pytest
 from beanie import PydanticObjectId
 from pydantic import SecretStr
 
+from canterlot.models import UserModel
 from canterlot.models.verification import VerificationCodeModel
 from canterlot.repositories.beanie.verification import BeanieVerificationRepository
 from canterlot.types import VerificationScope
@@ -28,7 +29,7 @@ async def _create_code_model(
     code_hash = VerificationCodeModel.hash_code(code, user_id)
 
     model = await VerificationCodeFactory.create_async(
-        user_id=user_id,
+        user=UserModel.link_from_id(user_id),
         code_hash=code_hash,
         scope=scope,
         is_active=is_active,

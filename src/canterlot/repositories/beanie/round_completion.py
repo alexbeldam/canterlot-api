@@ -1,30 +1,30 @@
 from datetime import datetime
 from typing import cast
 
-from beanie import PydanticObjectId
+from beanie import Link, PydanticObjectId
 from beanie.operators import In
 from pydantic import BaseModel
 from pymongo.results import UpdateResult
 
-from canterlot.hoodie import transactional
-from canterlot.models import RoundCompletionModel, RoundModel
+from canterlot.hoodie import link_id, transactional
+from canterlot.models import BookModel, ClubModel, RoundCompletionModel, RoundModel, UserModel
 from canterlot.repositories import CompletionResult, RoundCompletionRepository
 from canterlot.types import RoundStatus
 
 
-class UserIdProjection(BaseModel):
-    user_id: PydanticObjectId
+class UserLinkProjection(BaseModel):
+    user: Link[UserModel]
 
 
 class BeanieRoundCompletionRepository(RoundCompletionRepository):
     async def find_user_ids_by_round_id(self, round_id: PydanticObjectId) -> set[PydanticObjectId]:
         projections = (
-            await RoundCompletionModel.find(RoundCompletionModel.round_id == round_id)
-            .project(UserIdProjection)
+            await RoundCompletionModel.find(RoundCompletionModel.round.id == round_id)
+            .project(UserLinkProjection)
             .to_list()
         )
 
-        return {projection.user_id for projection in projections}
+        return {link_id(projection.user) for projection in projections}
 
     @transactional
     async def record_completion(
@@ -37,15 +37,15 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
         current_member_ids: set[PydanticObjectId],
     ) -> CompletionResult:
         insert_result = await RoundCompletionModel.find_one(
-            RoundCompletionModel.round_id == round_id,
-            RoundCompletionModel.user_id == user_id,
+            RoundCompletionModel.round.id == round_id,
+            RoundCompletionModel.user.id == user_id,
         ).update_one(
             {
                 "$setOnInsert": {
-                    "club_id": club_id,
-                    "round_id": round_id,
-                    "book_id": book_id,
-                    "user_id": user_id,
+                    "club": ClubModel.link_from_id(club_id).to_ref(),
+                    "round": RoundModel.link_from_id(round_id).to_ref(),
+                    "book": BookModel.link_from_id(book_id).to_ref(),
+                    "user": UserModel.link_from_id(user_id).to_ref(),
                     "completed_at": completed_at,
                 }
             },
@@ -67,8 +67,8 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
             return CompletionResult(is_new=True, round_concluded=False)
 
         finisher_count = await RoundCompletionModel.find(
-            RoundCompletionModel.round_id == round_id,
-            In(RoundCompletionModel.user_id, list(current_member_ids)),
+            RoundCompletionModel.round.id == round_id,
+            In(RoundCompletionModel.user.id, list(current_member_ids)),
         ).count()
         if finisher_count < len(current_member_ids):
             return CompletionResult(is_new=True, round_concluded=False)
@@ -86,16 +86,16 @@ class BeanieRoundCompletionRepository(RoundCompletionRepository):
         current_member_ids: set[PydanticObjectId],
     ) -> set[PydanticObjectId]:
         results = (
-            await RoundCompletionModel.find(RoundCompletionModel.club_id == club_id)
+            await RoundCompletionModel.find(RoundCompletionModel.club.id == club_id)
             .aggregate(
                 [
                     {
                         "$group": {
-                            "_id": "$round_id",
-                            "book_id": {"$first": "$book_id"},
+                            "_id": "$round.$id",
+                            "book_id": {"$first": "$book.$id"},
                             "total_finishers": {"$sum": 1},
                             "current_finishers": {
-                                "$sum": {"$cond": [{"$in": ["$user_id", list(current_member_ids)]}, 1, 0]}
+                                "$sum": {"$cond": [{"$in": ["$user.$id", list(current_member_ids)]}, 1, 0]}
                             },
                         }
                     },
