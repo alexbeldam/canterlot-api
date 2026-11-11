@@ -45,7 +45,7 @@ class BaseLinkCadidateFactory[T: LinkCandidate](BaseModelFactory[T]):
 
     @classmethod
     def build(cls, factory_use_construct: bool = False, **kwargs) -> T:
-        ext = kwargs.get("extension", cls.__faker__.random_element(list(ExtensionType)))
+        ext = kwargs.setdefault("extension", cls.__faker__.random_element(list(ExtensionType)))
 
         kwargs.setdefault(
             "url",
@@ -119,7 +119,7 @@ class InviteFactory(BaseDocumentFactory[InviteModel]):
 
     @classmethod
     def build(cls, factory_use_construct: bool = False, **kwargs) -> InviteModel:
-        invite_type = kwargs.get("type", cls.__faker__.random_element(list(InviteType)))
+        invite_type = kwargs.setdefault("type", cls.__faker__.random_element(list(InviteType)))
 
         if invite_type == InviteType.PUBLIC:
             kwargs.setdefault("target_email", None)

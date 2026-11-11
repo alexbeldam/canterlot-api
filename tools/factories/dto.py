@@ -116,7 +116,7 @@ class CreateInviteRequestFactory(BaseModelFactory[CreateInviteRequest]):
 
     @classmethod
     def build(cls, factory_use_construct: bool = False, **kwargs: Any) -> CreateInviteRequest:
-        invite_type = kwargs.get(
+        invite_type = kwargs.setdefault(
             "type",
             cls.__faker__.random_element(list(InviteType)),
         )
@@ -145,7 +145,7 @@ class CreateSessionRequestFactory(BaseModelFactory[CreateSessionRequest]):
 
     @classmethod
     def build(cls, factory_use_construct: bool = False, **kwargs: Any) -> CreateSessionRequest:
-        type = kwargs.get(
+        type = kwargs.setdefault(
             "type",
             cls.__faker__.random_element(list(SessionType)),
         )
