@@ -1,5 +1,6 @@
 import os
 import random
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 from unittest.mock import AsyncMock
@@ -50,10 +51,18 @@ from tests.mongo_integration import (  # noqa: F401
 )
 
 
-def pytest_sessionfinish() -> None:
+def pytest_configure(config: pytest.Config) -> None:
+    # xdist exports this id only inside workers; setting it here lets the controller derive the same
+    # per-run container paths in pytest_sessionfinish.
+    if hasattr(config.option, "testrunuid") and config.option.testrunuid is None:
+        config.option.testrunuid = uuid.uuid4().hex
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
     # Controller only: a worker finishing early must not kill the container other workers still use.
-    if not os.environ.get("PYTEST_XDIST_WORKER"):
-        cleanup_shared_mongo_container()
+    run_uid = getattr(session.config.option, "testrunuid", None)
+    if run_uid and not os.environ.get("PYTEST_XDIST_WORKER"):
+        cleanup_shared_mongo_container(run_uid)
 
 
 _original_list_collection_names = mongomock.database.Database.list_collection_names
@@ -68,6 +77,10 @@ _FAKE_SETTINGS_ENV = {
     "DB__MONGODB_URL": "mongodb://localhost:27017/?directConnection=true",
     "DB__MONGODB_DB_NAME": "canterlot_test",
     "DB__REDIS_URL": "redis://localhost:6379/0",
+    "RATELIMIT__CLUB_OWNERSHIP_RECLAIM_WINDOW_HOURS": "24",
+    "RATELIMIT__CLUB_OWNERSHIP_TRANSFER_COOLDOWN_DAYS": "30",
+    "AUTH__CURRENT_TERMS_VERSION": "1",
+    "AUTH__CURRENT_PRIVACY_VERSION": "1",
 }
 
 

@@ -22,10 +22,16 @@ def current_worker_id() -> str:
 
 DB_NAME = f"canterlot_integration_test_{current_worker_id()}"
 
-# A fixed OS-temp-dir location (not pytest's own tmp machinery) so it's reachable both from
-# worker-process fixtures and from the controller process's pytest_sessionfinish hook.
-_SHARED_STATE_FILE = pathlib.Path(tempfile.gettempdir()) / "canterlot_xdist_mongo_container.json"
-_SHARED_LOCK_FILE = pathlib.Path(tempfile.gettempdir()) / "canterlot_xdist_mongo_container.lock"
+
+def _shared_state_file(run_uid: str) -> pathlib.Path:
+    # OS temp dir (not pytest's own tmp machinery) so both worker fixtures and the controller's
+    # pytest_sessionfinish hook can reach it, keyed by run so concurrent runs never share a container.
+    return pathlib.Path(tempfile.gettempdir()) / f"canterlot_xdist_mongo_container_{run_uid}.json"
+
+
+def _shared_lock_file(run_uid: str) -> pathlib.Path:
+    return pathlib.Path(tempfile.gettempdir()) / f"canterlot_xdist_mongo_container_{run_uid}.lock"
+
 
 # Polling returns the moment the index settles, so a fast machine never pays for the budget. The
 # budget (about 5 minutes per wait) only has to outlast the slowest machine's mongot, so the suite's
@@ -65,14 +71,15 @@ def _is_container_running(container_id: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
-def cleanup_shared_mongo_container() -> None:
-    if not _SHARED_STATE_FILE.is_file():
+def cleanup_shared_mongo_container(run_uid: str) -> None:
+    state_file = _shared_state_file(run_uid)
+    if not state_file.is_file():
         return
 
-    state = json.loads(_SHARED_STATE_FILE.read_text())
+    state = json.loads(state_file.read_text())
     subprocess.run(["docker", "rm", "-f", state["container_id"]], capture_output=True, check=False)
-    _SHARED_STATE_FILE.unlink(missing_ok=True)
-    _SHARED_LOCK_FILE.unlink(missing_ok=True)
+    state_file.unlink(missing_ok=True)
+    _shared_lock_file(run_uid).unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
@@ -83,10 +90,11 @@ def mongodb_container() -> Iterator[tuple[str, int]]:
             yield container.get_container_host_ip(), container.get_exposed_port(27017)
         return
 
-    with FileLock(str(_SHARED_LOCK_FILE)):
-        state: dict[str, Any] | None = (
-            json.loads(_SHARED_STATE_FILE.read_text()) if _SHARED_STATE_FILE.is_file() else None
-        )
+    run_uid = os.environ["PYTEST_XDIST_TESTRUNUID"]
+    state_file = _shared_state_file(run_uid)
+
+    with FileLock(str(_shared_lock_file(run_uid))):
+        state: dict[str, Any] | None = json.loads(state_file.read_text()) if state_file.is_file() else None
 
         if state is None or not _is_container_running(state["container_id"]):
             container = _new_mongodb_container()
@@ -96,7 +104,7 @@ def mongodb_container() -> Iterator[tuple[str, int]]:
                 "host": container.get_container_host_ip(),
                 "port": container.get_exposed_port(27017),
             }
-            _SHARED_STATE_FILE.write_text(json.dumps(state))
+            state_file.write_text(json.dumps(state))
 
     host: str = state["host"]
     port: int = state["port"]
@@ -111,6 +119,7 @@ async def hoodie_client(mongodb_container: tuple[str, int]) -> AsyncIterator[Asy
 
     client: AsyncMongoClient = AsyncMongoClient(url, tz_aware=True)
     try:
+        await client.drop_database(DB_NAME)
         # BeanieCatalogRepository.find_page_by_club_id's free-text/fuzzy path runs a real
         # $search against the books_search Atlas Search index, so this tier needs it built too.
         await init_hoodie(client[DB_NAME], polling=FAST_HOODIE_POLLING)
