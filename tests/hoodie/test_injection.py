@@ -704,6 +704,8 @@ def describe_session_injection() -> None:
     async def it_isolates_two_concurrent_transactions_from_each_other(
         command_recorder: CommandRecorder,
     ) -> None:
+        # Creates the lazily created collection outside any transaction so neither body races to create it.
+        await SessionPathItem(name="synthetic-warmup").insert()
         barrier = asyncio.Barrier(2)
 
         @transactional

@@ -7,6 +7,7 @@ from pymongo.asynchronous.collection import AsyncCollection
 
 from canterlot.hoodie import Entity, init_hoodie
 from canterlot.hoodie.fields import searchable
+from canterlot.hoodie.indexes import ensure_registered_search_indexes
 from canterlot.hoodie.polling import poll_until
 from tests.hoodie.conftest import CommandRecorder
 from tests.hoodie.entities import Profile, SearchableTestEntity, is_searchable
@@ -65,15 +66,14 @@ def describe_ensure_registered_search_indexes_when_nothing_changed() -> None:
 
 def describe_index_build_coalescing() -> None:
     async def it_shares_one_check_cycle_between_concurrent_calls_for_the_same_index(
-        hoodie_client: AsyncMongoClient,
         command_recorder: CommandRecorder,
     ) -> None:
         index_name = "hoodie_test_coalesced_index_entities_search"
 
         with command_recorder.recording() as events:
             await asyncio.gather(
-                init_hoodie(hoodie_client[DB_NAME]),
-                init_hoodie(hoodie_client[DB_NAME]),
+                ensure_registered_search_indexes(),
+                ensure_registered_search_indexes(),
             )
 
         list_calls = [
