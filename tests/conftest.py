@@ -15,7 +15,8 @@ from saq import Queue
 
 from canterlot.config import get_settings
 from canterlot.emails import EmailTemplate
-from canterlot.hoodie.lifecycle import delete_all_entities, init_hoodie
+from canterlot.hoodie import init_hoodie
+from canterlot.hoodie.testing import delete_all_entities, disable_search, registered_entities
 from canterlot.models.read_book import RatingStats
 from canterlot.repositories import (
     BookRepository,
@@ -112,7 +113,9 @@ async def _beanie_client() -> AsyncIterator[AsyncMongoMockClient]:
     client: AsyncMongoMockClient = AsyncMongoMockClient()
 
     try:
-        await init_hoodie(client["test"], search=False)  # type: ignore[arg-type]
+        # mongomock has no Atlas Search, so index management must be skipped during init.
+        with disable_search():
+            await init_hoodie(client["test"])  # type: ignore[arg-type]
         yield client
     finally:
         client.close()
@@ -121,8 +124,14 @@ async def _beanie_client() -> AsyncIterator[AsyncMongoMockClient]:
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="session")
 async def init_hoodied_beanie(_beanie_client: AsyncMongoMockClient) -> AsyncIterator[None]:
-    yield
-    await delete_all_entities()
+    # Off only while a mocked test runs: integration tests on the same worker need it back on.
+    with disable_search():
+        # Entities stay bound to whichever tier initialized last on this worker.
+        bound_database = next(iter(registered_entities())).get_pymongo_collection().database.name
+        if bound_database != "test":
+            await init_hoodie(_beanie_client["test"])  # type: ignore[arg-type]
+        yield
+        await delete_all_entities()
 
 
 # ========================================================

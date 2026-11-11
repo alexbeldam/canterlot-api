@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Any
 
-from beanie import Link
-from pydantic import BaseModel, Field
+from beanie import BackLink, Link
+from pydantic import BaseModel, Field, create_model
 from pymongo.asynchronous.client_session import AsyncClientSession
 
 from canterlot.hoodie import Entity
@@ -114,6 +115,32 @@ class LinkedTestEntity(Entity):
 
     class Settings:
         name = "hoodie_test_linked_entities"
+
+
+UNREGISTERED_ENTITY_NAME = "NotARegisteredEntity"
+
+
+def unresolvable_entity() -> type[Entity]:
+    # Built at runtime so the dangling forward reference never appears as an undefined name
+    # in an annotation. Registers on definition: call it inside override_registry().
+    back_link: Any = BackLink
+    list_of: Any = list
+    return create_model(
+        "UnresolvableTestEntity",
+        __base__=Entity,
+        others=(
+            list_of[back_link[UNREGISTERED_ENTITY_NAME]],
+            Field(default_factory=list, json_schema_extra={"original_field": "owner"}),
+        ),
+    )
+
+
+def abstract_root_entity() -> type[Entity]:
+    class AbstractRootTestEntity(Entity):
+        class Settings:
+            is_root = True
+
+    return AbstractRootTestEntity
 
 
 async def is_searchable(entity: SearchableTestEntity) -> bool:

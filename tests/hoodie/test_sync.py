@@ -8,8 +8,6 @@ from pymongo import AsyncMongoClient
 from canterlot.hoodie import (
     HoodiePollingConfig,
     SyncKind,
-    get_polling_config,
-    set_polling_config,
     sync_search,
     synced,
 )
@@ -22,12 +20,14 @@ from canterlot.hoodie.exceptions import (
     UnmanagedSessionError,
 )
 from canterlot.hoodie.polling import PollingPolicy
+from canterlot.hoodie.testing import override_polling_config
 from tests.hoodie.conftest import CommandRecorder
 from tests.hoodie.entities import PlainTestEntity, SearchableTestEntity, is_searchable
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 _SEARCH_INDEX = "hoodie_test_searchable_entities_search"
+_NEVER_SETTLES = HoodiePollingConfig(search_sync=PollingPolicy(max_attempts=2, initial_interval=0.01))
 
 
 def describe_write_hooks() -> None:
@@ -165,13 +165,8 @@ def describe_sync_search_with_an_unregistered_index() -> None:
 
 def describe_sync_search_when_a_document_never_settles() -> None:
     async def it_raises_document_never_searchable_error_for_a_write_that_never_settles() -> None:
-        original_polling = get_polling_config()
-        set_polling_config(HoodiePollingConfig(search_sync=PollingPolicy(max_attempts=2, initial_interval=0.01)))
-        try:
-            with pytest.raises(ExceptionGroup) as exc_info:
-                await sync_search(_SEARCH_INDEX, [PydanticObjectId()], SyncKind.WRITE, session=None)
-        finally:
-            set_polling_config(original_polling)
+        with override_polling_config(_NEVER_SETTLES), pytest.raises(ExceptionGroup) as exc_info:
+            await sync_search(_SEARCH_INDEX, [PydanticObjectId()], SyncKind.WRITE, session=None)
 
         assert isinstance(exc_info.value.exceptions[0], DocumentNeverSearchableError)
 
@@ -180,12 +175,7 @@ def describe_sync_search_when_a_document_never_settles() -> None:
         # active search_sync policy, and the real index needs more than two 0.01s attempts.
         entity = await SearchableTestEntity(label="still-searchable").insert()
 
-        original_polling = get_polling_config()
-        set_polling_config(HoodiePollingConfig(search_sync=PollingPolicy(max_attempts=2, initial_interval=0.01)))
-        try:
-            with pytest.raises(ExceptionGroup) as exc_info:
-                await sync_search(_SEARCH_INDEX, [PydanticObjectId(entity.id)], SyncKind.DELETE, session=None)
-        finally:
-            set_polling_config(original_polling)
+        with override_polling_config(_NEVER_SETTLES), pytest.raises(ExceptionGroup) as exc_info:
+            await sync_search(_SEARCH_INDEX, [PydanticObjectId(entity.id)], SyncKind.DELETE, session=None)
 
         assert isinstance(exc_info.value.exceptions[0], DocumentNeverUnsearchableError)

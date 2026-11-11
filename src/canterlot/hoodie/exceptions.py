@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
 from beanie import PydanticObjectId
+from beanie.exceptions import DocumentWasNotSaved
 
 if TYPE_CHECKING:
     from .entity import Entity
@@ -84,6 +85,25 @@ class SearchWithinTransactionError(SessionError, RuntimeError):
 
 class EntityConfigurationError(HoodieError):
     """Base exception for errors during entity metadata and field definition."""
+
+
+class UnresolvedEntityReferenceError(EntityConfigurationError, NameError):
+    """Raised when an Entity's string annotation names a class that is not a registered
+    Entity, so its `Link`/`BackLink` target cannot be resolved.
+
+    :param entity: the Entity subclass with the unresolved annotation.
+    :type entity: type[Entity]
+    :param name: the unresolved class name.
+    :type name: str
+    """
+
+    def __init__(self, entity: "type[Entity]", name: str) -> None:
+        super().__init__(
+            f"Entity {entity.__name__!r} references {name!r}, which is not a registered Entity. "
+            f"Import it before init_hoodie runs."
+        )
+        self.entity = entity
+        self.name = name
 
 
 class SearchIndexConfigurationError(EntityConfigurationError):
@@ -208,6 +228,19 @@ class EntityNotSearchableError(EntityConfigurationError, ValueError):
 
     def __init__(self, entity: "type[Entity]") -> None:
         super().__init__(f"Entity {entity.__name__!r} has no search index configured; cannot build a search query.")
+        self.entity = entity
+
+
+class EntityLinkWithoutIdError(HoodieError, DocumentWasNotSaved):
+    """Raised when `Entity.to_link` is called on a document that has no id yet, so there is
+    nothing to reference.
+
+    :param entity: the Entity subclass of the document that has no id.
+    :type entity: type[Entity]
+    """
+
+    def __init__(self, entity: "type[Entity]") -> None:
+        super().__init__(f"Cannot build a Link to a {entity.__name__!r} document with no id yet.")
         self.entity = entity
 
 
