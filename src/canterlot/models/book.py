@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
-from typing import Annotated, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
-from beanie import Indexed
+from beanie import BackLink, Indexed
 from pydantic import BaseModel, Field, model_validator
 from pymongo import ASCENDING, IndexModel
 
@@ -23,6 +23,9 @@ from canterlot.types import (
     UrlList,
 )
 from canterlot.utils.isbn import split_isbn
+
+if TYPE_CHECKING:
+    from .catalog_entry import CatalogEntryModel
 
 
 class LinkCandidate(BaseModel):
@@ -47,6 +50,11 @@ class BookModel(Entity):
     cover_url: HttpsUrl | None = None
     urls: UrlList = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    catalog_entries: list[BackLink["CatalogEntryModel"]] = Field(
+        default_factory=list,
+        json_schema_extra={"original_field": "book"},
+        exclude=True,
+    )
 
     class Settings:
         name = "books"

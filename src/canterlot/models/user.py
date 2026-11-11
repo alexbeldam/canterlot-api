@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
-from typing import Annotated, ClassVar
+from typing import TYPE_CHECKING, Annotated, ClassVar
 
 import shortuuid
-from beanie import Indexed, PydanticObjectId
+from beanie import BackLink, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo import ASCENDING, IndexModel
 
@@ -18,6 +18,9 @@ from canterlot.types import (
     PersonNameStr,
     UsernameStr,
 )
+
+if TYPE_CHECKING:
+    from .club_membership import ClubMembershipModel
 
 
 class LinkedProviderSchema(BaseModel):
@@ -54,6 +57,11 @@ class UserModel(Entity):
     profile_completed_at: datetime | None = None
     email_preferences: EmailPreferencesSchema = Field(default_factory=EmailPreferencesSchema)
     last_seen_at: datetime | None = None
+    memberships: list[BackLink["ClubMembershipModel"]] = Field(
+        default_factory=list,
+        json_schema_extra={"original_field": "user"},
+        exclude=True,
+    )
 
     class Settings:
         name = "users"

@@ -2,20 +2,23 @@ from datetime import UTC, datetime
 from typing import ClassVar
 
 import shortuuid
-from beanie import PydanticObjectId
+from beanie import Link
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
 
 from canterlot.hoodie import Entity
 from canterlot.types import InviteType, NormalizedEmailStr
 
+from .club import ClubModel
+from .user import UserModel
+
 
 class InviteModel(Entity):
     id: str = Field(default_factory=lambda: shortuuid.random(length=10), alias="_id")  # type: ignore[assignment]
-    club_id: PydanticObjectId
-    created_by: PydanticObjectId | None = None
+    club: Link[ClubModel]
+    created_by: Link[UserModel] | None = None
     target_email: NormalizedEmailStr | None = None
-    target_user_id: PydanticObjectId | None = None
+    target_user: Link[UserModel] | None = None
     type: InviteType = InviteType.PUBLIC
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     expires_at: datetime | None = None
@@ -27,11 +30,11 @@ class InviteModel(Entity):
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel(
                 [
-                    ("club_id", ASCENDING),
+                    ("club.$id", ASCENDING),
                     ("type", ASCENDING),
                     ("is_active", ASCENDING),
                     ("target_email", ASCENDING),
-                    ("target_user_id", ASCENDING),
+                    ("target_user.$id", ASCENDING),
                 ],
                 name="club_invite_lookup_idx",
             ),
