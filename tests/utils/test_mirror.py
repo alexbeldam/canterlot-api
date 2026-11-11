@@ -35,12 +35,13 @@ def describe_execute():
 
     async def it_falls_back_to_racing_the_pool_when_the_preferred_mirror_fails():
         pool = MirrorPool(["a", "b", "c"])
+        never_set = asyncio.Event()
 
         async def op(mirror: str) -> str:
             if mirror == "a":
                 raise RuntimeError("preferred is down")
             if mirror == "b":
-                await asyncio.sleep(0.05)
+                await never_set.wait()
                 return "from-b"
             return "from-c"
 

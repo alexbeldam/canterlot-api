@@ -77,6 +77,10 @@ _FAKE_SETTINGS_ENV = {
     "DB__MONGODB_URL": "mongodb://localhost:27017/?directConnection=true",
     "DB__MONGODB_DB_NAME": "canterlot_test",
     "DB__REDIS_URL": "redis://localhost:6379/0",
+    "RATELIMIT__CLUB_OWNERSHIP_RECLAIM_WINDOW_HOURS": "24",
+    "RATELIMIT__CLUB_OWNERSHIP_TRANSFER_COOLDOWN_DAYS": "30",
+    "AUTH__CURRENT_TERMS_VERSION": "1",
+    "AUTH__CURRENT_PRIVACY_VERSION": "1",
 }
 
 
