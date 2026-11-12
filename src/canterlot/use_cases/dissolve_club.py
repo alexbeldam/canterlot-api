@@ -2,6 +2,7 @@ from beanie import PydanticObjectId
 
 from canterlot.emails.core.definitions import EmailTaskPayload, Templates
 from canterlot.emails.core.schemas import SpikeActionContext
+from canterlot.hoodie import link_id
 from canterlot.models.club import ClubModel
 from canterlot.models.user import UserModel
 from canterlot.services.club import ClubService
@@ -31,7 +32,7 @@ class DissolveClubUseCase:
         # 1. Resolve All Other Club Members
         # ---------------------------------------------------------
         active_members = await self.__club_service.get_active_members(PydanticObjectId(club.id))
-        member_ids = [m.user_id for m in active_members if m.user_id != owner_id]
+        member_ids = [link_id(m.user) for m in active_members if link_id(m.user) != owner_id]
         member_users = await self.__user_service.get_by_ids(member_ids) if member_ids else []
 
         # ---------------------------------------------------------

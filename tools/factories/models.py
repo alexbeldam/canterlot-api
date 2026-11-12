@@ -3,11 +3,12 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import shortuuid
-from beanie import PydanticObjectId
+from beanie import BackLink, Link, PydanticObjectId
 from polyfactory import Use
 from pydantic import HttpUrl
 
 from canterlot.emails.core.enums import EmailCategory
+from canterlot.hoodie import complete_forward_references
 from canterlot.models import (
     BookModel,
     CatalogEntryModel,
@@ -20,7 +21,6 @@ from canterlot.models import (
     UserModel,
 )
 from canterlot.models.book import LinkCandidate
-from canterlot.models.round import CandidatePoolEntry
 from canterlot.models.user import EmailPreferencesSchema, LinkedProviderSchema
 from canterlot.models.verification import VerificationCodeModel
 from canterlot.types import (
@@ -37,6 +37,9 @@ from canterlot.types import (
 from .base import BaseDocumentFactory, BaseModelFactory
 
 _unique_suffix = itertools.count(1)
+
+# polyfactory rebuilds each model when its factory class is defined, before init_hoodie runs
+complete_forward_references()
 
 
 class BaseLinkCadidateFactory[T: LinkCandidate](BaseModelFactory[T]):
@@ -75,6 +78,7 @@ class BookFactory(BaseDocumentFactory[BookModel]):
     description = Use(lambda: BookFactory.__faker__.paragraph(nb_sentences=3))
     categories = Use(lambda: [BookFactory.__faker__.word() for _ in range(3)])
     cover_url = Use(lambda: BookFactory.__faker__.image_url(width=500, height=700))
+    catalog_entries = Use(lambda: cast(list[BackLink[CatalogEntryModel]], []))
     urls = Use(
         lambda: {
             ext: HttpUrl(
@@ -103,6 +107,9 @@ class ClubFactory(BaseDocumentFactory[ClubModel]):
     preferred_languages = Use(lambda: [ClubFactory.__faker__.language_code() for _ in range(2)])
     ownership_transferred_at = None
     protected_former_owner_id = None
+    memberships = Use(lambda: cast(list[BackLink[ClubMembershipModel]], []))
+    catalog_entries = Use(lambda: cast(list[BackLink[CatalogEntryModel]], []))
+    invites = Use(lambda: cast(list[BackLink[InviteModel]], []))
 
 
 class ClubMembershipFactory(BaseDocumentFactory[ClubMembershipModel]):
@@ -126,20 +133,20 @@ class InviteFactory(BaseDocumentFactory[InviteModel]):
 
         if invite_type == InviteType.PUBLIC:
             kwargs.setdefault("target_email", None)
-            kwargs.setdefault("target_user_id", None)
+            kwargs.setdefault("target_user", None)
             kwargs.setdefault("expires_at", None)
             kwargs.setdefault("created_by", None)
         elif invite_type == InviteType.DIRECT:
             kwargs.setdefault("expires_at", datetime.now(UTC) + timedelta(days=7))
-            kwargs.setdefault("created_by", PydanticObjectId())
+            kwargs.setdefault("created_by", UserModel.link_from_id(PydanticObjectId()))
 
-            if not (kwargs.get("target_email") or kwargs.get("target_user_id")):
+            if not (kwargs.get("target_email") or kwargs.get("target_user")):
                 if cls.__faker__.boolean():
                     kwargs.setdefault("target_email", cls.__faker__.email())
-                    kwargs.setdefault("target_user_id", None)
+                    kwargs.setdefault("target_user", None)
                 else:
                     kwargs.setdefault("target_email", None)
-                    kwargs.setdefault("target_user_id", PydanticObjectId())
+                    kwargs.setdefault("target_user", UserModel.link_from_id(PydanticObjectId()))
 
         return super().build(factory_use_construct, **kwargs)
 
@@ -197,6 +204,7 @@ class UserFactory(BaseDocumentFactory[UserModel]):
         lambda: UserFactory.__faker__.date_time_between(start_date="-1y", end_date="now", tzinfo=UTC)
     )
     last_seen_at = Use(lambda: UserFactory.__faker__.date_time_between(start_date="-2m", end_date="now", tzinfo=UTC))
+    memberships = Use(lambda: cast(list[BackLink[ClubMembershipModel]], []))
 
 
 class ReadBookFactory(BaseDocumentFactory[ReadBookModel]):
@@ -213,8 +221,9 @@ class RoundFactory(BaseDocumentFactory[RoundModel]):
     selection_mode = Use(lambda: RoundFactory.__faker__.random_element(list(RoundSelectionMode)))
     status = Use(lambda: RoundFactory.__faker__.random_element(list(RoundStatus)))
     resolution_method = None
-    candidate_pool = Use(lambda: cast(list[CandidatePoolEntry], []))
-    book_id = None
+    candidate_pool = Use(lambda: cast(list[Link[BookModel]], []))
+    book = None
+    completions = Use(lambda: cast(list[BackLink[RoundCompletionModel]], []))
     deadline_duration = None
     deadline = None
     decided_at = None

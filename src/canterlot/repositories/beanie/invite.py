@@ -11,13 +11,13 @@ class BeanieInviteRepository(InviteRepository):
 
     async def find_one_active_public_by_club_id(self, club_id: PydanticObjectId) -> InviteModel | None:
         return await InviteModel.find_one(
-            InviteModel.club_id == club_id,
+            InviteModel.club.id == club_id,
             InviteModel.type == InviteType.PUBLIC,
             InviteModel.is_active == True,
         )
 
     async def find_by_club_id(self, club_id: PydanticObjectId) -> list[InviteModel]:
-        return await InviteModel.find(InviteModel.club_id == club_id).to_list()
+        return await InviteModel.find(InviteModel.club.id == club_id).to_list()
 
     async def save(self, invite: InviteModel) -> InviteModel:
         return await invite.save()
@@ -30,7 +30,7 @@ class BeanieInviteRepository(InviteRepository):
 
     async def deactivate_all_public_by_club_id(self, club_id: PydanticObjectId) -> None:
         await InviteModel.find(
-            InviteModel.club_id == club_id,
+            InviteModel.club.id == club_id,
             InviteModel.type == InviteType.PUBLIC,
             InviteModel.is_active == True,
         ).update_many({"$set": {InviteModel.is_active: False}})
@@ -41,7 +41,7 @@ class BeanieInviteRepository(InviteRepository):
         target_email: NormalizedEmailStr,
     ) -> None:
         await InviteModel.find(
-            InviteModel.club_id == club_id,
+            InviteModel.club.id == club_id,
             InviteModel.target_email == target_email,
             InviteModel.type == InviteType.DIRECT,
             InviteModel.is_active == True,
@@ -53,8 +53,8 @@ class BeanieInviteRepository(InviteRepository):
         target_user_id: PydanticObjectId,
     ) -> None:
         await InviteModel.find(
-            InviteModel.club_id == club_id,
-            InviteModel.target_user_id == target_user_id,
+            InviteModel.club.id == club_id,
+            {"target_user.$id": target_user_id},
             InviteModel.type == InviteType.DIRECT,
             InviteModel.is_active == True,
         ).update_many({"$set": {InviteModel.is_active: False}})

@@ -4,7 +4,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from beanie import PydanticObjectId
 
-from canterlot.models import BookModel, CatalogEntryModel
+from canterlot.hoodie import link_id
+from canterlot.models import BookModel, CatalogEntryModel, ClubModel, UserModel
 from canterlot.models.book import BookProviderIdentifier
 from canterlot.pagination import SortDirection
 from canterlot.repositories.beanie.catalog import BeanieCatalogRepository
@@ -26,8 +27,8 @@ def describe_find_page_by_club_id():
         zebra = await BookFactory.create_async(title="Zebra")
         alpha = await BookFactory.create_async(title="Alpha")
         books_by_title = sorted([zebra, alpha], key=lambda b: b.title)
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(zebra))
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(alpha))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=zebra.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=alpha.to_link())
 
         page = await repo.find_page_by_club_id(
             club_id,
@@ -37,15 +38,15 @@ def describe_find_page_by_club_id():
             sort_direction=SortDirection.ASC,
         )
 
-        assert [entry.book_id for entry in page.items] == [_id(b) for b in books_by_title]
+        assert [link_id(entry.book) for entry in page.items] == [_id(b) for b in books_by_title]
         assert page.total_items == 2
 
     async def it_sorts_by_year_via_a_lookup_join():
         club_id = PydanticObjectId()
         newer = await BookFactory.create_async(year=2020)
         older = await BookFactory.create_async(year=2010)
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(newer))
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(older))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=newer.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=older.to_link())
 
         page = await repo.find_page_by_club_id(
             club_id,
@@ -55,46 +56,55 @@ def describe_find_page_by_club_id():
             sort_direction=SortDirection.ASC,
         )
 
-        assert [entry.book_id for entry in page.items] == [_id(older), _id(newer)]
+        assert [link_id(entry.book) for entry in page.items] == [_id(older), _id(newer)]
 
     async def it_returns_full_entries_from_a_lookup_join():
         club_id = PydanticObjectId()
         book = await BookFactory.create_async()
-        entry = await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
+        entry = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=book.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, sort_by="author")
 
         assert len(page.items) == 1
         found = page.items[0]
         assert found.id == entry.id
-        assert found.club_id == club_id
-        assert found.suggested_by == entry.suggested_by
+        assert link_id(found.club) == club_id
+        assert link_id(found.suggested_by) == link_id(entry.suggested_by)
 
     async def it_sorts_by_suggested_at_descending_by_default():
         club_id = PydanticObjectId()
         now = datetime.now(UTC)
-        older = await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now - timedelta(days=1))
-        newer = await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now)
+        older = await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            suggested_at=now - timedelta(days=1),
+        )
+        newer = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), suggested_at=now)
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10)
 
-        assert [entry.book_id for entry in page.items] == [newer.book_id, older.book_id]
+        assert [link_id(entry.book) for entry in page.items] == [link_id(newer.book), link_id(older.book)]
 
     async def it_sorts_ascending_when_requested():
         club_id = PydanticObjectId()
         now = datetime.now(UTC)
-        older = await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now - timedelta(days=1))
-        newer = await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now)
+        older = await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            suggested_at=now - timedelta(days=1),
+        )
+        newer = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), suggested_at=now)
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, sort_direction=SortDirection.ASC)
 
-        assert [entry.book_id for entry in page.items] == [older.book_id, newer.book_id]
+        assert [link_id(entry.book) for entry in page.items] == [link_id(older.book), link_id(newer.book)]
 
     async def it_paginates_with_skip_and_limit():
         club_id = PydanticObjectId()
         now = datetime.now(UTC)
         entries = [
-            await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now + timedelta(seconds=i))
+            await CatalogEntryFactory.create_async(
+                club=ClubModel.link_from_id(club_id),
+                suggested_at=now + timedelta(seconds=i),
+            )
             for i in range(3)
         ]
 
@@ -102,13 +112,13 @@ def describe_find_page_by_club_id():
 
         assert len(page.items) == 1
         assert page.total_items == 3
-        assert page.items[0].book_id == entries[1].book_id
+        assert link_id(page.items[0].book) == link_id(entries[1].book)
 
     async def it_paginates_a_lookup_join_with_skip_and_limit():
         club_id = PydanticObjectId()
         books = [await BookFactory.create_async(year=2000 + i) for i in range(3)]
         for book in books:
-            await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
+            await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=book.to_link())
 
         page = await repo.find_page_by_club_id(
             club_id,
@@ -119,18 +129,24 @@ def describe_find_page_by_club_id():
         )
 
         assert page.total_items == 3
-        assert [entry.book_id for entry in page.items] == [_id(books[1])]
+        assert [link_id(entry.book) for entry in page.items] == [_id(books[1])]
 
     async def it_filters_by_suggested_by():
         club_id = PydanticObjectId()
         alice, bob = PydanticObjectId(), PydanticObjectId()
-        entry_a = await CatalogEntryFactory.create_async(club_id=club_id, suggested_by=alice)
-        await CatalogEntryFactory.create_async(club_id=club_id, suggested_by=bob)
+        entry_a = await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            suggested_by=UserModel.link_from_id(alice),
+        )
+        await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            suggested_by=UserModel.link_from_id(bob),
+        )
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, suggested_by=alice)
 
         assert page.total_items == 1
-        assert page.items[0].book_id == entry_a.book_id
+        assert link_id(page.items[0].book) == link_id(entry_a.book)
 
     async def it_filters_by_suggested_by_alongside_a_query():
         club_id = PydanticObjectId()
@@ -139,13 +155,21 @@ def describe_find_page_by_club_id():
             BookFactory.create_async(title="Dune"),
             BookFactory.create_async(title="Dune Messiah"),
         )
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(alice_book), suggested_by=alice)
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(bob_book), suggested_by=bob)
+        await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            book=alice_book.to_link(),
+            suggested_by=UserModel.link_from_id(alice),
+        )
+        await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            book=bob_book.to_link(),
+            suggested_by=UserModel.link_from_id(bob),
+        )
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, suggested_by=alice, q="dune")
 
         assert page.total_items == 1
-        assert page.items[0].book_id == _id(alice_book)
+        assert link_id(page.items[0].book) == _id(alice_book)
 
     async def it_filters_by_free_text_query_matching_title():
         club_id = PydanticObjectId()
@@ -155,13 +179,13 @@ def describe_find_page_by_club_id():
             BookFactory.create_async(title="The Great Gatsby", authors=["F. Scott Fitzgerald"]),
             BookFactory.create_async(title="Moby Dick", authors=["Herman Melville"]),
         )
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=matching.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=other.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="great gatsby")
 
         assert page.total_items == 1
-        assert page.items[0].book_id == _id(matching)
+        assert link_id(page.items[0].book) == _id(matching)
 
     async def it_filters_by_free_text_query_matching_authors():
         club_id = PydanticObjectId()
@@ -173,13 +197,13 @@ def describe_find_page_by_club_id():
             ),
             BookFactory.create_async(title="Moby Dick", authors=["Other Author"]),
         )
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=matching.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=other.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="austen")
 
         assert page.total_items == 1
-        assert page.items[0].book_id == _id(matching)
+        assert link_id(page.items[0].book) == _id(matching)
 
     async def it_matches_a_misspelled_title_via_fuzzy_search():
         club_id = PydanticObjectId()
@@ -189,13 +213,13 @@ def describe_find_page_by_club_id():
             BookFactory.create_async(title="The Great Gatsby", authors=["F. Scott Fitzgerald"]),
             BookFactory.create_async(title="Moby Dick", authors=["Herman Melville"]),
         )
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=matching.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=other.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="Gret Gatsby")
 
         assert page.total_items == 1
-        assert page.items[0].book_id == _id(matching)
+        assert link_id(page.items[0].book) == _id(matching)
 
     async def it_matches_a_misspelled_author_via_fuzzy_search():
         club_id = PydanticObjectId()
@@ -207,19 +231,19 @@ def describe_find_page_by_club_id():
             ),
             BookFactory.create_async(title="Moby Dick", authors=["Other Author"]),
         )
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(matching))
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(other))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=matching.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=other.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="Austin")
 
         assert page.total_items == 1
-        assert page.items[0].book_id == _id(matching)
+        assert link_id(page.items[0].book) == _id(matching)
 
     async def it_paginates_free_text_query_results_with_skip_and_limit():
         club_id = PydanticObjectId()
         books = await asyncio.gather(*[BookFactory.create_async(title=f"Fantasy Book {i}") for i in range(3)])
         for book in books:
-            await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
+            await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=book.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=2, limit=1, q="Fantasy")
 
@@ -229,7 +253,7 @@ def describe_find_page_by_club_id():
     async def it_returns_no_matches_when_the_query_matches_nothing():
         club_id = PydanticObjectId()
         book = await BookFactory.create_async(title="Moby Dick", authors=["Herman Melville"])
-        await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=book.to_link())
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="nonexistent phrase")
 
@@ -239,12 +263,15 @@ def describe_find_page_by_club_id():
     async def it_falls_back_to_suggested_at_for_an_unrecognized_sort_field():
         club_id = PydanticObjectId()
         now = datetime.now(UTC)
-        older = await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now - timedelta(days=1))
-        newer = await CatalogEntryFactory.create_async(club_id=club_id, suggested_at=now)
+        older = await CatalogEntryFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            suggested_at=now - timedelta(days=1),
+        )
+        newer = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), suggested_at=now)
 
         page = await repo.find_page_by_club_id(club_id, page=1, limit=10, sort_by="not-a-real-field")
 
-        assert [entry.book_id for entry in page.items] == [newer.book_id, older.book_id]
+        assert [link_id(entry.book) for entry in page.items] == [link_id(newer.book), link_id(older.book)]
 
     async def it_returns_an_empty_page_for_a_club_with_no_catalog():
         page = await repo.find_page_by_club_id(PydanticObjectId(), page=1, limit=10)
@@ -261,9 +288,9 @@ def describe_find_page_by_club_id():
     async def it_never_includes_another_clubs_entries():
         club_id, other_club_id = PydanticObjectId(), PydanticObjectId()
         book = await BookFactory.create_async(title="Shared Title")
-        own = await CatalogEntryFactory.create_async(club_id=club_id, book_id=_id(book))
-        await CatalogEntryFactory.create_async(club_id=other_club_id, book_id=_id(book))
-        await CatalogEntryFactory.create_async(club_id=other_club_id)
+        own = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id), book=book.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(other_club_id), book=book.to_link())
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(other_club_id))
 
         plain = await repo.find_page_by_club_id(club_id, page=1, limit=10)
         joined = await repo.find_page_by_club_id(club_id, page=1, limit=10, q="shared")
@@ -278,44 +305,44 @@ def describe_find_by_club_id_and_book_id():
     async def it_finds_the_catalog_entry():
         entry = await CatalogEntryFactory.create_async()
 
-        found = await repo.find_by_club_id_and_book_id(entry.club_id, entry.book_id)
+        found = await repo.find_by_club_id_and_book_id(link_id(entry.club), link_id(entry.book))
 
         assert found is not None
-        assert found.suggested_by == entry.suggested_by
+        assert link_id(found.suggested_by) == link_id(entry.suggested_by)
 
     async def it_returns_none_when_the_book_is_not_in_the_catalog():
         entry = await CatalogEntryFactory.create_async()
 
-        assert await repo.find_by_club_id_and_book_id(entry.club_id, PydanticObjectId()) is None
+        assert await repo.find_by_club_id_and_book_id(link_id(entry.club), PydanticObjectId()) is None
 
     async def it_returns_none_when_the_book_is_only_in_another_clubs_catalog():
         entry = await CatalogEntryFactory.create_async()
 
-        assert await repo.find_by_club_id_and_book_id(PydanticObjectId(), entry.book_id) is None
+        assert await repo.find_by_club_id_and_book_id(PydanticObjectId(), link_id(entry.book)) is None
 
 
 def describe_find_by_club_id_excluding_book_ids():
     async def it_returns_every_entry_when_nothing_is_excluded():
         club_id = PydanticObjectId()
-        first = await CatalogEntryFactory.create_async(club_id=club_id)
-        second = await CatalogEntryFactory.create_async(club_id=club_id)
+        first = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
+        second = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
 
         entries = await repo.find_by_club_id_excluding_book_ids(club_id, set())
 
-        assert {entry.book_id for entry in entries} == {first.book_id, second.book_id}
+        assert {link_id(entry.book) for entry in entries} == {link_id(first.book), link_id(second.book)}
 
     async def it_leaves_out_the_excluded_book_ids():
         club_id = PydanticObjectId()
-        kept = await CatalogEntryFactory.create_async(club_id=club_id)
-        excluded = await CatalogEntryFactory.create_async(club_id=club_id)
+        kept = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
+        excluded = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
 
-        entries = await repo.find_by_club_id_excluding_book_ids(club_id, {excluded.book_id})
+        entries = await repo.find_by_club_id_excluding_book_ids(club_id, {link_id(excluded.book)})
 
-        assert [entry.book_id for entry in entries] == [kept.book_id]
+        assert [link_id(entry.book) for entry in entries] == [link_id(kept.book)]
 
     async def it_is_scoped_to_the_club():
         club_id = PydanticObjectId()
-        own = await CatalogEntryFactory.create_async(club_id=club_id)
+        own = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
         await CatalogEntryFactory.create_async()
 
         entries = await repo.find_by_club_id_excluding_book_ids(club_id, set())
@@ -326,10 +353,10 @@ def describe_find_by_club_id_excluding_book_ids():
 def describe_find_by_club_id_and_book_ids():
     async def it_returns_only_the_requested_book_ids():
         club_id = PydanticObjectId()
-        wanted = await CatalogEntryFactory.create_async(club_id=club_id)
-        await CatalogEntryFactory.create_async(club_id=club_id)
+        wanted = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
+        await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
 
-        entries = await repo.find_by_club_id_and_book_ids(club_id, {wanted.book_id})
+        entries = await repo.find_by_club_id_and_book_ids(club_id, {link_id(wanted.book)})
 
         assert [entry.id for entry in entries] == [wanted.id]
 
@@ -337,7 +364,7 @@ def describe_find_by_club_id_and_book_ids():
         club_id = PydanticObjectId()
         other = await CatalogEntryFactory.create_async()
 
-        assert await repo.find_by_club_id_and_book_ids(club_id, {other.book_id}) == []
+        assert await repo.find_by_club_id_and_book_ids(club_id, {link_id(other.book)}) == []
 
 
 def describe_add():
@@ -346,44 +373,56 @@ def describe_add():
 
         assert await repo.add(entry) is True
 
-        found = await repo.find_by_club_id_and_book_id(entry.club_id, entry.book_id)
+        found = await repo.find_by_club_id_and_book_id(link_id(entry.club), link_id(entry.book))
         assert found is not None
-        assert found.suggested_by == entry.suggested_by
+        assert link_id(found.suggested_by) == link_id(entry.suggested_by)
 
     async def it_returns_false_when_the_book_is_already_in_the_clubs_catalog():
         existing = await CatalogEntryFactory.create_async()
-        duplicate = CatalogEntryFactory.build(id=None, club_id=existing.club_id, book_id=existing.book_id)
+        duplicate = CatalogEntryFactory.build(
+            id=None,
+            club=ClubModel.link_from_id(link_id(existing.club)),
+            book=BookModel.link_from_id(link_id(existing.book)),
+        )
 
         assert await repo.add(duplicate) is False
 
-        rows = await CatalogEntryModel.find(CatalogEntryModel.club_id == existing.club_id).to_list()
+        rows = await CatalogEntryModel.find({"club.$id": link_id(existing.club)}).to_list()
         assert [row.id for row in rows] == [existing.id]
 
     async def it_allows_the_same_book_in_two_different_clubs():
         existing = await CatalogEntryFactory.create_async()
-        other_club_entry = CatalogEntryFactory.build(id=None, book_id=existing.book_id)
+        other_club_entry = CatalogEntryFactory.build(id=None, book=BookModel.link_from_id(link_id(existing.book)))
 
         assert await repo.add(other_club_entry) is True
 
     async def it_keeps_exactly_one_entry_when_the_same_book_is_suggested_concurrently():
         club_id, book_id = PydanticObjectId(), PydanticObjectId()
-        first = CatalogEntryFactory.build(id=None, club_id=club_id, book_id=book_id)
-        second = CatalogEntryFactory.build(id=None, club_id=club_id, book_id=book_id)
+        first = CatalogEntryFactory.build(
+            id=None,
+            club=ClubModel.link_from_id(club_id),
+            book=BookModel.link_from_id(book_id),
+        )
+        second = CatalogEntryFactory.build(
+            id=None,
+            club=ClubModel.link_from_id(club_id),
+            book=BookModel.link_from_id(book_id),
+        )
 
         results = await asyncio.gather(repo.add(first), repo.add(second))
 
         assert sorted(results) == [False, True]
-        assert await CatalogEntryModel.find(CatalogEntryModel.club_id == club_id).count() == 1
+        assert await CatalogEntryModel.find({"club.$id": club_id}).count() == 1
 
 
 def describe_delete_by_club_id_and_book_id():
     async def it_removes_only_the_target_entry():
         club_id = PydanticObjectId()
-        target = await CatalogEntryFactory.create_async(club_id=club_id)
-        kept = await CatalogEntryFactory.create_async(club_id=club_id)
-        same_book_elsewhere = await CatalogEntryFactory.create_async(book_id=target.book_id)
+        target = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
+        kept = await CatalogEntryFactory.create_async(club=ClubModel.link_from_id(club_id))
+        same_book_elsewhere = await CatalogEntryFactory.create_async(book=BookModel.link_from_id(link_id(target.book)))
 
-        await repo.delete_by_club_id_and_book_id(club_id, target.book_id)
+        await repo.delete_by_club_id_and_book_id(club_id, link_id(target.book))
 
         remaining = await CatalogEntryModel.find_all().to_list()
         assert {row.id for row in remaining} == {kept.id, same_book_elsewhere.id}

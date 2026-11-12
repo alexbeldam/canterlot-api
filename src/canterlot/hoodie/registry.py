@@ -16,7 +16,7 @@ _INDEX_TO_ENTITY: dict[str, type["Entity"]] = {}
 
 _CURRENT_SESSION: ContextVar[AsyncClientSession | None] = ContextVar("_CURRENT_SESSION", default=None)
 
-# Runtime switch set by init_hoodie(search=...). A function pair, not a bare module
+# Runtime switch set by testing.disable_search(). A function pair, not a bare module
 # attribute, so consumers always read the current value instead of one captured at import time.
 _search_enabled: bool = True
 
@@ -36,8 +36,6 @@ def is_search_enabled() -> bool:
 
 def set_polling_config(config: HoodiePollingConfig) -> None:
     """Replaces the process-wide polling config used by search-sync and index-build checks.
-
-    `init_hoodie(polling=...)` calls this, so most callers never need to.
 
     :param config: the polling config to make active.
     :type config: HoodiePollingConfig

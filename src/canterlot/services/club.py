@@ -21,6 +21,7 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
 )
 from canterlot.exceptions.user import UserNotFoundError
+from canterlot.hoodie import link_id
 from canterlot.models import ClubMembershipModel, ClubModel
 from canterlot.pagination import Page
 from canterlot.repositories import (
@@ -174,13 +175,13 @@ class ClubService:
             raise UnauthorizedClubMemberError("Only members of this club can view it.")
 
         members = await self.__club_membership_repo.find_active_by_club_id(club_id)
-        member_usernames = await self.resolve_member_usernames([member.user_id for member in members])
+        member_usernames = await self.resolve_member_usernames([link_id(member.user) for member in members])
 
         pending = None
         pending_usernames = None
         if viewer_role in (MemberRole.OWNER, MemberRole.ADMIN):
             pending = await self.__club_membership_repo.find_pending_by_club_id(club_id)
-            pending_usernames = await self.__user_repo.get_usernames_by_ids([p.user_id for p in pending])
+            pending_usernames = await self.__user_repo.get_usernames_by_ids([link_id(p.user) for p in pending])
 
         return ClubView(
             club=club,

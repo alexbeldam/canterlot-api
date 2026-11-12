@@ -1,6 +1,7 @@
 from beanie import PydanticObjectId
 
 from canterlot.dto.book import RatedBook
+from canterlot.hoodie import link_id
 from canterlot.pagination import Page, SortDirection
 from canterlot.repositories import BookRepository, ReadBookRepository
 
@@ -14,8 +15,8 @@ async def resolve_rated_books_page(
     sort_direction: SortDirection = SortDirection.DESC,
 ) -> Page[RatedBook]:
     read_books_page = await read_book_repo.find_page_by_user_id(user_id, page, limit, sort_direction)
-    books_by_id = await book_repo.find_by_ids([entry.book_id for entry in read_books_page.items])
+    books_by_id = await book_repo.find_by_ids([link_id(entry.book) for entry in read_books_page.items])
 
     return read_books_page.map(
-        lambda entry: RatedBook(book=books_by_id[entry.book_id], rating=entry.rating, read_at=entry.read_at)
+        lambda entry: RatedBook(book=books_by_id[link_id(entry.book)], rating=entry.rating, read_at=entry.read_at)
     )

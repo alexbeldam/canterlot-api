@@ -2,17 +2,19 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
-from beanie import PydanticObjectId
+from beanie import Link, PydanticObjectId
 from pydantic import Field, validate_call
 from pymongo import ASCENDING, IndexModel
 
 from canterlot.hoodie import Entity
 from canterlot.types import SecretVerificationCode, VerificationScope
 
+from .user import UserModel
+
 
 class VerificationCodeModel(Entity):
     code_hash: str
-    user_id: PydanticObjectId
+    user: Link[UserModel]
     scope: VerificationScope
     attempts: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -25,7 +27,7 @@ class VerificationCodeModel(Entity):
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel(
                 [
-                    ("user_id", ASCENDING),
+                    ("user.$id", ASCENDING),
                     ("scope", ASCENDING),
                     ("code_hash", ASCENDING),
                     ("is_active", ASCENDING),
@@ -56,4 +58,9 @@ class VerificationCodeModel(Entity):
         expires_at = now + timedelta(minutes=scope.ttl_minutes)
         hashed = VerificationCodeModel.hash_code(code, user_id)
 
-        return VerificationCodeModel(code_hash=hashed, user_id=user_id, scope=scope, expires_at=expires_at)
+        return VerificationCodeModel(
+            code_hash=hashed,
+            user=UserModel.link_from_id(user_id),
+            scope=scope,
+            expires_at=expires_at,
+        )

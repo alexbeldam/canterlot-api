@@ -1,11 +1,16 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
-from beanie import Indexed, PydanticObjectId
+from beanie import BackLink, Indexed, PydanticObjectId
 from pydantic import Field
 
 from canterlot.hoodie import Entity, searchable
 from canterlot.types import ClubNameStr, ClubSlugStr, JoinPolicy, LanguageStr
+
+if TYPE_CHECKING:
+    from .catalog_entry import CatalogEntryModel
+    from .club_membership import ClubMembershipModel
+    from .invite import InviteModel
 
 
 class ClubModel(Entity):
@@ -18,6 +23,21 @@ class ClubModel(Entity):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     ownership_transferred_at: datetime | None = None
     protected_former_owner_id: PydanticObjectId | None = None
+    memberships: list[BackLink["ClubMembershipModel"]] = Field(
+        default_factory=list,
+        json_schema_extra={"original_field": "club"},
+        exclude=True,
+    )
+    catalog_entries: list[BackLink["CatalogEntryModel"]] = Field(
+        default_factory=list,
+        json_schema_extra={"original_field": "club"},
+        exclude=True,
+    )
+    invites: list[BackLink["InviteModel"]] = Field(
+        default_factory=list,
+        json_schema_extra={"original_field": "club"},
+        exclude=True,
+    )
 
     class Settings:
         name = "clubs"

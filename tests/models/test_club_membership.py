@@ -1,5 +1,6 @@
 from beanie import PydanticObjectId
 
+from canterlot.hoodie import link_id
 from canterlot.types import MembershipStatus
 from tools.factories import ClubMembershipFactory
 
@@ -9,8 +10,8 @@ def describe_club_membership_construction():
         membership = ClubMembershipFactory.build(status=MembershipStatus.OWNER)
 
         assert membership.status == MembershipStatus.OWNER
-        assert isinstance(membership.club_id, PydanticObjectId)
-        assert isinstance(membership.user_id, PydanticObjectId)
+        assert isinstance(link_id(membership.club), PydanticObjectId)
+        assert isinstance(link_id(membership.user), PydanticObjectId)
 
     def it_defaults_joined_at_and_requested_at_to_none():
         membership = ClubMembershipFactory.build(status=MembershipStatus.MEMBER)

@@ -20,7 +20,7 @@ from canterlot.exceptions import (
     UnauthorizedClubMemberError,
     UserNotFoundError,
 )
-from canterlot.models import ClubModel
+from canterlot.models import ClubModel, UserModel
 from canterlot.pagination import Page
 from canterlot.repositories import BookRepository, ReadBookRepository
 from canterlot.services.club import ClubService
@@ -325,7 +325,11 @@ def describe_get_club_view():
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.MEMBER
         club_membership_repo.find_active_by_club_id.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID, status=MembershipStatus.MEMBER),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(SOME_USER_ID),
+                status=MembershipStatus.MEMBER,
+            ),
         ]
         user_repo.get_usernames_by_ids.return_value = {SOME_USER_ID: "alice_1"}
         service = _service(club_repo, club_membership_repo, user_repo)
@@ -359,10 +363,18 @@ def describe_get_club_view():
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.OWNER
         club_membership_repo.find_active_by_club_id.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID, status=MembershipStatus.OWNER),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(SOME_USER_ID),
+                status=MembershipStatus.OWNER,
+            ),
         ]
         club_membership_repo.find_pending_by_club_id.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=SOME_PENDING_ID, status=MembershipStatus.PENDING),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(SOME_PENDING_ID),
+                status=MembershipStatus.PENDING,
+            ),
         ]
         user_repo.get_usernames_by_ids.side_effect = [
             {SOME_USER_ID: "alice_1"},
@@ -382,10 +394,18 @@ def describe_get_club_view():
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_membership_repo.find_member_role_by_club_id_and_user_id.return_value = MemberRole.ADMIN
         club_membership_repo.find_active_by_club_id.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=SOME_USER_ID, status=MembershipStatus.ADMIN),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(SOME_USER_ID),
+                status=MembershipStatus.ADMIN,
+            ),
         ]
         club_membership_repo.find_pending_by_club_id.return_value = [
-            ClubMembershipFactory.build(club_id=SOME_CLUB_ID, user_id=SOME_PENDING_ID, status=MembershipStatus.PENDING),
+            ClubMembershipFactory.build(
+                club=ClubModel.link_from_id(SOME_CLUB_ID),
+                user=UserModel.link_from_id(SOME_PENDING_ID),
+                status=MembershipStatus.PENDING,
+            ),
         ]
         user_repo.get_usernames_by_ids.side_effect = [
             {SOME_USER_ID: "alice_1"},
@@ -767,8 +787,8 @@ def describe_get_member_profile():
     ):
         club = ClubFactory.build(id=SOME_CLUB_ID)
         target = ClubMembershipFactory.build(
-            club_id=SOME_CLUB_ID,
-            user_id=SOME_TARGET_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
+            user=UserModel.link_from_id(SOME_TARGET_ID),
             status=MembershipStatus.ADMIN,
         )
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
@@ -816,8 +836,8 @@ def describe_get_member_read_books_page():
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_membership_repo.find_active_membership_by_club_id_and_user_id.return_value = ClubMembershipFactory.build(
-            club_id=SOME_CLUB_ID,
-            user_id=SOME_TARGET_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
+            user=UserModel.link_from_id(SOME_TARGET_ID),
             status=MembershipStatus.MEMBER,
         )
         read_book_repo.find_page_by_user_id.return_value = Page(items=[], total_items=0, current_page=1, page_size=20)
@@ -837,12 +857,12 @@ def describe_get_member_read_books_page():
         club = ClubFactory.build(id=SOME_CLUB_ID)
         club_membership_repo.exists_by_club_id_and_member_user_id.return_value = True
         club_membership_repo.find_active_membership_by_club_id_and_user_id.return_value = ClubMembershipFactory.build(
-            club_id=SOME_CLUB_ID,
-            user_id=SOME_TARGET_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
+            user=UserModel.link_from_id(SOME_TARGET_ID),
             status=MembershipStatus.MEMBER,
         )
         book = BookFactory.build(id=PydanticObjectId())
-        entry = ReadBookFactory.build(user_id=SOME_TARGET_ID, book_id=book.id, rating=4.0)
+        entry = ReadBookFactory.build(user=UserModel.link_from_id(SOME_TARGET_ID), book=book.to_link(), rating=4.0)
         read_book_repo.find_page_by_user_id.return_value = Page(
             items=[entry],
             total_items=1,

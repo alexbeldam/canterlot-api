@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from beanie import PydanticObjectId
 
+from canterlot.models import BookModel, ClubModel, UserModel
 from canterlot.models.round import RoundModel
 from canterlot.repositories.beanie.round_completion import BeanieRoundCompletionRepository
 from canterlot.types import RoundSelectionMode, RoundStatus
@@ -15,11 +16,11 @@ repo = BeanieRoundCompletionRepository()
 
 async def _decided_round(club_id: PydanticObjectId, book_id: PydanticObjectId) -> RoundModel:
     return await RoundFactory.create_async(
-        club_id=club_id,
-        started_by=PydanticObjectId(),
+        club=ClubModel.link_from_id(club_id),
+        started_by=UserModel.link_from_id(PydanticObjectId()),
         selection_mode=RoundSelectionMode.RANDOM,
         status=RoundStatus.DECIDED,
-        book_id=book_id,
+        book=BookModel.link_from_id(book_id),
         candidate_pool=[],
     )
 
@@ -36,10 +37,10 @@ def describe_find_majority_excluded_book_ids():
         finisher_a, finisher_b, finisher_c = PydanticObjectId(), PydanticObjectId(), PydanticObjectId()
         for user_id in (finisher_a, finisher_b, finisher_c):
             await RoundCompletionFactory.create_async(
-                club_id=club_id,
-                round_id=round_id,
-                book_id=book_id,
-                user_id=user_id,
+                club=ClubModel.link_from_id(club_id),
+                round=RoundModel.link_from_id(round_id),
+                book=BookModel.link_from_id(book_id),
+                user=UserModel.link_from_id(user_id),
             )
 
         excluded = await repo.find_majority_excluded_book_ids(club_id, {finisher_a, finisher_b})
@@ -53,10 +54,10 @@ def describe_find_majority_excluded_book_ids():
         finisher_a, finisher_b, finisher_c = PydanticObjectId(), PydanticObjectId(), PydanticObjectId()
         for user_id in (finisher_a, finisher_b, finisher_c):
             await RoundCompletionFactory.create_async(
-                club_id=club_id,
-                round_id=round_id,
-                book_id=book_id,
-                user_id=user_id,
+                club=ClubModel.link_from_id(club_id),
+                round=RoundModel.link_from_id(round_id),
+                book=BookModel.link_from_id(book_id),
+                user=UserModel.link_from_id(user_id),
             )
 
         excluded = await repo.find_majority_excluded_book_ids(club_id, {finisher_a})
@@ -70,10 +71,10 @@ def describe_find_majority_excluded_book_ids():
         finisher_a, finisher_b = PydanticObjectId(), PydanticObjectId()
         for user_id in (finisher_a, finisher_b):
             await RoundCompletionFactory.create_async(
-                club_id=club_id,
-                round_id=round_id,
-                book_id=book_id,
-                user_id=user_id,
+                club=ClubModel.link_from_id(club_id),
+                round=RoundModel.link_from_id(round_id),
+                book=BookModel.link_from_id(book_id),
+                user=UserModel.link_from_id(user_id),
             )
 
         excluded = await repo.find_majority_excluded_book_ids(club_id, {finisher_a})
@@ -93,17 +94,17 @@ def describe_find_majority_excluded_book_ids():
         )
         for user_id in (majority_finisher_a, majority_finisher_b):
             await RoundCompletionFactory.create_async(
-                club_id=club_id,
-                round_id=majority_round_id,
-                book_id=book_id,
-                user_id=user_id,
+                club=ClubModel.link_from_id(club_id),
+                round=RoundModel.link_from_id(majority_round_id),
+                book=BookModel.link_from_id(book_id),
+                user=UserModel.link_from_id(user_id),
             )
         for user_id in (minority_finisher_a, minority_finisher_b, minority_finisher_c):
             await RoundCompletionFactory.create_async(
-                club_id=club_id,
-                round_id=minority_round_id,
-                book_id=book_id,
-                user_id=user_id,
+                club=ClubModel.link_from_id(club_id),
+                round=RoundModel.link_from_id(minority_round_id),
+                book=BookModel.link_from_id(book_id),
+                user=UserModel.link_from_id(user_id),
             )
 
         excluded = await repo.find_majority_excluded_book_ids(
@@ -127,10 +128,10 @@ def describe_find_user_ids_by_round_id():
         finisher_a, finisher_b = PydanticObjectId(), PydanticObjectId()
         for user_id in (finisher_a, finisher_b):
             await RoundCompletionFactory.create_async(
-                club_id=PydanticObjectId(),
-                round_id=round_id,
-                book_id=PydanticObjectId(),
-                user_id=user_id,
+                club=ClubModel.link_from_id(PydanticObjectId()),
+                round=RoundModel.link_from_id(round_id),
+                book=BookModel.link_from_id(PydanticObjectId()),
+                user=UserModel.link_from_id(user_id),
             )
 
         finishers = await repo.find_user_ids_by_round_id(round_id)
@@ -199,10 +200,10 @@ def describe_record_completion():
         round_ = await _decided_round(club_id, book_id)
         round_id = PydanticObjectId(round_.id)
         await RoundCompletionFactory.create_async(
-            club_id=club_id,
-            round_id=round_id,
-            book_id=book_id,
-            user_id=former_member,
+            club=ClubModel.link_from_id(club_id),
+            round=RoundModel.link_from_id(round_id),
+            book=BookModel.link_from_id(book_id),
+            user=UserModel.link_from_id(former_member),
         )
 
         result = await repo.record_completion(

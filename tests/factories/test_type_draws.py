@@ -19,13 +19,13 @@ def describe_invite_factory():
         for invite in invites:
             if invite.type is InviteType.PUBLIC:
                 assert invite.target_email is None
-                assert invite.target_user_id is None
+                assert invite.target_user is None
                 assert invite.created_by is None
                 assert invite.expires_at is None
             else:
                 assert invite.created_by is not None
                 assert invite.expires_at is not None
-                assert (invite.target_email is None) != (invite.target_user_id is None)
+                assert (invite.target_email is None) != (invite.target_user is None)
 
     @pytest.mark.parametrize("invite_type", list(InviteType))
     def it_builds_internally_consistent_invites_when_the_type_is_pinned(invite_type: InviteType):
@@ -38,7 +38,7 @@ def describe_invite_factory():
                 assert invite.expires_at is None
             else:
                 assert invite.created_by is not None
-                assert (invite.target_email is None) != (invite.target_user_id is None)
+                assert (invite.target_email is None) != (invite.target_user is None)
 
 
 def describe_create_invite_request_factory():

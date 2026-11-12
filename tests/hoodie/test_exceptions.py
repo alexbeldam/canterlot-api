@@ -1,5 +1,9 @@
+from beanie.exceptions import DocumentWasNotSaved
+
 from canterlot.hoodie.exceptions import (
+    EntityLinkWithoutIdError,
     EntityNotSearchableError,
+    HoodieError,
     HoodieNotInitializedError,
     InvalidSessionTypeError,
     ProxiedMethodNotImplementedError,
@@ -49,6 +53,20 @@ def describe_search_within_transaction_error() -> None:
 
         assert error.index_name == "some_search_index"
         assert "some_search_index" in str(error)
+
+
+def describe_entity_link_without_id_error() -> None:
+    def it_names_the_entity_whose_document_has_no_id() -> None:
+        error = EntityLinkWithoutIdError(PlainTestEntity)
+
+        assert error.entity is PlainTestEntity
+        assert "PlainTestEntity" in str(error)
+
+    def it_is_both_a_hoodie_error_and_a_beanie_document_was_not_saved_error() -> None:
+        error = EntityLinkWithoutIdError(PlainTestEntity)
+
+        assert isinstance(error, HoodieError)
+        assert isinstance(error, DocumentWasNotSaved)
 
 
 def describe_entity_not_searchable_error() -> None:

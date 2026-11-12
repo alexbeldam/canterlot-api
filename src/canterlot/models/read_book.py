@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from beanie import PydanticObjectId
+from beanie import Link
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
 
 from canterlot.hoodie import Entity
+
+from .book import BookModel
+from .user import UserModel
 
 
 class RatingStats(BaseModel):
@@ -14,8 +17,8 @@ class RatingStats(BaseModel):
 
 
 class ReadBookModel(Entity):
-    user_id: PydanticObjectId
-    book_id: PydanticObjectId
+    user: Link[UserModel]
+    book: Link[BookModel]
     rating: float | None = Field(default=None, ge=0.5, le=5.0, multiple_of=0.5)
     read_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -23,7 +26,7 @@ class ReadBookModel(Entity):
         name = "read_books"
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel(
-                [("user_id", ASCENDING), ("book_id", ASCENDING)],
+                [("user.$id", ASCENDING), ("book.$id", ASCENDING)],
                 unique=True,
                 name="unique_user_book_idx",
             )

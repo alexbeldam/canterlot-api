@@ -66,8 +66,8 @@ def _created_club() -> ClubModel:
 
 def _owner_membership() -> ClubMembershipModel:
     return ClubMembershipFactory.build(
-        club_id=SOME_CLUB_ID,
-        user_id=SOME_OWNER_ID,
+        club=ClubModel.link_from_id(SOME_CLUB_ID),
+        user=UserModel.link_from_id(SOME_OWNER_ID),
         status=MembershipStatus.OWNER,
         joined_at=SOME_JOINED_AT,
     )
@@ -75,8 +75,8 @@ def _owner_membership() -> ClubMembershipModel:
 
 def _pending_membership() -> ClubMembershipModel:
     return ClubMembershipFactory.build(
-        club_id=SOME_CLUB_ID,
-        user_id=SOME_PENDING_ID,
+        club=ClubModel.link_from_id(SOME_CLUB_ID),
+        user=UserModel.link_from_id(SOME_PENDING_ID),
         status=MembershipStatus.PENDING,
         requested_at=SOME_REQUESTED_AT,
     )
@@ -450,8 +450,8 @@ def describe_get_club_member():
         club_service.get_club_by_slug.return_value = _created_club()
         user_service.get_by_username.return_value = target_user
         club_service.get_member_profile.return_value = ClubMembershipFactory.build(
-            club_id=SOME_CLUB_ID,
-            user_id=SOME_TARGET_ID,
+            club=ClubModel.link_from_id(SOME_CLUB_ID),
+            user=UserModel.link_from_id(SOME_TARGET_ID),
             status=MembershipStatus.ADMIN,
             joined_at=SOME_JOINED_AT,
         )

@@ -1,5 +1,6 @@
 from beanie import PydanticObjectId
 
+from canterlot.models import ClubModel
 from canterlot.models.invite import InviteModel
 from canterlot.types import InviteType
 from tools.factories import InviteFactory
@@ -16,7 +17,7 @@ def describe_invite_model_defaults():
         assert first.id != second.id
 
     def it_defaults_to_a_public_active_invite():
-        invite = InviteModel(club_id=PydanticObjectId())
+        invite = InviteModel(club=ClubModel.link_from_id(PydanticObjectId()))
         assert invite.type == InviteType.PUBLIC
         assert invite.is_active is True
         assert invite.uses_count == 0

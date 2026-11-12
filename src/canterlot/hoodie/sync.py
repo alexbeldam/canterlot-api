@@ -102,8 +102,8 @@ def synced(
     A call made with a `bulk_writer` deliberately skips this: bulk writes prioritize ingestion
     throughput, and the caller takes on responsibility for the index's eventual consistency.
     Silently a no-op (the wrapped call still runs, just without verification) when the target
-    entity has no `Settings.search_index` configured, or when `init_hoodie` was last called
-    with `search=False`, since there's no index to verify against in either case.
+    entity has no `Settings.search_index` configured, or inside `testing.disable_search()`,
+    since there's no index to verify against in either case.
 
     :param func: the write method/function to wrap, used only when applying the decorator
         bare (`@synced`, no parentheses).
@@ -341,7 +341,7 @@ class _WaitGroup:
             log.debug(f"{len(self._pending)} document(s) not yet {state}, retrying.", attempt=attempt)
 
         if await poll_until(settled, policy=get_polling_config().search_sync, on_retry=on_retry):
-            log.info(f"{self._total} document(s) are {state}.")
+            log.debug(f"{self._total} document(s) are {state}.")
             return
 
         for doc_id in list(self._pending):

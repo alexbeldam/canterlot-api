@@ -16,6 +16,7 @@ from canterlot.dto.club import (
     PaginatedMemberReadBooksResponse,
 )
 from canterlot.dto.invite import CreateInviteRequest, InviteTokenResponse
+from canterlot.hoodie import link_id
 from canterlot.models import ClubModel, UserModel
 from canterlot.routers.responses import (
     CHANGE_CLUB_MEMBER_ROLE_RESPONSES,
@@ -114,7 +115,7 @@ async def update_club_settings(
 ) -> ClubResponse:
     updated = await club_service.update_settings(club, current_user_id, payload)
     active_members = await club_service.get_active_members(PydanticObjectId(updated.id))
-    member_usernames = await club_service.resolve_member_usernames([member.user_id for member in active_members])
+    member_usernames = await club_service.resolve_member_usernames([link_id(member.user) for member in active_members])
 
     return ClubResponse.from_model(updated, active_members, user_usernames=member_usernames)
 

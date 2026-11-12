@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 from canterlot.config import get_settings
 from canterlot.dto.book import RatedBookSummaryDTO
 from canterlot.dto.user import AvatarDTO, BadgeDTO
+from canterlot.hoodie import link_id
 from canterlot.models.club import ClubModel
 from canterlot.models.club_membership import ClubMembershipModel
 from canterlot.models.user import UserModel
@@ -126,7 +127,10 @@ class ClubResponse(BaseModel):
         role_order = list(MemberRole)
         sorted_members = sorted(
             members,
-            key=lambda member: (role_order.index(MemberRole(member.status.value)), user_usernames[member.user_id]),
+            key=lambda member: (
+                role_order.index(MemberRole(member.status.value)),
+                user_usernames[link_id(member.user)],
+            ),
         )
 
         return cls(
@@ -138,7 +142,7 @@ class ClubResponse(BaseModel):
             preferred_languages=club.preferred_languages,
             members=[
                 ClubMemberDTO(
-                    username=user_usernames[member.user_id],
+                    username=user_usernames[link_id(member.user)],
                     role=MemberRole(member.status.value),
                     joined_at=cast(datetime, member.joined_at),
                 )
@@ -185,7 +189,7 @@ class ClubDetailResponse(ClubResponse):
             **base.model_dump(),
             pending_approvals=[
                 PendingApprovalDTO(
-                    username=pending_usernames[p.user_id],
+                    username=pending_usernames[link_id(p.user)],
                     requested_at=cast(datetime, p.requested_at),
                 )
                 for p in sorted_pending

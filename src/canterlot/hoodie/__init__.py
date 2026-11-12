@@ -20,13 +20,18 @@ Call `init_hoodie(database)` once at startup, after every `Entity` subclass has 
 imported, to register them with Beanie and build/update their search indexes. Pass
 `polling=HoodiePollingConfig(...)` to tune the search-sync/index-build polling intervals
 away from their production-tuned defaults (e.g. against a faster local search process).
+
+Test support lives in `canterlot.hoodie.testing`, deliberately not re-exported here: scoped
+registration, search switches and polling overrides for tests, so no production function
+needs a parameter that only tests use.
 """
 
 from .database import DatabaseManager
 from .entity import Entity
 from .exceptions import DatabaseManagerNotOpenError, TransactionError
 from .fields import searchable
-from .lifecycle import delete_all_entities, init_hoodie, reset_hoodie
+from .lifecycle import complete_forward_references, init_hoodie, reset_hoodie
+from .links import link_id
 from .polling import HoodiePollingConfig, PollingPolicy
 from .query import (
     BaseSearchQuery,
@@ -38,7 +43,6 @@ from .query import (
     SearchPage,
     SearchQuery,
 )
-from .registry import get_polling_config, set_polling_config
 from .sync import SyncKind, deferred_search_sync, sync_search, synced
 from .transactions import transactional
 
@@ -58,13 +62,12 @@ __all__ = [
     "SearchQuery",
     "SyncKind",
     "TransactionError",
+    "complete_forward_references",
     "deferred_search_sync",
-    "delete_all_entities",
-    "get_polling_config",
     "init_hoodie",
+    "link_id",
     "reset_hoodie",
     "searchable",
-    "set_polling_config",
     "sync_search",
     "synced",
     "transactional",

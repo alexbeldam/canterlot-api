@@ -137,7 +137,7 @@ async def _do_ensure_search_index(
             )
             await collection.update_search_index(name, target_definition)
         else:
-            log.info("Search index is up-to-date.", schema_hash=target_hash)
+            log.debug("Search index is up-to-date.", schema_hash=target_hash)
     else:
         log.info("Creating explicit static search index.", schema_hash=target_hash)
         await collection.create_search_index(SearchIndexModel(definition=target_definition, name=name))
@@ -159,7 +159,7 @@ async def _do_ensure_search_index(
         log.error("Search index never became queryable.")  # only reachable with a broken Atlas deployment
         raise SearchIndexNeverQueryableError(name)
 
-    log.info("Search index is ready and queryable.", schema_hash=target_hash)
+    log.debug("Search index is ready and queryable.", schema_hash=target_hash)
 
 
 # Atlas injects these into every echoed-back mapping (string fields get indexOptions/norms/

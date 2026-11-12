@@ -1,6 +1,8 @@
 import pytest
 from beanie import PydanticObjectId
 
+from canterlot.hoodie import link_id
+from canterlot.models import ClubModel, UserModel
 from canterlot.repositories.beanie.invite import BeanieInviteRepository
 from canterlot.types import InviteType
 from tools.factories import InviteFactory
@@ -17,7 +19,7 @@ def describe_find_by_id():
         found = await repo.find_by_id(invite.id)
 
         assert found is not None
-        assert found.club_id == invite.club_id
+        assert link_id(found.club) == link_id(invite.club)
 
     async def it_returns_none_when_the_invite_does_not_exist():
         assert await repo.find_by_id("no-such-id") is None
@@ -26,7 +28,11 @@ def describe_find_by_id():
 def describe_find_one_active_public_by_club_id():
     async def it_finds_the_active_public_invite():
         club_id = PydanticObjectId()
-        invite = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        invite = await InviteFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            type=InviteType.PUBLIC,
+            is_active=True,
+        )
 
         found = await repo.find_one_active_public_by_club_id(club_id)
 
@@ -35,14 +41,14 @@ def describe_find_one_active_public_by_club_id():
 
     async def it_ignores_an_inactive_public_invite():
         club_id = PydanticObjectId()
-        await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=False)
+        await InviteFactory.create_async(club=ClubModel.link_from_id(club_id), type=InviteType.PUBLIC, is_active=False)
 
         assert await repo.find_one_active_public_by_club_id(club_id) is None
 
     async def it_ignores_a_direct_invite():
         club_id = PydanticObjectId()
         await InviteFactory.create_async(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             type=InviteType.DIRECT,
             is_active=True,
             target_email=InviteFactory.__faker__.email(),
@@ -54,9 +60,9 @@ def describe_find_one_active_public_by_club_id():
 def describe_find_by_club_id():
     async def it_returns_every_invite_for_the_club():
         club_id = PydanticObjectId()
-        first = await InviteFactory.create_async(club_id=club_id)
-        second = await InviteFactory.create_async(club_id=club_id)
-        await InviteFactory.create_async(club_id=PydanticObjectId())
+        first = await InviteFactory.create_async(club=ClubModel.link_from_id(club_id))
+        second = await InviteFactory.create_async(club=ClubModel.link_from_id(club_id))
+        await InviteFactory.create_async(club=ClubModel.link_from_id(PydanticObjectId()))
 
         found = await repo.find_by_club_id(club_id)
 
@@ -105,15 +111,19 @@ def describe_deactivate_by_id():
 def describe_deactivate_all_public_by_club_id():
     async def it_deactivates_only_active_public_invites_for_the_club():
         club_id = PydanticObjectId()
-        public = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        public = await InviteFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            type=InviteType.PUBLIC,
+            is_active=True,
+        )
         direct = await InviteFactory.create_async(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             type=InviteType.DIRECT,
             is_active=True,
             target_email=InviteFactory.__faker__.email(),
         )
         other_club_public = await InviteFactory.create_async(
-            club_id=PydanticObjectId(),
+            club=ClubModel.link_from_id(PydanticObjectId()),
             type=InviteType.PUBLIC,
             is_active=True,
         )
@@ -132,18 +142,22 @@ def describe_deactivate_all_direct_by_club_id_and_target_email():
         other_email = InviteFactory.__faker__.email()
 
         matching = await InviteFactory.create_async(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             type=InviteType.DIRECT,
             is_active=True,
             target_email=target_email,
         )
         non_matching_email = await InviteFactory.create_async(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             type=InviteType.DIRECT,
             is_active=True,
             target_email=other_email,
         )
-        public = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        public = await InviteFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            type=InviteType.PUBLIC,
+            is_active=True,
+        )
 
         await repo.deactivate_all_direct_by_club_id_and_target_email(club_id, target_email)
 
@@ -159,18 +173,22 @@ def describe_deactivate_all_direct_by_club_id_and_target_user_id():
         other_user_id = PydanticObjectId()
 
         matching = await InviteFactory.create_async(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             type=InviteType.DIRECT,
             is_active=True,
-            target_user_id=target_user_id,
+            target_user=UserModel.link_from_id(target_user_id),
         )
         non_matching_user = await InviteFactory.create_async(
-            club_id=club_id,
+            club=ClubModel.link_from_id(club_id),
             type=InviteType.DIRECT,
             is_active=True,
-            target_user_id=other_user_id,
+            target_user=UserModel.link_from_id(other_user_id),
         )
-        public = await InviteFactory.create_async(club_id=club_id, type=InviteType.PUBLIC, is_active=True)
+        public = await InviteFactory.create_async(
+            club=ClubModel.link_from_id(club_id),
+            type=InviteType.PUBLIC,
+            is_active=True,
+        )
 
         await repo.deactivate_all_direct_by_club_id_and_target_user_id(club_id, target_user_id)
 

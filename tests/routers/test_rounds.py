@@ -11,7 +11,6 @@ from canterlot.exceptions import (
     RoundNotFoundError,
     UnauthorizedClubMemberError,
 )
-from canterlot.models.round import CandidatePoolEntry
 from canterlot.services.round import MemberProgress, RoundDisplay
 from canterlot.types import RoundResolutionMethod, RoundSelectionMode, RoundStatus
 from tools.factories import BookFactory, ClubFactory, RoundFactory
@@ -111,7 +110,7 @@ def describe_start_reading_round():
             selection_mode=RoundSelectionMode.CURATED,
             status=RoundStatus.SETUP,
             book_id=None,
-            candidate_pool=[CandidatePoolEntry(book_id=PydanticObjectId(pool_book.id))],
+            candidate_pool=[pool_book.to_link()],
         )
         round_service.resolve_display.return_value = RoundDisplay(book=None, pool_books=[pool_book], rating_stats={})
 

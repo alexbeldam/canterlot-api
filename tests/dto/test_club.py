@@ -12,6 +12,7 @@ from canterlot.dto.club import (
     ClubResponse,
     ClubSettingsUpdateRequest,
 )
+from canterlot.models import UserModel
 from canterlot.models.club_membership import ClubMembershipModel
 from canterlot.models.user import AvatarSchema
 from canterlot.types import (
@@ -33,7 +34,7 @@ SOME_MEMBER_ID = PydanticObjectId("507f1f77bcf86cd799439015")
 
 def _member(user_id: PydanticObjectId, role: MemberRole, joined_at: datetime | None = None) -> ClubMembershipModel:
     return ClubMembershipFactory.build(
-        user_id=user_id,
+        user=UserModel.link_from_id(user_id),
         status=MembershipStatus(role.value),
         joined_at=joined_at or datetime.now(UTC),
     )
@@ -41,7 +42,7 @@ def _member(user_id: PydanticObjectId, role: MemberRole, joined_at: datetime | N
 
 def _pending(user_id: PydanticObjectId, requested_at: datetime | None = None) -> ClubMembershipModel:
     return ClubMembershipFactory.build(
-        user_id=user_id,
+        user=UserModel.link_from_id(user_id),
         status=MembershipStatus.PENDING,
         joined_at=None,
         requested_at=requested_at or datetime.now(UTC),

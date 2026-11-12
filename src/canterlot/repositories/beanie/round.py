@@ -4,7 +4,7 @@ from typing import cast
 from beanie import PydanticObjectId
 from pymongo.results import UpdateResult
 
-from canterlot.models import RoundModel
+from canterlot.models import BookModel, RoundModel
 from canterlot.models.round import ACTIVE_ROUND_STATUSES
 from canterlot.repositories import RoundRepository
 from canterlot.types import RoundResolutionMethod, RoundStatus
@@ -13,7 +13,7 @@ from canterlot.types import RoundResolutionMethod, RoundStatus
 class BeanieRoundRepository(RoundRepository):
     async def find_active_by_club_id(self, club_id: PydanticObjectId) -> RoundModel | None:
         return await RoundModel.find_one(
-            RoundModel.club_id == club_id,
+            RoundModel.club.id == club_id,
             {"status": {"$in": list(ACTIVE_ROUND_STATUSES)}},
         )
 
@@ -32,7 +32,7 @@ class BeanieRoundRepository(RoundRepository):
         update_fields: dict[str, object] = {
             "status": RoundStatus.DECIDED,
             "resolution_method": RoundResolutionMethod.DRAW,
-            "book_id": book_id,
+            "book": BookModel.link_from_id(book_id).to_ref(),
             "decided_at": decided_at,
         }
         if deadline is not None:

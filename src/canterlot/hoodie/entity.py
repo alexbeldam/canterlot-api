@@ -2,7 +2,8 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
 from functools import wraps
 from typing import Any, ClassVar, Concatenate, Self, cast, overload
 
-from beanie import BulkWriter, Document, WriteRules
+from beanie import BulkWriter, Document, Link, WriteRules
+from beanie.exceptions import DocumentWasNotSaved
 from beanie.odm.actions import ActionDirections
 from beanie.odm.enums import SortDirection
 from pydantic import BaseModel
@@ -12,6 +13,7 @@ from pymongo.results import InsertManyResult
 from .exceptions import (
     DuplicateSearchIndexError,
     EmptySearchIndexNameError,
+    EntityLinkWithoutIdError,
     ProxiedMethodNotImplementedError,
     UnexpectedSearchableFieldError,
 )
@@ -128,8 +130,8 @@ class Entity(Document):
         if _is_abstract_root(cls):
             return
 
-        _ALL_ENTITIES.add(cls)
         _register_search_index(cls)
+        _ALL_ENTITIES.add(cls)
 
     @overload
     @classmethod
@@ -315,6 +317,23 @@ class Entity(Document):
         :rtype: EntityFindOne[Any]
         """
         return cast("EntityFindOne[Any]", super().find_one(*args, **kwargs))
+
+    def to_link(self) -> "Link[Self]":
+        """Builds an unfetched Link to this document.
+
+        The result is what a `Link[Entity]` field expects, stored as a `DBRef` to this
+        Entity's collection. To link by id alone, without a document in hand, use Beanie's
+        `link_from_id`.
+
+        :returns: an unfetched Link to this document.
+        :rtype: Link[Self]
+        :raises EntityLinkWithoutIdError: if the document has no id yet.
+        """
+        try:
+            ref = self.to_ref()
+        except DocumentWasNotSaved as error:
+            raise EntityLinkWithoutIdError(type(self)) from error
+        return Link(ref, type(self))
 
     @classmethod
     def search(cls) -> "SearchQuery[Self]":
