@@ -19,7 +19,7 @@ Once those are in place:
 ```bash
 uv sync --dev
 just setup    # creates a .env from .env.example, and spins up the mongodb-atlas-local 8.0 (for Atlas Search) and Redis 7.0 containers
-just verify   # full lint/type/test/coverage gate
+just verify   # full lint/type/test/coverage gate (auto-fixes style first, and needs Docker running)
 just dev      # runs the API locally with live reload, on http://localhost:8080
 ```
 
@@ -27,7 +27,11 @@ just dev      # runs the API locally with live reload, on http://localhost:8080
 
 - **Managing Dependencies:** When adding or removing packages, use `uv add <package>`, `uv add --dev <package>`, or `uv remove <package>` rather than editing `pyproject.toml`'s dependency arrays by hand. This keeps our lockfile perfectly in sync. Hand-editing tool settings blocks (like `[tool.ruff]` or `[tool.mypy]`) is totally fine.
 
-- **Verification:** Rely on `just verify` (or its individual steps, like `just test` or `just pyright`, while iterating) for validating code, and give it a full run before calling a change done. `just ci` reproduces the exact read-only CI gate if you need to debug a failure locally.
+- **Verification:** Rely on `just verify` (or its individual steps, like `just test` or `just pyright`, while iterating) for validating code, and give it a full run before calling a change done. `just verify` applies Ruff auto-fixes and formatting before checking, so it can modify your working tree; `just ci` reproduces the exact read-only CI gate if you need to debug a failure locally.
+
+- **Quality Gates:** Beyond tests, `just verify` runs byte-compilation, `just check-imports` (imports every module and exported symbol), `just deptry` (dependency hygiene), `just lint` (Ruff, including pylint-style limits such as `max-branches=12`, `max-args=8`, and `max-statements=50`), both `just mypy` and `just pyright`, `just radon` (maintainability index of at least B), and `just xenon` (cyclomatic complexity limits). Each has its own recipe, so you can run just the one that failed.
+
+- **Parallel Tests:** `just test`, `just test-integration`, and `just coverage` run with `pytest-xdist` (`-n auto`). Integration tests start one MongoDB Atlas Local container per worker, so they don't interfere with each other.
 
 ## Architecture & Layering
 
@@ -43,7 +47,7 @@ The codebase follows a strict layered convention: `routers/` -> `use_cases/` -> 
 
 - **Single-document write vs. multi-document write:** A repository method whose write only ever needs to guard one document stays a plain CAS-style conditional filter (no session, no transaction). Once an operation has to keep more than one document consistent with each other, use a real Mongo transaction instead, via `canterlot.hoodie`'s `transactional` decorator: bare `@transactional` propagates any exception after rolling back; `@transactional(on_conflict=<fallback>)` catches a raised `TransactionError` and returns `<fallback>` instead (see `BeanieClubMembershipRepository`'s `transfer_ownership`/`reclaim_ownership` for the reference implementation). See the wiki's [Transactional Writes vs. CAS](https://github.com/alexbeldam/canterlot-api/wiki/Transactional-Writes-vs-CAS) page for the full reasoning.
 
-- **Search-indexed entities:** A Beanie model that needs a synced Atlas Search index subclasses `canterlot.hoodie`'s `Entity` (not `beanie.Document` directly) and marks fields with `searchable(...)`; write-through sync and multi-document transactions for these models happen automatically through `Entity`'s own methods and the `transactional` decorator above. See the wiki's [Hoodie ODM Extension](https://github.com/alexbeldam/canterlot-api/wiki/Hoodie-ODM-Extension) page for the full mechanics.
+- **Search-indexed entities:** A Beanie model that needs a synced Atlas Search index subclasses `canterlot.hoodie`'s `Entity` (not `beanie.Document` directly) and marks fields with `searchable(...)`; write-through sync and multi-document transactions for these models happen automatically through `Entity`'s own methods and the `transactional` decorator above. The package's module docstring in `src/canterlot/hoodie/__init__.py` summarizes how the pieces fit together, and each public class and function documents its own contract. Import `canterlot.hoodie`'s test helpers from `canterlot.hoodie.testing`, which is deliberately not re-exported.
 
 ### Data Boundary & Public Identifiers
 
@@ -65,7 +69,7 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 - **Status codes carry the outcome:** If a caller needs to branch on what happened, that should be visible in the HTTP status code, not buried in a status/outcome enum inside an otherwise `200 OK` body. Distinguishable results get distinguishable codes (like `200` vs `201`). Non-2xx outcomes should raise a structured `BusinessError` rather than inventing a parallel body shape.
 
-- **`201 Created` sets `Location`:** Every endpoint that creates a resource should return the new asset's canonical URL in the `Location` header, matching our `/api/v1/...` prefix.
+- **`201 Created` sets `Location`:** Every endpoint that creates a resource should return the new asset's canonical URL in the `Location` header, matching our `/v1/...` prefix.
 
 - **No bare-scalar responses:** Even if a response is conceptually just a string or number, please wrap it in a named `dto/` schema rather than returning a raw primitive type.
 
@@ -75,7 +79,7 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 - **Document OpenAPI content:** Every OpenAPI `responses={}` entry (excluding automatic `422` validation dumps) needs an explicit `"content": error_example(...)` block so its shape is properly documented.
 
-- **Explicit Operation IDs:** Every endpoint route handler needs an explicit, camelCase `operation_id` that matches the Python function name verbatim (e.g., `create_club` → `operation_id="createClub"`). Our frontend code generation depends directly on this mapping.
+- **Explicit Operation IDs:** Every endpoint route handler needs an explicit, camelCase `operation_id` that matches the Python function name verbatim (e.g., `create_club` → `operation_id="createClub"`). Our frontend code generation depends directly on this mapping, and `tests/test_app.py` fails if any documented route lacks an `operation_id` or two routes share one.
 
 ## Database Fetching & Projections
 
@@ -91,6 +95,12 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 ## Python Style & Logging
 
+- **No `assert` in `src/`:** `assert` is stripped under `python -O`, and Ruff's `S101` fails the lint. Raise an explicit exception for runtime invariants, or use `typing.cast` for type-checker narrowing. `assert` is fine in `tests/`.
+
+- **Fail Fast:** Handle exceptional cases first and return from the main path last; don't end a returning function with a `raise`. Prefer early exits over deep nesting.
+
+- **Imports and Re-exports:** Import a name from the file that defines it or from the `__init__.py` that publicly exposes it, never from a third module that merely imports it. Only `__init__.py` files re-export, and only from their own directory or from a child package's `__init__`.
+
 - **Self-Documenting Code:** We prefer clean, SOLID, and DRY code over narrative inline comments or multi-paragraph docstrings. Add a comment only when capturing a non-obvious _why_ (like a hidden structural constraint or upstream library workaround).
 
 - **Complex Signatures:** Avoid returning naked tuples or loose dictionaries when a parameter or return value carries more than one explicit piece of meaning. Wrap them in a small named type, dataclass, or Pydantic model to retain type-checking precision.
@@ -103,11 +113,13 @@ The API follows a cohesive, highly consistent set of design choices. Please appl
 
 - **High Coverage Gate:** We hold test coverage to a strict **95% threshold evaluated per-file**, rather than an aggregate codebase average. Please ensure new code exercises actual conditional loops, error routines, and branch flows, not just the happy path.
 
-- **Layout & Style:** Test paths mirror `src/canterlot/` hierarchy exactly. We use a `pytest-describe` style layout, grouping suites into `describe_<unit>` blocks containing `it_<behavior>` functions.
+- **Layout & Style:** Test paths mirror the `src/canterlot/` hierarchy (`tests/routers/`, `tests/services/`, `tests/hoodie/`, and so on; `tests/factories/` covers `tools/factories`). We use a `pytest-describe` style layout, grouping suites into `describe_<unit>` blocks containing `it_<behavior>` functions.
+
+- **Test First, Public API Only:** For new behavior, write the failing `it_` test before the implementation. Tests should exercise the public surface only: don't import or `patch` a leading-underscore name from outside its module. If the behavior can't be observed through the public API, that's a gap to fix in the module.
 
 - **Environment Isolation:** Tests must never depend on your local `.env` variables. Use `monkeypatch.setattr(get_settings(), ...)` to explicitly pin configuration options both ways (set and unset) inside your test setup blocks.
 
-- **Aggregation & Integration Tier:** `mongomock`/`mongomock-motor` cannot run `.aggregate()` at all against this codebase's async driver setup, so any repository method using `$lookup`/`$facet`/etc. is unrunnable under the default mocked fixture, not just unreliable. That's why `tests/repositories/` exists as a separate real-Mongo/real-Redis tier (via `testcontainers`, tagged `@pytest.mark.integration`): every method on every `Beanie*Repository` and `RedisCacheRepository` gets its test there, not just the aggregation-based ones, which is what lets those two directories sit in the same 95% per-file coverage gate as everything else with no exemptions.
+- **Aggregation & Integration Tier:** `mongomock`/`mongomock-motor` cannot run `.aggregate()` at all against this codebase's async driver setup, so any repository method using `$lookup`/`$facet`/etc. is unrunnable under the default mocked fixture, not just unreliable. That's why `tests/repositories/` exists as a separate real-Mongo/real-Redis tier (via `testcontainers`): every method on every `Beanie*Repository` and `RedisCacheRepository` gets its test there, not just the aggregation-based ones, which is what lets those two directories sit in the same 95% per-file coverage gate as everything else. Tests under `tests/repositories/` and `tests/hoodie/` are marked `integration` automatically, so you don't tag them by hand. `__init__.py` files, `config.py`, `utils/logger.py`, and `exceptions/` are omitted from coverage.
 
 - **Docker Setup:** Running `just test` stays entirely Docker-free (`pytest -m "not integration"`) for quick local iteration; `just test-integration` runs just the integration tier in isolation. Running `just coverage` (and therefore `just verify`/`just ci`) executes all unit and integration tests together in one `pytest --cov` run, requiring local Docker to be up and running.
 
@@ -129,7 +141,7 @@ Running `just seed` populates your local environment with enough clubs, users, a
 
 ## Commit Messages & Git
 
-- **Conventional Logs:** This project uses Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`, optionally scoped like `feat(clubs):`). Please stick to the format, and stay consistent about which type you use for a given kind of change, since automatic release tools group commits by type to bump versions and build changelogs. Only `feat` and `fix` (plus a `BREAKING CHANGE:` footer forcing a major bump) drive actual release version updates, so reserve them for commits that actually change product behavior under `src/` rather than tooling, CI, docs, or formatting changes that would otherwise "feel like" a fix.
+- **Conventional Logs:** This project uses Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`, optionally scoped like `feat(clubs):`). Please stick to the format, and stay consistent about which type you use for a given kind of change, since automatic release tools use the type to bump versions and build changelogs. Only `feat` and `fix` appear in the generated changelog; `chore`, `ci`, `docs`, `refactor`, `style`, `test`, and non-dependency `build` commits are excluded from it. Only `feat` and `fix` (plus a `BREAKING CHANGE:` footer forcing a major bump) drive actual release version updates, so reserve them for commits that actually change product behavior under `src/` rather than tooling, CI, docs, or formatting changes that would otherwise "feel like" a fix.
 
 - **No AI Attribution:** Using AI tools to help write a contribution is fine, just leave AI co-author or `Co-Authored-By` trailers (Claude or otherwise) out of the commit message, so authorship in the log stays with you.
 
@@ -139,7 +151,7 @@ Running `just seed` populates your local environment with enough clubs, users, a
 
 - **Target Branch:** Always open your pull requests targeting our `develop` branch, never `main`. Use a concise branch structure: `<scope>/<short-description>` (e.g. `feat/auth`, not `feat/oauth-signup-referral-attribution`).
 
-- **PR Description Template:** Follow the repository template at `.github/pull_request_template.md` so review context is always consistent. If you use GitHub CLI, open with: `gh pr create --base develop --fill --web`.
+- **PR Description Template:** Follow the repository template at `.github/pull_request_template.md` so review context is always consistent. If you use GitHub CLI, `gh pr create --base develop --web` opens the PR form with the template loaded (`--fill` would replace it with your commit messages).
 
 - **Closing Issues:** If your PR ships a use case tracked as a GitHub issue, include a closing keyword in the description (e.g. `Fixes #109`) rather than closing the issue by hand; see [Working from the Issue Tracker](#working-from-the-issue-tracker) below.
 
@@ -148,7 +160,7 @@ Running `just seed` populates your local environment with enough clubs, users, a
 Every use case (a user-facing flow, roughly one per endpoint or closely related group of endpoints) is tracked as its own GitHub Issue rather than as a checklist item somewhere else. A closed issue is done; an open one isn't, that's the source of truth for what's actually built versus only spec'd.
 
 - **Labels:** Each issue carries a `domain:<name>` label (`domain:auth`, `domain:club`, `domain:catalog`, and so on), and, while open, a `status:not-started` or `status:partial` label, a `size:small`/`size:medium`/`size:large` estimate, and `blocked`/`help wanted`/`good first issue` where applicable.
-- **Finding Something to Work On:** Before starting new feature work, filter open issues by a domain's `domain:<name>` label to see what's already done, partial, or not started (`gh issue list --label domain:<name> --state all` if you use GitHub CLI). `help wanted` and `good first issue` are reasonable starting points if you're new to the codebase.
+- **Finding Something to Work On:** Before starting new feature work, filter open issues by a domain's `domain:<name>` label to see what's already done, partial, or not started (`gh issue list --label domain:<name> --state all` if you use GitHub CLI). `help wanted` and `good first issue` are reasonable starting points if you're new to the codebase. Comment `/assign` on an issue to claim it before you start.
 - **Cross-Issue Completeness:** A use case can be internally correct and still be unbuildable from the frontend if it depends on a piece another issue was supposed to supply, most often a write path shipping with no matching read path for the client to render the new state. Re-read the issue's own body for hedges like "deferred" before treating a gap as resolved, its summary can describe something as closed while the body still says otherwise.
 - **Build Leaves Before Consumers:** When a new feature depends on something unbuilt, build the dependency first even if the consumer is the more valuable feature. Shipping the consumer early without it just guarantees revisiting already-shipped code the moment the dependency lands.
 - Coverage percentages and cross-cutting design rationale for each domain live in the wiki's [Progress and Roadmap](https://github.com/alexbeldam/canterlot-api/wiki/Progress-and-Roadmap) page, not on the issues themselves.
